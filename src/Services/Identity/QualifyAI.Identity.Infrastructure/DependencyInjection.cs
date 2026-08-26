@@ -6,6 +6,7 @@ using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Application.Authentication;
 using QualifyAI.Identity.Infrastructure.Authentication;
+using QualifyAI.Identity.Infrastructure.Bootstrap;
 using QualifyAI.Identity.Infrastructure.Identity;
 using QualifyAI.Identity.Infrastructure.Messaging;
 using QualifyAI.Identity.Infrastructure.Persistence;
@@ -52,6 +53,7 @@ public static class DependencyInjection
                 options.SetTokenEndpointUris("/connect/token");
                 options.AllowPasswordFlow();
                 options.AllowRefreshTokenFlow();
+                options.AllowClientCredentialsFlow();
                 options.RegisterScopes(
                     "qualifyai-api",
                     "openid",
