@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QualifyAI.Identity.Application.Tenants.CreateTenant;
 using QualifyAI.Identity.Application.Tenants.GetTenant;
+using QualifyAI.Identity.Application.Tenants.SetStatus;
+using QualifyAI.Identity.Domain.Tenants;
 
 namespace QualifyAI.Identity.Api.Controllers.Tenants;
 
@@ -33,6 +35,20 @@ public sealed class TenantsController(ISender sender) : ControllerBase
     {
         var tenant = await sender.Send(new GetTenantQuery(tenantId), cancellationToken);
         return tenant is null ? NotFound() : Ok(tenant);
+    }
+
+    [HttpPost("{tenantId:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid tenantId, CancellationToken cancellationToken)
+    {
+        await sender.Send(new SetTenantStatusCommand(tenantId, TenantStatus.Active), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{tenantId:guid}/suspend")]
+    public async Task<IActionResult> Suspend(Guid tenantId, CancellationToken cancellationToken)
+    {
+        await sender.Send(new SetTenantStatusCommand(tenantId, TenantStatus.Suspended), cancellationToken);
+        return NoContent();
     }
 }
 
