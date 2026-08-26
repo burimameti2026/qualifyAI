@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Domain.Tenants;
 using QualifyAI.Identity.Infrastructure.Identity;
@@ -13,6 +14,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<License> Licenses => Set<License>();
     public DbSet<LicenseModule> LicenseModules => Set<LicenseModule>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -22,6 +24,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
         ConfigureIdentity(builder);
         ConfigureTenants(builder);
         ConfigureLicensing(builder);
+        ConfigureOutbox(builder);
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)
@@ -85,6 +88,19 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             b.HasKey(x => x.Id);
             b.HasIndex(x => new { x.LicenseId, x.Code }).IsUnique();
             b.Property(x => x.Code).HasMaxLength(100).IsRequired();
+        });
+    }
+
+    private static void ConfigureOutbox(ModelBuilder builder)
+    {
+        builder.Entity<OutboxMessage>(b =>
+        {
+            b.ToTable("OutboxMessages");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.ProcessedAtUtc, x.OccurredAtUtc });
+            b.Property(x => x.Type).HasMaxLength(1000).IsRequired();
+            b.Property(x => x.Payload).IsRequired();
+            b.Property(x => x.Error).HasMaxLength(4000);
         });
     }
 }
