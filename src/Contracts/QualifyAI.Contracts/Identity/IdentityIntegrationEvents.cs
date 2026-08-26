@@ -9,7 +9,7 @@ public sealed record TenantCreatedIntegrationEvent(
     string TenantSlug,
     string TenantName,
     string ContactEmail)
-    : IntegrationEvent(EventId, OccurredAtUtc);
+    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId);
 
 public sealed record TenantStatusChangedIntegrationEvent(
     Guid EventId,
@@ -17,7 +17,7 @@ public sealed record TenantStatusChangedIntegrationEvent(
     Guid TenantId,
     string TenantSlug,
     string Status)
-    : IntegrationEvent(EventId, OccurredAtUtc);
+    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId);
 
 public sealed record TenantLicenseChangedIntegrationEvent(
     Guid EventId,
@@ -31,7 +31,7 @@ public sealed record TenantLicenseChangedIntegrationEvent(
     DateTime? ExpiresAtUtc,
     long Version,
     IReadOnlyCollection<string> Modules)
-    : IntegrationEvent(EventId, OccurredAtUtc);
+    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId);
 
 public sealed record UserAccessChangedIntegrationEvent(
     Guid EventId,
@@ -41,4 +41,4 @@ public sealed record UserAccessChangedIntegrationEvent(
     bool IsActive,
     IReadOnlyCollection<string> Roles,
     IReadOnlyCollection<string> Permissions)
-    : IntegrationEvent(EventId, OccurredAtUtc);
+    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId);
