@@ -4,6 +4,8 @@
     <ProjectReference Include="../QualifyAI.Application/QualifyAI.Application.csproj" />
     <ProjectReference Include="../QualifyAI.Application.Commands/QualifyAI.Application.Commands.csproj" />
     <ProjectReference Include="../QualifyAI.Application.Queries/QualifyAI.Application.Queries.csproj" />
+    <ProjectReference Include="../../Contracts/QualifyAI.Contracts/QualifyAI.Contracts.csproj" />
+    <ProjectReference Include="../../BuildingBlocks/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
     <PackageReference Include="MediatR" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" />
