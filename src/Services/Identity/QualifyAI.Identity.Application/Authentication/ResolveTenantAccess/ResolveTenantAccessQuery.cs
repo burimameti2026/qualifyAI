@@ -1,5 +1,6 @@
 using MediatR;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Domain.Tenants;
 
 namespace QualifyAI.Identity.Application.Authentication.ResolveTenantAccess;
 
@@ -32,7 +33,7 @@ public sealed class ResolveTenantAccessQueryHandler(
         return new TenantAccessSnapshot(
             tenant.Id,
             tenant.Slug,
-            tenant.Status == Domain.Tenants.TenantStatus.Active,
+            tenant.Status == TenantStatus.Active,
             license?.Plan,
             license?.Status.ToString(),
             license?.Version ?? 0,
