@@ -5,6 +5,7 @@ using QualifyAI.Api;
 using QualifyAI.Application;
 using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Infrastructure;
+using QualifyAI.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,7 @@ builder.Services.Configure<RevenueAutomationOptions>(
     builder.Configuration.GetSection("RevenueAutomation"));
 builder.Services.AddHostedService<RevenueAutomationWorker>();
 
+builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -59,9 +61,9 @@ app.UseAuthentication();
 app.UseMiddleware<TenantMiddleware>();
 app.UseAuthorization();
 
+app.MapControllers();
 app.MapHub<ConversationHub>("/hubs/conversations");
 app.MapPublicChat();
-app.MapModules();
 app.MapExtendedAdmin();
 
 using (var scope = app.Services.CreateScope())
