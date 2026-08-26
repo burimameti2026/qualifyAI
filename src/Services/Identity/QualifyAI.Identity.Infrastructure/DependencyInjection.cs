@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Application.Authentication;
 using QualifyAI.Identity.Infrastructure.Authentication;
 using QualifyAI.Identity.Infrastructure.Identity;
+using QualifyAI.Identity.Infrastructure.Messaging;
 using QualifyAI.Identity.Infrastructure.Persistence;
 using QualifyAI.Identity.Infrastructure.Persistence.Repositories;
 using QualifyAI.Identity.Infrastructure.Tenants;
@@ -71,6 +73,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<ILicenseRepository, LicenseRepository>();
         services.AddScoped<IIdentityUnitOfWork, IdentityUnitOfWork>();
+        services.AddScoped<IOutboxWriter, IdentityOutboxWriter>();
         services.AddScoped<IAccountService, AccountService>();
 
         services.AddHttpClient<ITenantDirectoryClient, TenantDirectoryClient>(client =>
