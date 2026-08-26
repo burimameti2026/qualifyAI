@@ -1,5 +1,7 @@
 using FluentValidation;
 using MediatR;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
+using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Domain.Licensing;
 
@@ -38,6 +40,7 @@ public sealed class AssignLicenseCommandValidator : AbstractValidator<AssignLice
 public sealed class AssignLicenseCommandHandler(
     ITenantRepository tenants,
     ILicenseRepository licenses,
+    IOutboxWriter outbox,
     IIdentityUnitOfWork unitOfWork)
     : IRequestHandler<AssignLicenseCommand, LicenseResult>
 {
@@ -61,6 +64,20 @@ public sealed class AssignLicenseCommandHandler(
             request.Modules);
 
         await licenses.AddAsync(license, cancellationToken);
+
+        outbox.Add(new TenantLicenseChangedIntegrationEvent(
+            Guid.NewGuid(),
+            DateTime.UtcNow,
+            license.TenantId,
+            license.Id,
+            license.Plan,
+            license.Status.ToString(),
+            license.MaxUsers,
+            license.StartsAtUtc,
+            license.ExpiresAtUtc,
+            license.Version,
+            license.Modules.Where(x => x.Enabled).Select(x => x.Code).ToArray()));
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return ToResult(license);
