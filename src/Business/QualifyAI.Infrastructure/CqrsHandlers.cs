@@ -1,110 +1,141 @@
 using MediatR;
-using Microsoft.EntityFrameworkCore;
+using QualifyAI.Application.Abstractions.Persistence;
 using QualifyAI.Application.Commands;
 using QualifyAI.Application.Queries;
 using QualifyAI.Domain;
 
 namespace QualifyAI.Infrastructure;
 
-public sealed class CreateContactCommandHandler(AppDbContext db)
+public sealed class CreateContactCommandHandler(
+    ICrmRepository crm,
+    IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<CreateContactCommand, Contact>
 {
-    public async Task<Contact> Handle(CreateContactCommand r, CancellationToken ct)
+    public async Task<Contact> Handle(CreateContactCommand request, CancellationToken cancellationToken)
     {
         var entity = new Contact
         {
             Id = Guid.NewGuid(),
-            TenantId = r.TenantId,
-            CompanyId = r.CompanyId,
-            FirstName = r.FirstName?.Trim() ?? "",
-            LastName = r.LastName?.Trim() ?? "",
-            Email = r.Email?.Trim() ?? "",
-            Phone = r.Phone?.Trim() ?? "",
-            LifecycleStage = string.IsNullOrWhiteSpace(r.LifecycleStage) ? "visitor" : r.LifecycleStage.Trim()
+            TenantId = request.TenantId,
+            CompanyId = request.CompanyId,
+            FirstName = request.FirstName?.Trim() ?? string.Empty,
+            LastName = request.LastName?.Trim() ?? string.Empty,
+            Email = request.Email?.Trim() ?? string.Empty,
+            Phone = request.Phone?.Trim() ?? string.Empty,
+            LifecycleStage = string.IsNullOrWhiteSpace(request.LifecycleStage)
+                ? "visitor"
+                : request.LifecycleStage.Trim()
         };
-        db.Contacts.Add(entity);
-        await db.SaveChangesAsync(ct);
+
+        crm.AddContact(entity);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return entity;
     }
 }
 
-public sealed class CreateLeadCommandHandler(AppDbContext db)
+public sealed class CreateLeadCommandHandler(
+    ICrmRepository crm,
+    IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<CreateLeadCommand, Lead>
 {
-    public async Task<Lead> Handle(CreateLeadCommand r, CancellationToken ct)
+    public async Task<Lead> Handle(CreateLeadCommand request, CancellationToken cancellationToken)
     {
-        var contactExists = await db.Contacts.AnyAsync(x => x.TenantId == r.TenantId && x.Id == r.ContactId, ct);
-        if (!contactExists) throw new InvalidOperationException("Lead contact does not exist in this tenant.");
+        if (!await crm.ContactExistsAsync(request.TenantId, request.ContactId, cancellationToken))
+            throw new InvalidOperationException("Lead contact does not exist in this tenant.");
 
-        var score = Math.Clamp(r.Score, 0, 100);
+        var score = Math.Clamp(request.Score, 0, 100);
         var entity = new Lead
         {
             Id = Guid.NewGuid(),
-            TenantId = r.TenantId,
-            ContactId = r.ContactId,
-            CompanyId = r.CompanyId,
-            Source = string.IsNullOrWhiteSpace(r.Source) ? "web" : r.Source.Trim(),
+            TenantId = request.TenantId,
+            ContactId = request.ContactId,
+            CompanyId = request.CompanyId,
+            Source = string.IsNullOrWhiteSpace(request.Source) ? "web" : request.Source.Trim(),
             Score = score,
-            Temperature = score >= 80 ? LeadTemperature.Hot : score >= 50 ? LeadTemperature.Warm : LeadTemperature.Cold,
+            Temperature = ToTemperature(score),
             Status = "new",
-            EstimatedValue = r.EstimatedValue,
-            IntentSummary = r.IntentSummary?.Trim() ?? ""
+            EstimatedValue = request.EstimatedValue,
+            IntentSummary = request.IntentSummary?.Trim() ?? string.Empty
         };
-        db.Leads.Add(entity);
-        await db.SaveChangesAsync(ct);
+
+        crm.AddLead(entity);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return entity;
     }
+
+    private static LeadTemperature ToTemperature(int score)
+        => score >= 80 ? LeadTemperature.Hot : score >= 50 ? LeadTemperature.Warm : LeadTemperature.Cold;
 }
 
-public sealed class QualifyLeadCommandHandler(AppDbContext db)
+public sealed class QualifyLeadCommandHandler(
+    ICrmRepository crm,
+    IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<QualifyLeadCommand, Lead?>
 {
-    public async Task<Lead?> Handle(QualifyLeadCommand r, CancellationToken ct)
+    public async Task<Lead?> Handle(QualifyLeadCommand request, CancellationToken cancellationToken)
     {
-        var lead = await db.Leads.FirstOrDefaultAsync(x => x.TenantId == r.TenantId && x.Id == r.LeadId, ct);
-        if (lead is null) return null;
-        lead.Temperature = lead.Score >= 80 ? LeadTemperature.Hot : lead.Score >= 50 ? LeadTemperature.Warm : LeadTemperature.Cold;
-        lead.Status = lead.Score >= 80 ? "qualified" : lead.Score >= 50 ? "nurture" : "new";
-        await db.SaveChangesAsync(ct);
+        var lead = await crm.GetLeadAsync(request.TenantId, request.LeadId, cancellationToken);
+        if (lead is null)
+            return null;
+
+        lead.Temperature = lead.Score >= 80
+            ? LeadTemperature.Hot
+            : lead.Score >= 50
+                ? LeadTemperature.Warm
+                : LeadTemperature.Cold;
+
+        lead.Status = lead.Score >= 80
+            ? "qualified"
+            : lead.Score >= 50
+                ? "nurture"
+                : "new";
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return lead;
     }
 }
 
-public sealed class CreateTicketCommandHandler(AppDbContext db)
+public sealed class CreateTicketCommandHandler(
+    ISupportRepository support,
+    IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<CreateTicketCommand, Ticket>
 {
-    public async Task<Ticket> Handle(CreateTicketCommand r, CancellationToken ct)
+    public async Task<Ticket> Handle(CreateTicketCommand request, CancellationToken cancellationToken)
     {
         var entity = new Ticket
         {
             Id = Guid.NewGuid(),
-            TenantId = r.TenantId,
-            ConversationId = r.ConversationId,
-            ContactId = r.ContactId,
+            TenantId = request.TenantId,
+            ConversationId = request.ConversationId,
+            ContactId = request.ContactId,
             Number = $"T-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
-            Subject = r.Subject?.Trim() ?? "",
-            Description = r.Description?.Trim() ?? "",
-            Priority = r.Priority,
-            SlaPolicyId = r.SlaPolicyId
+            Subject = request.Subject?.Trim() ?? string.Empty,
+            Description = request.Description?.Trim() ?? string.Empty,
+            Priority = request.Priority,
+            SlaPolicyId = request.SlaPolicyId
         };
-        db.Tickets.Add(entity);
-        await db.SaveChangesAsync(ct);
+
+        support.AddTicket(entity);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return entity;
     }
 }
 
-public sealed class DashboardOverviewQueryHandler(AppDbContext db)
+public sealed class DashboardOverviewQueryHandler(
+    ICrmRepository crm,
+    ISupportRepository support)
     : IRequestHandler<DashboardOverviewQuery, DashboardOverviewDto>
 {
-    public async Task<DashboardOverviewDto> Handle(DashboardOverviewQuery r, CancellationToken ct)
+    public async Task<DashboardOverviewDto> Handle(DashboardOverviewQuery request, CancellationToken cancellationToken)
     {
-        var t = r.TenantId;
+        var tenantId = request.TenantId;
+
         return new DashboardOverviewDto(
-            await db.Contacts.CountAsync(x => x.TenantId == t, ct),
-            await db.Leads.CountAsync(x => x.TenantId == t, ct),
-            await db.Leads.CountAsync(x => x.TenantId == t && x.Score >= 80, ct),
-            await db.Conversations.CountAsync(x => x.TenantId == t && x.Status == ConversationStatus.Open, ct),
-            await db.Tickets.CountAsync(x => x.TenantId == t && x.Status != TicketStatus.Closed && x.Status != TicketStatus.Resolved, ct),
-            await db.Opportunitys.Where(x => x.TenantId == t && x.Status == OpportunityStatus.Open).SumAsync(x => (decimal?)x.Amount, ct) ?? 0m);
+            await crm.CountContactsAsync(tenantId, cancellationToken),
+            await crm.CountLeadsAsync(tenantId, cancellationToken),
+            await crm.CountHotLeadsAsync(tenantId, cancellationToken),
+            await support.CountOpenConversationsAsync(tenantId, cancellationToken),
+            await support.CountOpenTicketsAsync(tenantId, cancellationToken),
+            await crm.SumOpenPipelineAsync(tenantId, cancellationToken));
     }
 }
