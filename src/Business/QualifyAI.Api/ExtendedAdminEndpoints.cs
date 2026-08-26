@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure;
+using QualifyAI.Application;
 
 namespace QualifyAI.Api;
 
