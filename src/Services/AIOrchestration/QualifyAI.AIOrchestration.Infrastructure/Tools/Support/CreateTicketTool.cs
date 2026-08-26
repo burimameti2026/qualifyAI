@@ -1,4 +1,5 @@
 using QualifyAI.AIOrchestration.Application.Tools;
+using System.Net.Http;
 namespace QualifyAI.AIOrchestration.Infrastructure.Tools.Support;
 public sealed class CreateTicketTool(IHttpClientFactory httpClientFactory) : IAgentTool
 {

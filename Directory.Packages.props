@@ -15,6 +15,7 @@
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.8" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.8" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.18" />
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.3.1" />
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.4.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.4.0" />
@@ -23,18 +24,18 @@
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
-      <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
-      <PackageVersion Include="Aspire.Hosting.SqlServer" Version="9.4.0" />
-      <PackageVersion Include="Aspire.Hosting.Redis" Version="9.4.0" />
-      <PackageVersion Include="Aspire.Hosting.RabbitMQ" Version="9.4.0" />
-      <PackageVersion Include="Consul" Version="1.8.0" />
-      <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
-      <PackageVersion Include="Serilog.Sinks.Seq" Version="9.1.0" />
-      <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
-      <PackageVersion Include="MongoDB.Driver" Version="3.11.0" />
-      <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.8" />
-      <PackageVersion Include="OpenIddict.AspNetCore" Version="7.6.0" />
-      <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="7.6.0" />
-      <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="9.0.8" />
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <PackageVersion Include="Aspire.Hosting.SqlServer" Version="9.4.0" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="9.4.0" />
+    <PackageVersion Include="Aspire.Hosting.RabbitMQ" Version="9.4.0" />
+    <PackageVersion Include="Consul" Version="1.8.0" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Seq" Version="9.1.0" />
+    <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageVersion Include="MongoDB.Driver" Version="3.11.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.8" />
+    <PackageVersion Include="OpenIddict.AspNetCore" Version="7.6.0" />
+    <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="7.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="9.0.8" />
   </ItemGroup>
 </Project>
