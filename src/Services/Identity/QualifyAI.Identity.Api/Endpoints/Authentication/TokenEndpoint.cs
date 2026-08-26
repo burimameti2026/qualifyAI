@@ -193,8 +193,12 @@ public static class TokenEndpoint
         identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, access.LicenseStatus);
         identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, access.LicenseVersion.ToString());
 
-        foreach (var role in await userManager.GetRolesAsync(user))
-            identity.AddClaim(new Claim(Claims.Role, role));
+        var storageRoles = await userManager.GetRolesAsync(user);
+        foreach (var storageRole in storageRoles)
+        {
+            var displayRole = TenantRoleNameCodec.ToDisplayName(user.TenantId, storageRole);
+            identity.AddClaim(new Claim(Claims.Role, displayRole));
+        }
 
         var permissions = await dbContext.UserPermissions
             .AsNoTracking()
