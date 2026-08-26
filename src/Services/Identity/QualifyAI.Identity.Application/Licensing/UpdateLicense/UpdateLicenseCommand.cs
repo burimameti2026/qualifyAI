@@ -3,6 +3,7 @@ using MediatR;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Domain.Licensing;
 
 namespace QualifyAI.Identity.Application.Licensing.UpdateLicense;
 
@@ -44,9 +45,7 @@ public sealed class UpdateLicenseCommandHandler(
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    internal static void QueueLicenseChanged(
-        IOutboxWriter outbox,
-        Domain.Licensing.License license)
+    internal static void QueueLicenseChanged(IOutboxWriter outbox, License license)
     {
         outbox.Add(new TenantLicenseChangedIntegrationEvent(
             Guid.NewGuid(),
