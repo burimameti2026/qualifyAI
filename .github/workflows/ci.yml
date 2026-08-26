@@ -45,15 +45,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    defaults:
-      run:
-        working-directory: admin/qualifyai-admin
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect admin UI source
+        id: admin-ui
+        shell: bash
+        run: |
+          if [ -f "admin/qualifyai-admin/package-lock.json" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Admin UI source is not present on this branch; skipping UI build."
+          fi
+
       - name: Setup Node
+        if: steps.admin-ui.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -61,7 +69,11 @@ jobs:
           cache-dependency-path: admin/qualifyai-admin/package-lock.json
 
       - name: Install dependencies
+        if: steps.admin-ui.outputs.exists == 'true'
+        working-directory: admin/qualifyai-admin
         run: npm ci --no-audit --no-fund
 
       - name: Build
+        if: steps.admin-ui.outputs.exists == 'true'
+        working-directory: admin/qualifyai-admin
         run: npm run build
