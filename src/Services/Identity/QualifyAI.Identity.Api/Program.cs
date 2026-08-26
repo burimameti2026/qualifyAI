@@ -24,9 +24,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Authentication/recovery are the final legacy minimal endpoints and will be
-// migrated separately to avoid changing the OAuth/OpenIddict contract mid-pass.
+// OAuth token exchange remains on the OpenIddict passthrough endpoint.
 app.MapTokenEndpoint();
-app.MapRecoveryEndpoints();
 
 app.Run();
