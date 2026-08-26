@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
+using QualifyAI.Identity.Domain.Clients;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Domain.Tenants;
 using QualifyAI.Identity.Infrastructure.Identity;
@@ -14,6 +15,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<License> Licenses => Set<License>();
     public DbSet<LicenseModule> LicenseModules => Set<LicenseModule>();
+    public DbSet<ClientApplication> ClientApplications => Set<ClientApplication>();
+    public DbSet<ClientScope> ClientScopes => Set<ClientScope>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -24,6 +27,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
         ConfigureIdentity(builder);
         ConfigureTenants(builder);
         ConfigureLicensing(builder);
+        ConfigureClients(builder);
         ConfigureOutbox(builder);
     }
 
@@ -80,6 +84,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
                 .WithOne()
                 .HasForeignKey(x => x.LicenseId)
                 .OnDelete(DeleteBehavior.Cascade);
+            b.Navigation(x => x.Modules).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<LicenseModule>(b =>
@@ -91,13 +96,40 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
         });
     }
 
+    private static void ConfigureClients(ModelBuilder builder)
+    {
+        builder.Entity<ClientApplication>(b =>
+        {
+            b.ToTable("ClientApplications");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => x.ClientId).IsUnique();
+            b.HasIndex(x => x.TenantId);
+            b.Property(x => x.ClientId).HasMaxLength(100).IsRequired();
+            b.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+            b.HasMany(x => x.Scopes)
+                .WithOne()
+                .HasForeignKey(x => x.ClientApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.Navigation(x => x.Scopes).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<ClientScope>(b =>
+        {
+            b.ToTable("ClientScopes");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.ClientApplicationId, x.Name }).IsUnique();
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+        });
+    }
+
     private static void ConfigureOutbox(ModelBuilder builder)
     {
         builder.Entity<OutboxMessage>(b =>
         {
             b.ToTable("OutboxMessages");
             b.HasKey(x => x.Id);
-            b.HasIndex(x => new { x.ProcessedAtUtc, x.OccurredAtUtc });
+            b.HasIndex(x => new { x.ProcessedAtUtc, x.NextAttemptAtUtc, x.OccurredAtUtc });
             b.Property(x => x.Type).HasMaxLength(1000).IsRequired();
             b.Property(x => x.Payload).IsRequired();
             b.Property(x => x.Error).HasMaxLength(4000);
