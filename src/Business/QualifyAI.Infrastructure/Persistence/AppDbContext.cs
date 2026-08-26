@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure.Persistence.Configurations;
+using QualifyAI.Infrastructure.Persistence.Projections;
 
 namespace QualifyAI.Infrastructure;
 
@@ -13,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     // Platform / tenancy projections
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<TenantEntitlementProjection> TenantEntitlements => Set<TenantEntitlementProjection>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();

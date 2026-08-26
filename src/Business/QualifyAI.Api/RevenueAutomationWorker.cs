@@ -28,10 +28,10 @@ public sealed class RevenueAutomationWorker(
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var tenants = scope.ServiceProvider.GetRequiredService<ITenantProjectionRepository>();
+                var entitlements = scope.ServiceProvider.GetRequiredService<ITenantEntitlementRepository>();
                 var automation = scope.ServiceProvider.GetRequiredService<SalesAutomationService>();
 
-                var tenantIds = await tenants.ListActiveTenantIdsAsync(stoppingToken);
+                var tenantIds = await entitlements.ListActiveTenantIdsAsync(stoppingToken);
                 foreach (var tenantId in tenantIds)
                 {
                     var result = await automation.RunAsync(tenantId, stoppingToken);

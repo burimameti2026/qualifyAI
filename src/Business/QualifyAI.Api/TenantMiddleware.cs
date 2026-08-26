@@ -8,7 +8,7 @@ public sealed class TenantMiddleware(RequestDelegate next)
     public async Task InvokeAsync(
         HttpContext context,
         ITenantContext tenantContext,
-        ITenantProjectionRepository tenants)
+        ITenantEntitlementRepository entitlements)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -22,19 +22,17 @@ public sealed class TenantMiddleware(RequestDelegate next)
             return;
         }
 
-        // Anonymous widget/public flows may resolve a workspace by slug. The Business
-        // service reads its local tenant projection; Identity remains the authority.
         var slug = context.Request.Headers["X-Tenant"].FirstOrDefault()
             ?? context.Request.Query["tenant"].FirstOrDefault();
 
         if (!string.IsNullOrWhiteSpace(slug))
         {
-            var tenant = await tenants.FindActiveBySlugAsync(
+            var entitlement = await entitlements.FindActiveBySlugAsync(
                 slug.Trim().ToLowerInvariant(),
                 context.RequestAborted);
 
-            if (tenant is not null)
-                tenantContext.Set(new(tenant.Id, tenant.Slug));
+            if (entitlement is not null)
+                tenantContext.Set(new(entitlement.TenantId, entitlement.TenantSlug));
         }
 
         await next(context);

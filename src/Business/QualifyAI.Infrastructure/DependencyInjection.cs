@@ -22,7 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IBusinessUnitOfWork, BusinessUnitOfWork>();
         services.AddScoped<ICrmRepository, CrmRepository>();
         services.AddScoped<ISupportRepository, SupportRepository>();
-        services.AddScoped<ITenantProjectionRepository, TenantProjectionRepository>();
+        services.AddScoped<ITenantEntitlementRepository, TenantEntitlementRepository>();
 
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
