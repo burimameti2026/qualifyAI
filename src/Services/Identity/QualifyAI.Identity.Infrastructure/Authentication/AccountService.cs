@@ -1,34 +1,360 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
+using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Authentication;
 using QualifyAI.Identity.Infrastructure.Identity;
 using QualifyAI.Identity.Infrastructure.Persistence;
 
 namespace QualifyAI.Identity.Infrastructure.Authentication;
 
-public sealed class AccountService(UserManager<ApplicationUser> users,RoleManager<ApplicationRole> roles,IdentityDbContext db):IAccountService
+public sealed class AccountService(
+    UserManager<ApplicationUser> users,
+    RoleManager<ApplicationRole> roles,
+    IdentityDbContext dbContext,
+    IOutboxWriter outbox) : IAccountService
 {
-    public async Task<AccountResult>CreateUserAsync(CreateAccountRequest request,CancellationToken ct=default)
+    public async Task<AccountResult> CreateUserAsync(
+        CreateAccountRequest request,
+        CancellationToken cancellationToken = default)
     {
-        var existing=await users.Users.FirstOrDefaultAsync(x=>x.TenantId==request.TenantId&&x.NormalizedEmail==request.Email.ToUpper(),ct);
-        if(existing is not null)throw new InvalidOperationException("User already exists.");
-        var user=new ApplicationUser{Id=Guid.NewGuid(),TenantId=request.TenantId,TenantSlug=request.TenantSlug,UserName=request.Email.Trim().ToLowerInvariant(),Email=request.Email.Trim().ToLowerInvariant(),FirstName=request.FirstName.Trim(),LastName=request.LastName.Trim(),EmailConfirmed=true,IsActive=true};
-        var created=await users.CreateAsync(user,request.Password);if(!created.Succeeded)throw new InvalidOperationException(string.Join("; ",created.Errors.Select(x=>x.Description)));
-        await SetRolesAsync(request.TenantId,user.Id,request.Roles,ct);return await MapAsync(user,ct);
+        var normalizedEmail = request.Email.Trim().ToUpperInvariant();
+        var existing = await users.Users.FirstOrDefaultAsync(
+            x => x.TenantId == request.TenantId && x.NormalizedEmail == normalizedEmail,
+            cancellationToken);
+
+        if (existing is not null)
+            throw new InvalidOperationException("User already exists in this tenant.");
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            TenantId = request.TenantId,
+            TenantSlug = request.TenantSlug.Trim().ToLowerInvariant(),
+            UserName = request.Email.Trim().ToLowerInvariant(),
+            Email = request.Email.Trim().ToLowerInvariant(),
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
+            EmailConfirmed = true,
+            IsActive = true
+        };
+
+        EnsureSucceeded(await users.CreateAsync(user, request.Password));
+        await SetRolesCoreAsync(user, request.Roles, cancellationToken);
+        await users.UpdateSecurityStampAsync(user);
+
+        await QueueAccessChangedAsync(user, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return await MapAsync(user, cancellationToken);
     }
-    public async Task<AccountResult?>GetUserAsync(Guid tenantId,Guid userId,CancellationToken ct=default){var u=await users.Users.FirstOrDefaultAsync(x=>x.TenantId==tenantId&&x.Id==userId,ct);return u is null?null:await MapAsync(u,ct);}
-    public async Task<IReadOnlyList<AccountResult>>ListUsersAsync(Guid tenantId,CancellationToken ct=default){var list=await users.Users.Where(x=>x.TenantId==tenantId).OrderBy(x=>x.Email).ToListAsync(ct);var result=new List<AccountResult>();foreach(var u in list)result.Add(await MapAsync(u,ct));return result;}
-    public async Task SetRolesAsync(Guid tenantId,Guid userId,IReadOnlyCollection<string> roleNames,CancellationToken ct=default){var user=await GetEntity(tenantId,userId,ct);var current=await users.GetRolesAsync(user);if(current.Count>0)await users.RemoveFromRolesAsync(user,current);foreach(var roleName in roleNames.Distinct(StringComparer.OrdinalIgnoreCase)){var role=await roles.Roles.FirstOrDefaultAsync(x=>x.TenantId==tenantId&&x.NormalizedName==roleName.ToUpper(),ct);if(role is null){role=new ApplicationRole{Id=Guid.NewGuid(),TenantId=tenantId,Name=roleName};var rr=await roles.CreateAsync(role);if(!rr.Succeeded)throw new InvalidOperationException(string.Join("; ",rr.Errors.Select(x=>x.Description)));}await users.AddToRoleAsync(user,roleName);}await users.UpdateSecurityStampAsync(user);}
-    public async Task SetPermissionsAsync(Guid tenantId,Guid userId,IReadOnlyCollection<string> permissions,CancellationToken ct=default){_ = await GetEntity(tenantId,userId,ct);var existing=await db.UserPermissions.Where(x=>x.TenantId==tenantId&&x.UserId==userId).ToListAsync(ct);db.UserPermissions.RemoveRange(existing);db.UserPermissions.AddRange(permissions.Distinct(StringComparer.OrdinalIgnoreCase).Select(p=>new UserPermission{TenantId=tenantId,UserId=userId,Permission=p}));await db.SaveChangesAsync(ct);}
-    public Task DisableAsync(Guid tenantId,Guid userId,CancellationToken ct=default)=>SetActiveAsync(tenantId,userId,false,ct);
-    public Task EnableAsync(Guid tenantId,Guid userId,CancellationToken ct=default)=>SetActiveAsync(tenantId,userId,true,ct);
-    private async Task SetActiveAsync(Guid t,Guid id,bool active,CancellationToken ct){var u=await GetEntity(t,id,ct);u.IsActive=active;await users.UpdateAsync(u);await users.UpdateSecurityStampAsync(u);}
-    public async Task ChangePasswordAsync(Guid t,Guid id,string currentPassword,string newPassword,CancellationToken ct=default){var u=await GetEntity(t,id,ct);var r=await users.ChangePasswordAsync(u,currentPassword,newPassword);if(!r.Succeeded)throw new InvalidOperationException(string.Join("; ",r.Errors.Select(x=>x.Description)));}
-    public async Task<string>GeneratePasswordResetTokenAsync(Guid t,string email,CancellationToken ct=default){var normalized=email.Trim().ToUpperInvariant();var u=await users.Users.FirstOrDefaultAsync(x=>x.TenantId==t&&x.NormalizedEmail==normalized,ct)??throw new KeyNotFoundException("User not found.");return await users.GeneratePasswordResetTokenAsync(u);}
-    public async Task ResetPasswordAsync(Guid t,string email,string token,string newPassword,CancellationToken ct=default){var normalized=email.Trim().ToUpperInvariant();var u=await users.Users.FirstOrDefaultAsync(x=>x.TenantId==t&&x.NormalizedEmail==normalized,ct)??throw new KeyNotFoundException("User not found.");var r=await users.ResetPasswordAsync(u,token,newPassword);if(!r.Succeeded)throw new InvalidOperationException(string.Join("; ",r.Errors.Select(x=>x.Description)));}
-    public async Task<MfaSetupResult>BeginMfaAsync(Guid t,Guid id,CancellationToken ct=default){var u=await GetEntity(t,id,ct);var key=await users.GetAuthenticatorKeyAsync(u);if(string.IsNullOrWhiteSpace(key)){await users.ResetAuthenticatorKeyAsync(u);key=await users.GetAuthenticatorKeyAsync(u);}var uri=$"otpauth://totp/QualifyAI:{Uri.EscapeDataString(u.Email??u.UserName??u.Id.ToString())}?secret={key}&issuer=QualifyAI&digits=6";return new(key??"",uri);}
-    public async Task<bool>ConfirmMfaAsync(Guid t,Guid id,string code,CancellationToken ct=default){var u=await GetEntity(t,id,ct);var valid=await users.VerifyTwoFactorTokenAsync(u,TokenOptions.DefaultAuthenticatorProvider,code.Replace(" ","").Replace("-",""));if(valid)await users.SetTwoFactorEnabledAsync(u,true);return valid;}
-    public async Task DisableMfaAsync(Guid t,Guid id,CancellationToken ct=default){var u=await GetEntity(t,id,ct);await users.SetTwoFactorEnabledAsync(u,false);await users.ResetAuthenticatorKeyAsync(u);}
-    private async Task<ApplicationUser>GetEntity(Guid t,Guid id,CancellationToken ct)=>await users.Users.FirstOrDefaultAsync(x=>x.TenantId==t&&x.Id==id,ct)??throw new KeyNotFoundException("User not found.");
-    private async Task<AccountResult>MapAsync(ApplicationUser u,CancellationToken ct){var roleNames=await users.GetRolesAsync(u);var permissions=await db.UserPermissions.AsNoTracking().Where(x=>x.TenantId==u.TenantId&&x.UserId==u.Id).Select(x=>x.Permission).ToListAsync(ct);return new(u.Id,u.TenantId,u.TenantSlug,u.Email??"",u.FirstName,u.LastName,u.IsActive,u.TwoFactorEnabled,roleNames.ToArray(),permissions);}
+
+    public async Task<AccountResult?> GetUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await users.Users.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Id == userId,
+            cancellationToken);
+
+        return user is null ? null : await MapAsync(user, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AccountResult>> ListUsersAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var tenantUsers = await users.Users
+            .Where(x => x.TenantId == tenantId)
+            .OrderBy(x => x.Email)
+            .ToListAsync(cancellationToken);
+
+        var result = new List<AccountResult>(tenantUsers.Count);
+        foreach (var user in tenantUsers)
+            result.Add(await MapAsync(user, cancellationToken));
+
+        return result;
+    }
+
+    public async Task SetRolesAsync(
+        Guid tenantId,
+        Guid userId,
+        IReadOnlyCollection<string> roleNames,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        await SetRolesCoreAsync(user, roleNames, cancellationToken);
+        await users.UpdateSecurityStampAsync(user);
+
+        await QueueAccessChangedAsync(user, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task SetPermissionsAsync(
+        Guid tenantId,
+        Guid userId,
+        IReadOnlyCollection<string> permissions,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        var existing = await dbContext.UserPermissions
+            .Where(x => x.TenantId == tenantId && x.UserId == userId)
+            .ToListAsync(cancellationToken);
+
+        dbContext.UserPermissions.RemoveRange(existing);
+        dbContext.UserPermissions.AddRange(
+            permissions
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(permission => new UserPermission
+                {
+                    TenantId = tenantId,
+                    UserId = userId,
+                    Permission = permission
+                }));
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await users.UpdateSecurityStampAsync(user);
+        await QueueAccessChangedAsync(user, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public Task DisableAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => SetActiveAsync(tenantId, userId, false, cancellationToken);
+
+    public Task EnableAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => SetActiveAsync(tenantId, userId, true, cancellationToken);
+
+    public async Task ChangePasswordAsync(
+        Guid tenantId,
+        Guid userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        EnsureSucceeded(await users.ChangePasswordAsync(user, currentPassword, newPassword));
+    }
+
+    public async Task<string> GeneratePasswordResetTokenAsync(
+        Guid tenantId,
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await FindByTenantEmailAsync(tenantId, email, cancellationToken)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        return await users.GeneratePasswordResetTokenAsync(user);
+    }
+
+    public async Task ResetPasswordAsync(
+        Guid tenantId,
+        string email,
+        string token,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await FindByTenantEmailAsync(tenantId, email, cancellationToken)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        EnsureSucceeded(await users.ResetPasswordAsync(user, token, newPassword));
+    }
+
+    public async Task<MfaSetupResult> BeginMfaAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        var key = await users.GetAuthenticatorKeyAsync(user);
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            await users.ResetAuthenticatorKeyAsync(user);
+            key = await users.GetAuthenticatorKeyAsync(user);
+        }
+
+        var accountName = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
+        var authenticatorUri = $"otpauth://totp/QualifyAI:{accountName}?secret={key}&issuer=QualifyAI&digits=6";
+
+        return new MfaSetupResult(key ?? string.Empty, authenticatorUri);
+    }
+
+    public async Task<bool> ConfirmMfaAsync(
+        Guid tenantId,
+        Guid userId,
+        string code,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        var normalizedCode = code.Replace(" ", string.Empty).Replace("-", string.Empty);
+
+        var valid = await users.VerifyTwoFactorTokenAsync(
+            user,
+            TokenOptions.DefaultAuthenticatorProvider,
+            normalizedCode);
+
+        if (valid)
+            EnsureSucceeded(await users.SetTwoFactorEnabledAsync(user, true));
+
+        return valid;
+    }
+
+    public async Task DisableMfaAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        EnsureSucceeded(await users.SetTwoFactorEnabledAsync(user, false));
+        await users.ResetAuthenticatorKeyAsync(user);
+    }
+
+    private async Task SetActiveAsync(
+        Guid tenantId,
+        Guid userId,
+        bool isActive,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetEntityAsync(tenantId, userId, cancellationToken);
+        if (user.IsActive == isActive) return;
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        user.IsActive = isActive;
+        EnsureSucceeded(await users.UpdateAsync(user));
+        await users.UpdateSecurityStampAsync(user);
+
+        await QueueAccessChangedAsync(user, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task SetRolesCoreAsync(
+        ApplicationUser user,
+        IReadOnlyCollection<string> roleNames,
+        CancellationToken cancellationToken)
+    {
+        var currentStorageNames = await users.GetRolesAsync(user);
+        if (currentStorageNames.Count > 0)
+            EnsureSucceeded(await users.RemoveFromRolesAsync(user, currentStorageNames));
+
+        var requestedRoles = roleNames
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var displayName in requestedRoles)
+        {
+            var storageName = TenantRoleNameCodec.ToStorageName(user.TenantId, displayName);
+            var normalizedStorageName = storageName.ToUpperInvariant();
+
+            var role = await roles.Roles.FirstOrDefaultAsync(
+                x => x.TenantId == user.TenantId && x.NormalizedName == normalizedStorageName,
+                cancellationToken);
+
+            if (role is null)
+            {
+                role = new ApplicationRole
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = user.TenantId,
+                    Name = storageName,
+                    Description = displayName
+                };
+
+                EnsureSucceeded(await roles.CreateAsync(role));
+            }
+
+            EnsureSucceeded(await users.AddToRoleAsync(user, storageName));
+        }
+    }
+
+    private async Task<ApplicationUser> GetEntityAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken cancellationToken)
+        => await users.Users.FirstOrDefaultAsync(
+               x => x.TenantId == tenantId && x.Id == userId,
+               cancellationToken)
+           ?? throw new KeyNotFoundException("User not found.");
+
+    private Task<ApplicationUser?> FindByTenantEmailAsync(
+        Guid tenantId,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmail = email.Trim().ToUpperInvariant();
+        return users.Users.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.NormalizedEmail == normalizedEmail,
+            cancellationToken);
+    }
+
+    private async Task<AccountResult> MapAsync(
+        ApplicationUser user,
+        CancellationToken cancellationToken)
+    {
+        var storageRoles = await users.GetRolesAsync(user);
+        var roleNames = storageRoles
+            .Select(x => TenantRoleNameCodec.ToDisplayName(user.TenantId, x))
+            .ToArray();
+
+        var permissions = await dbContext.UserPermissions
+            .AsNoTracking()
+            .Where(x => x.TenantId == user.TenantId && x.UserId == user.Id)
+            .Select(x => x.Permission)
+            .ToListAsync(cancellationToken);
+
+        return new AccountResult(
+            user.Id,
+            user.TenantId,
+            user.TenantSlug,
+            user.Email ?? string.Empty,
+            user.FirstName,
+            user.LastName,
+            user.IsActive,
+            user.TwoFactorEnabled,
+            roleNames,
+            permissions);
+    }
+
+    private async Task QueueAccessChangedAsync(
+        ApplicationUser user,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await MapAsync(user, cancellationToken);
+
+        outbox.Add(new UserAccessChangedIntegrationEvent(
+            Guid.NewGuid(),
+            DateTime.UtcNow,
+            user.TenantId,
+            user.Id,
+            user.IsActive,
+            snapshot.Roles,
+            snapshot.Permissions));
+    }
+
+    private static void EnsureSucceeded(IdentityResult result)
+    {
+        if (result.Succeeded) return;
+        throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
+    }
 }
