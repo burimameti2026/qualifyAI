@@ -1,20 +1,31 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using OpenIddict.EntityFrameworkCore.Models;
+using QualifyAI.Identity.Domain.Licensing;
+using QualifyAI.Identity.Domain.Tenants;
 using QualifyAI.Identity.Infrastructure.Identity;
 
 namespace QualifyAI.Identity.Infrastructure.Persistence;
 
 public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> options)
-    : IdentityDbContext<ApplicationUser,ApplicationRole,Guid>(options)
+    : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>(options)
 {
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<License> Licenses => Set<License>();
+    public DbSet<LicenseModule> LicenseModules => Set<LicenseModule>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         builder.UseOpenIddict();
 
+        ConfigureIdentity(builder);
+        ConfigureTenants(builder);
+        ConfigureLicensing(builder);
+    }
+
+    private static void ConfigureIdentity(ModelBuilder builder)
+    {
         builder.Entity<ApplicationUser>(b =>
         {
             b.ToTable("Users");
@@ -23,17 +34,57 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             b.Property(x => x.FirstName).HasMaxLength(100);
             b.Property(x => x.LastName).HasMaxLength(100);
         });
+
         builder.Entity<ApplicationRole>(b =>
         {
             b.ToTable("Roles");
             b.HasIndex(x => new { x.TenantId, x.NormalizedName }).IsUnique();
         });
+
         builder.Entity<UserPermission>(b =>
         {
             b.ToTable("UserPermissions");
             b.HasKey(x => x.Id);
             b.HasIndex(x => new { x.TenantId, x.UserId, x.Permission }).IsUnique();
             b.Property(x => x.Permission).HasMaxLength(200).IsRequired();
+        });
+    }
+
+    private static void ConfigureTenants(ModelBuilder builder)
+    {
+        builder.Entity<Tenant>(b =>
+        {
+            b.ToTable("Tenants");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => x.Slug).IsUnique();
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Slug).HasMaxLength(100).IsRequired();
+            b.Property(x => x.ContactEmail).HasMaxLength(320).IsRequired();
+            b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+        });
+    }
+
+    private static void ConfigureLicensing(ModelBuilder builder)
+    {
+        builder.Entity<License>(b =>
+        {
+            b.ToTable("Licenses");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => x.TenantId).IsUnique();
+            b.Property(x => x.Plan).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+            b.HasMany(x => x.Modules)
+                .WithOne()
+                .HasForeignKey(x => x.LicenseId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<LicenseModule>(b =>
+        {
+            b.ToTable("LicenseModules");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.LicenseId, x.Code }).IsUnique();
+            b.Property(x => x.Code).HasMaxLength(100).IsRequired();
         });
     }
 }
