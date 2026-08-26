@@ -1,36 +1,42 @@
-using Microsoft.EntityFrameworkCore;
 using QualifyAI.Application;
-using QualifyAI.Infrastructure;
+using QualifyAI.Application.Abstractions.Persistence;
 
 namespace QualifyAI.Api;
 
 public sealed class TenantMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext ctx, AppDbContext db, ITenantContext tc)
+    public async Task InvokeAsync(
+        HttpContext context,
+        ITenantContext tenantContext,
+        ITenantProjectionRepository tenants)
     {
-        string? slug = null;
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            var tenantIdValue = context.User.FindFirst("tenant_id")?.Value;
+            var tenantSlug = context.User.FindFirst("tenant_slug")?.Value;
 
-        if (ctx.User.Identity?.IsAuthenticated == true)
-        {
-            // Regression gate: an authenticated caller cannot override tenant context
-            // with X-Tenant/query/body input. Tenant comes only from the signed token.
-            slug = ctx.User.FindFirst("tenant_slug")?.Value;
+            if (Guid.TryParse(tenantIdValue, out var tenantId) && !string.IsNullOrWhiteSpace(tenantSlug))
+                tenantContext.Set(new(tenantId, tenantSlug));
+
+            await next(context);
+            return;
         }
-        else
-        {
-            // Anonymous public/widget flows may resolve tenant by explicit workspace.
-            slug = ctx.Request.Headers["X-Tenant"].FirstOrDefault()
-                ?? ctx.Request.Query["tenant"].FirstOrDefault();
-        }
+
+        // Anonymous widget/public flows may resolve a workspace by slug. The Business
+        // service reads its local tenant projection; Identity remains the authority.
+        var slug = context.Request.Headers["X-Tenant"].FirstOrDefault()
+            ?? context.Request.Query["tenant"].FirstOrDefault();
 
         if (!string.IsNullOrWhiteSpace(slug))
         {
-            var tenant = await db.Tenants.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Slug == slug && x.IsActive, ctx.RequestAborted);
+            var tenant = await tenants.FindActiveBySlugAsync(
+                slug.Trim().ToLowerInvariant(),
+                context.RequestAborted);
+
             if (tenant is not null)
-                tc.Set(new(tenant.Id, tenant.Slug));
+                tenantContext.Set(new(tenant.Id, tenant.Slug));
         }
 
-        await next(ctx);
+        await next(context);
     }
 }
