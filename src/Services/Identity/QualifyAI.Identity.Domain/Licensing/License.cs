@@ -4,7 +4,7 @@ namespace QualifyAI.Identity.Domain.Licensing;
 
 public sealed class License : AggregateRoot
 {
-    private readonly List<string> _modules = [];
+    private readonly List<LicenseModule> _modules = [];
 
     private License() { }
 
@@ -26,7 +26,7 @@ public sealed class License : AggregateRoot
     public DateTime? ExpiresAtUtc { get; private set; }
     public int MaxUsers { get; private set; }
     public long Version { get; private set; }
-    public IReadOnlyCollection<string> Modules => _modules.AsReadOnly();
+    public IReadOnlyCollection<LicenseModule> Modules => _modules.AsReadOnly();
 
     public static License Create(Guid tenantId, string plan, DateTime startsAtUtc, DateTime? expiresAtUtc, int maxUsers, IEnumerable<string> modules)
     {
@@ -46,8 +46,16 @@ public sealed class License : AggregateRoot
 
     public void ReplaceModules(IEnumerable<string> modules)
     {
-        _modules.Clear();
-        _modules.AddRange(modules.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
+        var normalized = modules
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        _modules.RemoveAll(x => !normalized.Contains(x.Code, StringComparer.OrdinalIgnoreCase));
+        foreach (var module in normalized.Where(x => _modules.All(m => !string.Equals(m.Code, x, StringComparison.OrdinalIgnoreCase))))
+            _modules.Add(LicenseModule.Create(Id, module));
+
         Version++;
     }
 
