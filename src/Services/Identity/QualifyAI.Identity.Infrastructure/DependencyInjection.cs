@@ -78,6 +78,7 @@ public static class DependencyInjection
         services.AddScoped<IAccountService, AccountService>();
 
         services.AddHostedService<IdentityBootstrapHostedService>();
+        services.AddHostedService<IdentityOutboxPublisherHostedService>();
         return services;
     }
 }
