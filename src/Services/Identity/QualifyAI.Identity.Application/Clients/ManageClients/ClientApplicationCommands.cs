@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using MediatR;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Domain.Clients;
 
 namespace QualifyAI.Identity.Application.Clients.ManageClients;
 
@@ -31,7 +32,7 @@ public sealed class ListClientApplicationsQueryHandler(IClientApplicationReposit
         return items.Select(Map).ToArray();
     }
 
-    internal static ClientApplicationResult Map(Domain.Clients.ClientApplication client)
+    internal static ClientApplicationResult Map(ClientApplication client)
         => new(
             client.Id,
             client.TenantId,
