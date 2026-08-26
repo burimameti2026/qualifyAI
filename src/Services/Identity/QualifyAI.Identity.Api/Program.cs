@@ -1,6 +1,5 @@
 using QualifyAI.BuildingBlocks.Messaging.MassTransit;
 using QualifyAI.Identity.Api.Endpoints.Authentication;
-using QualifyAI.Identity.Api.Endpoints.Users;
 using QualifyAI.Identity.Application;
 using QualifyAI.Identity.Infrastructure;
 
@@ -25,10 +24,9 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Legacy endpoints are kept temporarily while Authentication and Users are migrated
-// to the same Controller -> CQRS -> Repository pipeline.
+// Authentication/recovery are the final legacy minimal endpoints and will be
+// migrated separately to avoid changing the OAuth/OpenIddict contract mid-pass.
 app.MapTokenEndpoint();
 app.MapRecoveryEndpoints();
-app.MapUserAdmin();
 
 app.Run();
