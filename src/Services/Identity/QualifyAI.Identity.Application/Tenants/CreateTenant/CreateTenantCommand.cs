@@ -1,5 +1,7 @@
 using FluentValidation;
 using MediatR;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
+using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Domain.Tenants;
 
@@ -32,6 +34,7 @@ public sealed class CreateTenantCommandValidator : AbstractValidator<CreateTenan
 
 public sealed class CreateTenantCommandHandler(
     ITenantRepository tenants,
+    IOutboxWriter outbox,
     IIdentityUnitOfWork unitOfWork)
     : IRequestHandler<CreateTenantCommand, CreateTenantResult>
 {
@@ -46,6 +49,15 @@ public sealed class CreateTenantCommandHandler(
 
         var tenant = Tenant.Create(request.Name, slug, request.ContactEmail);
         await tenants.AddAsync(tenant, cancellationToken);
+
+        outbox.Add(new TenantCreatedIntegrationEvent(
+            Guid.NewGuid(),
+            DateTime.UtcNow,
+            tenant.Id,
+            tenant.Slug,
+            tenant.Name,
+            tenant.ContactEmail));
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new CreateTenantResult(
