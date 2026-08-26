@@ -22,8 +22,8 @@ public sealed class IdentityOutboxPublisherHostedService(
         {
             try
             {
-                var published = await PublishBatchAsync(stoppingToken);
-                if (published == 0)
+                var attempted = await PublishBatchAsync(stoppingToken);
+                if (attempted == 0)
                     await Task.Delay(IdleDelay, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -43,9 +43,12 @@ public sealed class IdentityOutboxPublisherHostedService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
+        var utcNow = DateTime.UtcNow;
 
         var messages = await dbContext.OutboxMessages
-            .Where(x => x.ProcessedAtUtc == null)
+            .Where(x =>
+                x.ProcessedAtUtc == null &&
+                (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= utcNow))
             .OrderBy(x => x.OccurredAtUtc)
             .Take(BatchSize)
             .ToListAsync(cancellationToken);
@@ -62,20 +65,26 @@ public sealed class IdentityOutboxPublisherHostedService(
                     ?? throw new InvalidOperationException($"Unable to deserialize outbox message '{message.Id}'.");
 
                 await publisher.Publish(integrationEvent, eventType, cancellationToken);
+
                 message.ProcessedAtUtc = DateTime.UtcNow;
+                message.NextAttemptAtUtc = null;
                 message.Error = null;
             }
             catch (Exception exception)
             {
+                message.RetryCount++;
+                message.NextAttemptAtUtc = DateTime.UtcNow.Add(GetRetryDelay(message.RetryCount));
                 message.Error = exception.Message.Length > 4000
                     ? exception.Message[..4000]
                     : exception.Message;
 
                 logger.LogError(
                     exception,
-                    "Failed publishing identity outbox message {OutboxMessageId} of type {MessageType}.",
+                    "Failed publishing identity outbox message {OutboxMessageId} of type {MessageType}. Retry {RetryCount} at {NextAttemptAtUtc}.",
                     message.Id,
-                    message.Type);
+                    message.Type,
+                    message.RetryCount,
+                    message.NextAttemptAtUtc);
             }
         }
 
@@ -83,5 +92,11 @@ public sealed class IdentityOutboxPublisherHostedService(
             await dbContext.SaveChangesAsync(cancellationToken);
 
         return messages.Count;
+    }
+
+    private static TimeSpan GetRetryDelay(int retryCount)
+    {
+        var seconds = Math.Min(300, Math.Pow(2, Math.Min(retryCount, 8)));
+        return TimeSpan.FromSeconds(seconds);
     }
 }
