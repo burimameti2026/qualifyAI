@@ -200,13 +200,22 @@ public static class TokenEndpoint
         identity.SetClaim(Claims.ClientId, access.ClientId);
         identity.SetClaim(Claims.Name, access.DisplayName);
 
-        if (access.TenantId.HasValue)
+        if (access.TenantId is Guid tenantId)
         {
-            identity.SetClaim(QualifyAiClaimTypes.TenantId, access.TenantId.Value.ToString());
-            identity.SetClaim(QualifyAiClaimTypes.TenantSlug, access.TenantSlug);
-            identity.SetClaim(QualifyAiClaimTypes.LicensePlan, access.LicensePlan);
-            identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, access.LicenseStatus);
-            identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, access.LicenseVersion?.ToString());
+            var tenantSlug = access.TenantSlug
+                ?? throw new InvalidOperationException("Tenant-bound client is missing tenant slug.");
+            var licensePlan = access.LicensePlan
+                ?? throw new InvalidOperationException("Tenant-bound client is missing license plan.");
+            var licenseStatus = access.LicenseStatus
+                ?? throw new InvalidOperationException("Tenant-bound client is missing license status.");
+            var licenseVersion = access.LicenseVersion
+                ?? throw new InvalidOperationException("Tenant-bound client is missing license version.");
+
+            identity.SetClaim(QualifyAiClaimTypes.TenantId, tenantId.ToString());
+            identity.SetClaim(QualifyAiClaimTypes.TenantSlug, tenantSlug);
+            identity.SetClaim(QualifyAiClaimTypes.LicensePlan, licensePlan);
+            identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, licenseStatus);
+            identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, licenseVersion.ToString());
 
             foreach (var module in access.Modules)
                 identity.AddClaim(new Claim(QualifyAiClaimTypes.Module, module));
