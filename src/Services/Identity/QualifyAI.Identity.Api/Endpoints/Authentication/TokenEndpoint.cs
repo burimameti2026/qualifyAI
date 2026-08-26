@@ -7,9 +7,10 @@ using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using QualifyAI.BuildingBlocks.Security.Claims;
+using QualifyAI.Identity.Application.Authentication;
+using QualifyAI.Identity.Application.Authentication.ResolveClientAccess;
 using QualifyAI.Identity.Application.Authentication.ResolveTenantAccess;
 using QualifyAI.Identity.Infrastructure.Identity;
-using QualifyAI.Identity.Infrastructure.Persistence;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace QualifyAI.Identity.Api.Endpoints.Authentication;
@@ -25,7 +26,7 @@ public static class TokenEndpoint
     private static async Task<IResult> HandleAsync(
         HttpContext httpContext,
         UserManager<ApplicationUser> userManager,
-        IdentityDbContext dbContext,
+        IUserPermissionReader permissionReader,
         ISender sender,
         CancellationToken cancellationToken)
     {
@@ -37,7 +38,7 @@ public static class TokenEndpoint
             return await HandlePasswordGrantAsync(
                 request,
                 userManager,
-                dbContext,
+                permissionReader,
                 sender,
                 cancellationToken);
         }
@@ -48,7 +49,15 @@ public static class TokenEndpoint
                 httpContext,
                 request,
                 userManager,
-                dbContext,
+                permissionReader,
+                sender,
+                cancellationToken);
+        }
+
+        if (request.IsClientCredentialsGrantType())
+        {
+            return await HandleClientCredentialsGrantAsync(
+                request,
                 sender,
                 cancellationToken);
         }
@@ -59,7 +68,7 @@ public static class TokenEndpoint
     private static async Task<IResult> HandlePasswordGrantAsync(
         OpenIddictRequest request,
         UserManager<ApplicationUser> userManager,
-        IdentityDbContext dbContext,
+        IUserPermissionReader permissionReader,
         ISender sender,
         CancellationToken cancellationToken)
     {
@@ -94,13 +103,14 @@ public static class TokenEndpoint
         await userManager.ResetAccessFailedCountAsync(user);
 
         var mfaResult = await ValidateMfaAsync(request, user, userManager);
-        if (mfaResult is not null) return mfaResult;
+        if (mfaResult is not null)
+            return mfaResult;
 
-        var principal = await CreatePrincipalAsync(
+        var principal = await CreateUserPrincipalAsync(
             user,
             access,
             userManager,
-            dbContext,
+            permissionReader,
             cancellationToken);
 
         principal.SetScopes(request.GetScopes().Union(["qualifyai-api", "offline_access"]));
@@ -115,7 +125,7 @@ public static class TokenEndpoint
         HttpContext httpContext,
         OpenIddictRequest request,
         UserManager<ApplicationUser> userManager,
-        IdentityDbContext dbContext,
+        IUserPermissionReader permissionReader,
         ISender sender,
         CancellationToken cancellationToken)
     {
@@ -123,7 +133,8 @@ public static class TokenEndpoint
             OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
 
         var subject = authentication.Principal?.GetClaim(Claims.Subject);
-        if (!Guid.TryParse(subject, out var userId)) return Results.Unauthorized();
+        if (!Guid.TryParse(subject, out var userId))
+            return Results.Unauthorized();
 
         var user = await userManager.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
         if (user is null || !user.IsActive || await userManager.IsLockedOutAsync(user))
@@ -136,14 +147,75 @@ public static class TokenEndpoint
         if (access is null || !access.TenantActive || !access.LicenseUsable)
             return Results.Unauthorized();
 
-        var principal = await CreatePrincipalAsync(
+        var principal = await CreateUserPrincipalAsync(
             user,
             access,
             userManager,
-            dbContext,
+            permissionReader,
             cancellationToken);
 
         principal.SetScopes(request.GetScopes());
+        principal.SetResources("qualifyai-api");
+
+        return Results.SignIn(
+            principal,
+            authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+    }
+
+    private static async Task<IResult> HandleClientCredentialsGrantAsync(
+        OpenIddictRequest request,
+        ISender sender,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return Results.BadRequest(new { error = "invalid_client" });
+
+        var access = await sender.Send(
+            new ResolveClientAccessQuery(request.ClientId),
+            cancellationToken);
+
+        if (access is null)
+            return Results.Unauthorized();
+
+        if (!access.TenantActive)
+            return Results.Json(new { error = "tenant_inactive" }, statusCode: StatusCodes.Status403Forbidden);
+
+        if (!access.LicenseUsable)
+            return Results.Json(new { error = "license_inactive" }, statusCode: StatusCodes.Status403Forbidden);
+
+        var requestedScopes = request.GetScopes().ToArray();
+        var unauthorizedScopes = requestedScopes
+            .Where(scope => !access.AllowedScopes.Contains(scope, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (unauthorizedScopes.Length > 0)
+            return Results.BadRequest(new { error = "invalid_scope", scopes = unauthorizedScopes });
+
+        var identity = new ClaimsIdentity(
+            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+            Claims.Name,
+            Claims.Role);
+
+        identity.SetClaim(Claims.Subject, access.ClientId);
+        identity.SetClaim(Claims.ClientId, access.ClientId);
+        identity.SetClaim(Claims.Name, access.DisplayName);
+
+        if (access.TenantId.HasValue)
+        {
+            identity.SetClaim(QualifyAiClaimTypes.TenantId, access.TenantId.Value.ToString());
+            identity.SetClaim(QualifyAiClaimTypes.TenantSlug, access.TenantSlug);
+            identity.SetClaim(QualifyAiClaimTypes.LicensePlan, access.LicensePlan);
+            identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, access.LicenseStatus);
+            identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, access.LicenseVersion?.ToString());
+
+            foreach (var module in access.Modules)
+                identity.AddClaim(new Claim(QualifyAiClaimTypes.Module, module));
+        }
+
+        identity.SetDestinations(_ => [Destinations.AccessToken]);
+
+        var principal = new ClaimsPrincipal(identity);
+        principal.SetScopes(requestedScopes.Length > 0 ? requestedScopes : access.AllowedScopes);
         principal.SetResources("qualifyai-api");
 
         return Results.SignIn(
@@ -156,7 +228,8 @@ public static class TokenEndpoint
         ApplicationUser user,
         UserManager<ApplicationUser> userManager)
     {
-        if (!user.TwoFactorEnabled) return null;
+        if (!user.TwoFactorEnabled)
+            return null;
 
         var code = request.GetParameter("mfa_code")?.ToString();
         if (string.IsNullOrWhiteSpace(code))
@@ -172,11 +245,11 @@ public static class TokenEndpoint
             : Results.Json(new { error = "invalid_mfa_code" }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    private static async Task<ClaimsPrincipal> CreatePrincipalAsync(
+    private static async Task<ClaimsPrincipal> CreateUserPrincipalAsync(
         ApplicationUser user,
         TenantAccessSnapshot access,
         UserManager<ApplicationUser> userManager,
-        IdentityDbContext dbContext,
+        IUserPermissionReader permissionReader,
         CancellationToken cancellationToken)
     {
         var identity = new ClaimsIdentity(
@@ -200,11 +273,10 @@ public static class TokenEndpoint
             identity.AddClaim(new Claim(Claims.Role, displayRole));
         }
 
-        var permissions = await dbContext.UserPermissions
-            .AsNoTracking()
-            .Where(x => x.TenantId == user.TenantId && x.UserId == user.Id)
-            .Select(x => x.Permission)
-            .ToListAsync(cancellationToken);
+        var permissions = await permissionReader.ListAsync(
+            user.TenantId,
+            user.Id,
+            cancellationToken);
 
         foreach (var permission in permissions)
             identity.AddClaim(new Claim(QualifyAiClaimTypes.Permission, permission));
