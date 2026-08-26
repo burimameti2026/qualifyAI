@@ -10,7 +10,6 @@ using QualifyAI.Identity.Infrastructure.Identity;
 using QualifyAI.Identity.Infrastructure.Messaging;
 using QualifyAI.Identity.Infrastructure.Persistence;
 using QualifyAI.Identity.Infrastructure.Persistence.Repositories;
-using QualifyAI.Identity.Infrastructure.Tenants;
 
 namespace QualifyAI.Identity.Infrastructure;
 
@@ -75,12 +74,6 @@ public static class DependencyInjection
         services.AddScoped<IIdentityUnitOfWork, IdentityUnitOfWork>();
         services.AddScoped<IOutboxWriter, IdentityOutboxWriter>();
         services.AddScoped<IAccountService, AccountService>();
-
-        services.AddHttpClient<ITenantDirectoryClient, TenantDirectoryClient>(client =>
-        {
-            client.BaseAddress = new Uri(
-                configuration["Services:TenantManagement"] ?? "http://business-api:8080/internal");
-        });
 
         services.AddHostedService<IdentityBootstrapHostedService>();
         return services;
