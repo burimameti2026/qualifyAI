@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../../BuildingBlocks/QualifyAI.BuildingBlocks.Domain/QualifyAI.BuildingBlocks.Domain.csproj" />
+
+  </ItemGroup>
+</Project>

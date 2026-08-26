@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../QualifyAI.Domain.Core/QualifyAI.Domain.Core.csproj" />
+    <ProjectReference Include="../QualifyAI.Application/QualifyAI.Application.csproj" />
+    <ProjectReference Include="../QualifyAI.Application.Commands/QualifyAI.Application.Commands.csproj" />
+    <ProjectReference Include="../QualifyAI.Application.Queries/QualifyAI.Application.Queries.csproj" />
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+  </ItemGroup>
+</Project>

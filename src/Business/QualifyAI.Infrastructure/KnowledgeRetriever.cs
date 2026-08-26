@@ -1,0 +1,3 @@
+using Microsoft.EntityFrameworkCore; using QualifyAI.Application;
+namespace QualifyAI.Infrastructure;
+public sealed class SqlKnowledgeRetriever(AppDbContext db):IKnowledgeRetriever { public async Task<IReadOnlyList<KnowledgeHit>> SearchAsync(Guid tenantId,string query,int take=5,CancellationToken ct=default){ var terms=(query??"").Split(' ',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).Take(8).ToArray(); var docs=await db.KnowledgeDocuments.Where(x=>x.TenantId==tenantId&&x.Published).Take(100).ToListAsync(ct); return docs.Select(d=>new KnowledgeHit(d.Id,d.Title,d.Body,terms.Length==0?0:terms.Count(t=>d.Body.Contains(t,StringComparison.OrdinalIgnoreCase))/(double)terms.Length)).OrderByDescending(x=>x.Score).Take(take).ToList(); } }

@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG PROJECT
+ARG DLL
+WORKDIR /src
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    NUGET_XMLDOC_MODE=skip
+
+COPY NuGet.Config ./NuGet.Config
+COPY Directory.Packages.props ./Directory.Packages.props
+COPY . .
+
+# Docker Desktop/WSL can intermittently terminate parallel NuGet TLS requests.
+# Restore one project at a time, with NuGet parallelism disabled and bounded retries.
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    sh -c 'set -e; for attempt in 1 2 3; do \
+      dotnet restore "$PROJECT" --configfile /src/NuGet.Config --disable-parallel && exit 0; \
+      echo "NuGet restore attempt ${attempt} failed; retrying..."; \
+      sleep $((attempt * 10)); \
+    done; exit 1'
+
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    dotnet publish "$PROJECT" -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+ARG DLL
+ENV APP_DLL=$DLL \
+    ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_NOLOGO=1
+EXPOSE 8080
+COPY --from=build /app/publish .
+ENTRYPOINT ["sh", "-c", "dotnet $APP_DLL"]

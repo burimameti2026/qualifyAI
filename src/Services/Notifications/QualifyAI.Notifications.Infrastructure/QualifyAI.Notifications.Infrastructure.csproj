@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../QualifyAI.Notifications.Domain/QualifyAI.Notifications.Domain.csproj" />
+<ProjectReference Include="../QualifyAI.Notifications.Application/QualifyAI.Notifications.Application.csproj" />
+<ProjectReference Include="../../../BuildingBlocks/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" /><PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" /><PackageReference Include="MassTransit" /><PackageReference Include="MassTransit.RabbitMQ" />
+  </ItemGroup>
+</Project>

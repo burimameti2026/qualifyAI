@@ -1,0 +1,4 @@
+using QualifyAI.Application;
+namespace QualifyAI.Infrastructure;
+public sealed class GenericWebhookIntegration: IIntegrationProvider { readonly HttpClient _http; public GenericWebhookIntegration(HttpClient http)=>_http=http; public string Provider=>"webhook"; public async Task<bool> TestAsync(string settingsJson,CancellationToken ct=default){ await Task.CompletedTask; return !string.IsNullOrWhiteSpace(settingsJson); } public async Task<string> PushAsync(string entityType,string payloadJson,CancellationToken ct=default){ await Task.CompletedTask; return $"queued:{entityType}"; } }
+public sealed class IntegrationRegistry(IEnumerable<IIntegrationProvider> providers):IIntegrationRegistry { readonly Dictionary<string,IIntegrationProvider> _p=providers.ToDictionary(x=>x.Provider,StringComparer.OrdinalIgnoreCase); public IEnumerable<string> Providers=>_p.Keys; public IIntegrationProvider? Resolve(string provider)=>_p.GetValueOrDefault(provider); }
