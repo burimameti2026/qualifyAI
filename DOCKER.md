@@ -35,6 +35,7 @@ You can also run `./start-all.ps1` from PowerShell.
 
 | Component | URL |
 |---|---|
+| API Gateway | http://localhost:10000 |
 | Business API | http://localhost:8080/swagger |
 | Identity API | http://localhost:8081/swagger |
 | Automation API | http://localhost:8082/swagger |
@@ -45,6 +46,7 @@ You can also run `./start-all.ps1` from PowerShell.
 | Consul | http://localhost:8500 |
 | RabbitMQ management | http://localhost:15672 |
 | Seq | http://localhost:5341 |
+| Portainer | https://localhost:9443 |
 
 Run the Angular UI from `qualifyai-admin` on `http://localhost:4200`.
 

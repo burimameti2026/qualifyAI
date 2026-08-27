@@ -30,6 +30,9 @@ services:
       SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_ADMIN_PASSWORD}
     ports: ["5341:80", "5342:5341"]
 
+  portainer:
+    ports: ["9000:9000", "9443:9443"]
+
   business-api:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
@@ -176,3 +179,6 @@ services:
       RabbitMq__Username: ${RABBITMQ_USER}
       RabbitMq__Password: ${RABBITMQ_PASSWORD}
     ports: ["8086:8080"]
+
+  api-gateway:
+    ports: ["10000:8080"]

@@ -1,6 +1,7 @@
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.BuildingBlocks.Messaging.MassTransit;
+using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Notifications.Api.Endpoints.Notifications;
 using QualifyAI.Notifications.Application;
 using QualifyAI.Notifications.Infrastructure;
@@ -14,13 +15,17 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddNotificationsApplication();
 builder.Services.AddNotificationsInfrastructure(builder.Configuration);
 builder.Services.AddQualifyAiMessaging(builder.Configuration, x => x.AddConsumer<IdentityEntitlementConsumer>());
+builder.Services.AddQualifyAiResourceServer(builder.Configuration);
 
 var app = builder.Build();
 app.MapDefaultEndpoints();
 app.UseSwagger();
 app.UseSwaggerUI();
-app.MapCreateNotification();
-app.MapGetNotification();
+app.UseAuthentication();
+app.UseAuthorization();
+var secured = app.MapGroup("").RequireAuthorization();
+secured.MapCreateNotification();
+secured.MapGetNotification();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();

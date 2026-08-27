@@ -50,6 +50,17 @@ public static class Extensions
                 .AddHttpClientInstrumentation());
 
         builder.Services.AddHealthChecks();
+
+        var redisConnection = builder.Configuration["Redis:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(redisConnection))
+        {
+            builder.Services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = redisConnection;
+                options.InstanceName = $"{serviceName}:";
+            });
+        }
+
         builder.Services.AddHostedService<ConsulRegistrationHostedService>();
 
         return builder;

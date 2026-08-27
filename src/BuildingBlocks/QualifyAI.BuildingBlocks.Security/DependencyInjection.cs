@@ -12,6 +12,8 @@ public static class DependencyInjection
     public static IServiceCollection AddQualifyAiResourceServer(this IServiceCollection services, IConfiguration configuration)
     {
         var authority = configuration["Identity:Authority"] ?? "http://identity-api:8080";
+        var audience = configuration["Identity:Audience"] ?? "qualifyai-api";
+        var requireHttps = configuration.GetValue("Identity:RequireHttps", false);
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentTenant, CurrentTenant>();
@@ -23,8 +25,8 @@ public static class DependencyInjection
             {
                 options.Authority = authority;
                 options.MapInboundClaims = false;
-                options.RequireHttpsMetadata = false;
-                options.Audience = "qualifyai-api";
+                options.RequireHttpsMetadata = requireHttps;
+                options.Audience = audience;
             });
 
         services.AddAuthorization();

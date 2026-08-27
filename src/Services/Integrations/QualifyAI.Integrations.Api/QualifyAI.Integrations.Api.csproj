@@ -5,5 +5,6 @@
 <ProjectReference Include="../../../QualifyAI.ServiceDefaults/QualifyAI.ServiceDefaults.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" /><PackageReference Include="Swashbuckle.AspNetCore" />
       <ProjectReference Include="../../../BuildingBlocks/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+      <ProjectReference Include="../../../BuildingBlocks/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
   </ItemGroup>
 </Project>
