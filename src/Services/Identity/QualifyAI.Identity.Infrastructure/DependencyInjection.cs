@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Application.AccessControl;
 using QualifyAI.Identity.Application.Authentication;
 using QualifyAI.Identity.Application.Clients;
 using QualifyAI.Identity.Infrastructure.Authentication;
@@ -76,12 +77,14 @@ public static class DependencyInjection
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<ILicenseRepository, LicenseRepository>();
         services.AddScoped<IClientApplicationRepository, ClientApplicationRepository>();
+        services.AddScoped<IAccessControlRepository, AccessControlRepository>();
         services.AddScoped<IIdentityUnitOfWork, IdentityUnitOfWork>();
         services.AddScoped<IOutboxWriter, IdentityOutboxWriter>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IUserPermissionReader, UserPermissionReader>();
         services.AddScoped<IClientCredentialStore, OpenIddictClientCredentialStore>();
 
+        services.AddHostedService<PermissionCatalogBootstrapHostedService>();
         services.AddHostedService<IdentityBootstrapHostedService>();
         services.AddHostedService<IdentityOutboxPublisherHostedService>();
         return services;

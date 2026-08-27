@@ -1,5 +1,6 @@
 using MediatR;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Application.AccessControl;
 using QualifyAI.Identity.Domain.Clients;
 using QualifyAI.Identity.Domain.Tenants;
 
@@ -10,6 +11,7 @@ public sealed record ResolveClientAccessQuery(string ClientId) : IRequest<Client
 public sealed record ClientAccessSnapshot(
     string ClientId,
     string DisplayName,
+    Guid ClientApplicationId,
     Guid? TenantId,
     string? TenantSlug,
     bool TenantActive,
@@ -18,12 +20,14 @@ public sealed record ClientAccessSnapshot(
     string? LicenseStatus,
     long? LicenseVersion,
     IReadOnlyCollection<string> Modules,
-    IReadOnlyCollection<string> AllowedScopes);
+    IReadOnlyCollection<string> AllowedScopes,
+    IReadOnlyCollection<string> Permissions);
 
 public sealed class ResolveClientAccessQueryHandler(
     IClientApplicationRepository clients,
     ITenantRepository tenants,
-    ILicenseRepository licenses)
+    ILicenseRepository licenses,
+    IAccessControlRepository accessControl)
     : IRequestHandler<ResolveClientAccessQuery, ClientAccessSnapshot?>
 {
     public async Task<ClientAccessSnapshot?> Handle(
@@ -35,13 +39,14 @@ public sealed class ResolveClientAccessQueryHandler(
             return null;
 
         var allowedScopes = client.Scopes.Select(x => x.Name).ToArray();
+        var permissions = await accessControl.GetClientPermissionsAsync(client.Id, cancellationToken);
 
-        // Platform/service clients may intentionally be tenant-neutral.
         if (!client.TenantId.HasValue)
         {
             return new ClientAccessSnapshot(
                 client.ClientId,
                 client.DisplayName,
+                client.Id,
                 null,
                 null,
                 true,
@@ -50,7 +55,8 @@ public sealed class ResolveClientAccessQueryHandler(
                 null,
                 null,
                 [],
-                allowedScopes);
+                allowedScopes,
+                permissions);
         }
 
         var tenant = await tenants.GetByIdAsync(client.TenantId.Value, cancellationToken);
@@ -63,6 +69,7 @@ public sealed class ResolveClientAccessQueryHandler(
         return new ClientAccessSnapshot(
             client.ClientId,
             client.DisplayName,
+            client.Id,
             tenant.Id,
             tenant.Slug,
             tenant.Status == TenantStatus.Active,
@@ -71,6 +78,7 @@ public sealed class ResolveClientAccessQueryHandler(
             license?.Status.ToString(),
             license?.Version,
             license?.Modules.Select(x => x.Code).ToArray() ?? [],
-            allowedScopes);
+            allowedScopes,
+            permissions);
     }
 }

@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
+using QualifyAI.Identity.Domain.AccessControl;
 using QualifyAI.Identity.Domain.Clients;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Domain.Tenants;
@@ -17,6 +19,11 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<LicenseModule> LicenseModules => Set<LicenseModule>();
     public DbSet<ClientApplication> ClientApplications => Set<ClientApplication>();
     public DbSet<ClientScope> ClientScopes => Set<ClientScope>();
+    public DbSet<AccessRole> AccessRoles => Set<AccessRole>();
+    public DbSet<PermissionDefinition> PermissionDefinitions => Set<PermissionDefinition>();
+    public DbSet<RolePermissionGrant> RolePermissionGrants => Set<RolePermissionGrant>();
+    public DbSet<ClientPermissionGrant> ClientPermissionGrants => Set<ClientPermissionGrant>();
+    public DbSet<SecurityAuditEntry> SecurityAuditEntries => Set<SecurityAuditEntry>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -25,6 +32,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
         builder.UseOpenIddict();
 
         ConfigureIdentity(builder);
+        ConfigureAccessControl(builder);
         ConfigureTenants(builder);
         ConfigureLicensing(builder);
         ConfigureClients(builder);
@@ -57,6 +65,59 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
         });
     }
 
+    private static void ConfigureAccessControl(ModelBuilder builder)
+    {
+        builder.Entity<AccessRole>(b =>
+        {
+            b.ToTable("AccessRoles");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.TenantId, x.NormalizedName }).IsUnique();
+            b.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            b.Property(x => x.NormalizedName).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(500);
+            b.Property(x => x.Scope).HasConversion<string>().HasMaxLength(32);
+        });
+
+        builder.Entity<PermissionDefinition>(b =>
+        {
+            b.ToTable("PermissionDefinitions");
+            b.HasKey(x => x.Code);
+            b.Property(x => x.Code).HasMaxLength(200);
+            b.Property(x => x.Module).HasMaxLength(100).IsRequired();
+            b.Property(x => x.DisplayName).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(500);
+        });
+
+        builder.Entity<RolePermissionGrant>(b =>
+        {
+            b.ToTable("RolePermissionGrants");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.RoleId, x.Permission }).IsUnique();
+            b.Property(x => x.Permission).HasMaxLength(200).IsRequired();
+            b.HasOne<AccessRole>().WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ClientPermissionGrant>(b =>
+        {
+            b.ToTable("ClientPermissionGrants");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.ClientApplicationId, x.Permission }).IsUnique();
+            b.Property(x => x.Permission).HasMaxLength(200).IsRequired();
+            b.HasOne<ClientApplication>().WithMany().HasForeignKey(x => x.ClientApplicationId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<SecurityAuditEntry>(b =>
+        {
+            b.ToTable("SecurityAuditEntries");
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
+            b.Property(x => x.Action).HasMaxLength(150).IsRequired();
+            b.Property(x => x.TargetType).HasMaxLength(100).IsRequired();
+            b.Property(x => x.TargetId).HasMaxLength(200).IsRequired();
+            b.Property(x => x.DetailsJson).IsRequired();
+        });
+    }
+
     private static void ConfigureTenants(ModelBuilder builder)
     {
         builder.Entity<Tenant>(b =>
@@ -80,10 +141,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             b.HasIndex(x => x.TenantId).IsUnique();
             b.Property(x => x.Plan).HasMaxLength(100).IsRequired();
             b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
-            b.HasMany(x => x.Modules)
-                .WithOne()
-                .HasForeignKey(x => x.LicenseId)
-                .OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.Modules).WithOne().HasForeignKey(x => x.LicenseId).OnDelete(DeleteBehavior.Cascade);
             b.Navigation(x => x.Modules).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
@@ -107,10 +165,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             b.Property(x => x.ClientId).HasMaxLength(100).IsRequired();
             b.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
             b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
-            b.HasMany(x => x.Scopes)
-                .WithOne()
-                .HasForeignKey(x => x.ClientApplicationId)
-                .OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.Scopes).WithOne().HasForeignKey(x => x.ClientApplicationId).OnDelete(DeleteBehavior.Cascade);
             b.Navigation(x => x.Scopes).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
