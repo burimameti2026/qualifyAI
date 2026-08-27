@@ -114,5 +114,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         builder.ConfigureCrmModel();
         builder.ConfigureConversationSupportModel();
         builder.ConfigureKnowledgeAiModel();
+
+        builder.Entity<TenantEntitlementProjection>(entity =>
+        {
+            entity.ToTable("TenantEntitlements");
+            entity.HasKey(x => x.TenantId);
+            entity.HasIndex(x => x.TenantSlug);
+            entity.Property(x => x.TenantSlug).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.TenantStatus).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.LicensePlan).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.LicenseStatus).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.ModulesJson).IsRequired();
+            entity.Property(x => x.LimitsJson).IsRequired();
+        });
     }
 }
