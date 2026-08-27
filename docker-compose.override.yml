@@ -41,7 +41,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=QualifyAI_Business;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER};Database=QualifyAI_Business;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
@@ -63,7 +63,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=QualifyAI_IdentityDb;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IdentityDb: "Server=${DB_SERVER};Database=QualifyAI_IdentityDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Issuer: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Services__TenantManagement: http://business-api:8080/internal
@@ -85,7 +85,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__AutomationDb: "Server=sqlserver,1433;Database=QualifyAI_AutomationDb;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER};Database=QualifyAI_AutomationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
@@ -105,7 +105,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__NotificationsDb: "Server=sqlserver,1433;Database=QualifyAI_NotificationsDb;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER};Database=QualifyAI_NotificationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
@@ -125,7 +125,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__KnowledgeDb: "Server=sqlserver,1433;Database=QualifyAI_KnowledgeDb;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
@@ -147,7 +147,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__AIOrchestrationDb: "Server=sqlserver,1433;Database=QualifyAI_AIOrchestrationDb;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
@@ -168,7 +168,7 @@ services:
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
-      ConnectionStrings__IntegrationsDb: "Server=sqlserver,1433;Database=QualifyAI_IntegrationsDb;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"

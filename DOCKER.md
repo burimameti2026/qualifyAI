@@ -12,7 +12,16 @@ The Angular admin UI lives in the separate `qualifyai-admin` repository and is n
    Copy-Item .env.example .env
    ```
 
-3. Set `OPENAI_API_KEY` and change the development passwords in `.env` when required.
+3. Configure the Windows SQL Server connection in `.env`. Docker containers reach a local
+   SQL Express instance through `host.docker.internal` and its fixed TCP port:
+
+   ```dotenv
+   DB_SERVER=host.docker.internal,1433
+   DB_USER=your-local-sql-user
+   DB_PASSWORD=your-local-sql-password
+   ```
+
+   Also set `OPENAI_API_KEY` and change the remaining development passwords when required.
 4. Build and start the complete backend:
 
    ```powershell

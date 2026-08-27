@@ -11,13 +11,13 @@ x-api-common: &api-common
     RabbitMq__Username: ${RABBITMQ_USER:-qualifyai}
     RabbitMq__Password: ${RABBITMQ_PASSWORD:-QualifyAI_Rabbit_ChangeMe!}
   depends_on:
-    sqlserver: { condition: service_healthy }
     rabbitmq: { condition: service_healthy }
     redis: { condition: service_healthy }
     consul: { condition: service_healthy }
 
 services:
   sqlserver:
+    profiles: [container-sql]
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: qualifyai-sqlserver
     environment:
@@ -174,7 +174,6 @@ services:
       ConnectionStrings__KnowledgeDb: "Server=sqlserver,1433;Database=QualifyAI_KnowledgeDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
       Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-qualifyai}:${MONGO_ROOT_PASSWORD:-QualifyAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
     depends_on:
-      sqlserver: { condition: service_healthy }
       mongodb: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       redis: { condition: service_healthy }
