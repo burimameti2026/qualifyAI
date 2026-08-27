@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Domain.Tenants;
 using QualifyAI.Identity.Infrastructure.Identity;
@@ -53,7 +54,7 @@ public sealed class IdentityBootstrapHostedService(
             var modules = configuration
                 .GetSection("IdentityBootstrap:License:Modules")
                 .Get<string[]>()
-                ?? ["crm", "inbox", "ticketing", "automation", "knowledge", "ai", "analytics", "integrations"];
+                ?? QualifyAiModules.Enterprise;
 
             license = License.Create(
                 tenant.Id,
@@ -118,24 +119,7 @@ public sealed class IdentityBootstrapHostedService(
         var permissions = configuration
             .GetSection("IdentityBootstrap:Admin:Permissions")
             .Get<string[]>()
-            ??
-            [
-                "identity.tenants.manage",
-                "identity.users.manage",
-                "identity.roles.manage",
-                "identity.permissions.manage",
-                "identity.licenses.manage",
-                "identity.clients.manage",
-                "crm.contacts.manage",
-                "crm.leads.manage",
-                "ticketing.manage",
-                "automation.manage",
-                "knowledge.manage",
-                "ai.manage",
-                "analytics.view",
-                "integrations.manage",
-                "audit.view"
-            ];
+            ?? QualifyAiPermissions.All;
 
         var existingPermissions = await dbContext.UserPermissions
             .Where(x => x.TenantId == tenant.Id && x.UserId == admin.Id)

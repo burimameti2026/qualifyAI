@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using QualifyAI.Api;
@@ -16,6 +17,7 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssemblyContaining<DashboardOverviewQueryHandler>());
 
 builder.Services.AddBusinessInfrastructure(builder.Configuration);
+builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
 
 builder.Services.AddScoped<LeadQualificationService>();
 builder.Services.AddScoped<WorkflowEngine>();

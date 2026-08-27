@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using QualifyAI.Application;
 using QualifyAI.Application.Commands.Modules;
 using QualifyAI.Application.Queries.Modules;
+using QualifyAI.BuildingBlocks.Security.Access;
+using QualifyAI.BuildingBlocks.Security.Authorization;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure;
 
@@ -11,34 +13,43 @@ namespace QualifyAI.Api.Controllers;
 
 [ApiController]
 [Authorize]
+[RequireModule(QualifyAiModules.Knowledge)]
 [Route("api/knowledge")]
 public sealed class KnowledgeController(ISender sender, ITenantContext tenant, IKnowledgeRetriever retriever) : ControllerBase
 {
     [HttpGet("bases")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeRead)]
     public Task<IReadOnlyList<KnowledgeBase>> Bases(CancellationToken ct) => sender.Send(new ListKnowledgeBasesQuery(tenant.TenantId()), ct);
 
     [HttpGet("documents")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeRead)]
     public Task<IReadOnlyList<KnowledgeDocument>> Documents(CancellationToken ct) => sender.Send(new ListKnowledgeDocumentsQuery(tenant.TenantId()), ct);
 
     [HttpPost("documents")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeManage)]
     public async Task<IActionResult> CreateDocument(KnowledgeDocument input, CancellationToken ct) => Ok(await sender.Send(new CreateKnowledgeDocumentCommand(tenant.TenantId(), input), ct));
 
     [HttpPut("documents/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeManage)]
     public async Task<IActionResult> UpdateDocument(Guid id, KnowledgeDocument input, CancellationToken ct)
         => (await sender.Send(new UpdateKnowledgeDocumentCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound();
 
     [HttpPost("documents/{id:guid}/reindex")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeManage)]
     public async Task<IActionResult> Reindex(Guid id, CancellationToken ct)
         => (await sender.Send(new ReindexKnowledgeDocumentCommand(tenant.TenantId(), id), ct)) is { } x ? Ok(x) : NotFound();
 
     [HttpGet("gaps")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeRead)]
     public Task<IReadOnlyList<KnowledgeGap>> Gaps(CancellationToken ct) => sender.Send(new ListKnowledgeGapsQuery(tenant.TenantId()), ct);
 
     [HttpPut("gaps/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeManage)]
     public async Task<IActionResult> UpdateGap(Guid id, KnowledgeGap input, CancellationToken ct)
         => (await sender.Send(new UpdateKnowledgeGapCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound();
 
     [HttpPost("retrieve")]
+    [RequirePermission(QualifyAiPermissions.KnowledgeRead)]
     public async Task<IActionResult> Retrieve(RetrieveInput input, CancellationToken ct)
     {
         var result = await retriever.SearchAsync(tenant.TenantId(), input.Query, 5);
@@ -48,20 +59,25 @@ public sealed class KnowledgeController(ISender sender, ITenantContext tenant, I
 
 [ApiController]
 [Authorize]
+[RequireModule(QualifyAiModules.Ai)]
 [Route("api/ai")]
 public sealed class AiController(ISender sender, ITenantContext tenant, IAiToolRegistry tools, IAiProvider ai) : ControllerBase
 {
     [HttpGet("agents")]
+    [RequirePermission(QualifyAiPermissions.AgentsRead)]
     public Task<IReadOnlyList<AiAgent>> Agents(CancellationToken ct) => sender.Send(new ListAiAgentsQuery(tenant.TenantId()), ct);
 
     [HttpPost("agents")]
+    [RequirePermission(QualifyAiPermissions.AgentsManage)]
     public async Task<IActionResult> CreateAgent(AiAgent input, CancellationToken ct) => Ok(await sender.Send(new CreateAiAgentCommand(tenant.TenantId(), input), ct));
 
     [HttpPut("agents/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.AgentsManage)]
     public async Task<IActionResult> UpdateAgent(Guid id, AiAgent input, CancellationToken ct)
         => (await sender.Send(new UpdateAiAgentCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound();
 
     [HttpPost("agents/{id:guid}/test")]
+    [RequirePermission(QualifyAiPermissions.AgentsManage)]
     public async Task<IActionResult> TestAgent(Guid id, AgentTestInput input, CancellationToken ct)
     {
         var agent = (await sender.Send(new ListAiAgentsQuery(tenant.TenantId()), ct)).FirstOrDefault(x => x.Id == id);
@@ -71,9 +87,11 @@ public sealed class AiController(ISender sender, ITenantContext tenant, IAiToolR
     }
 
     [HttpGet("tools")]
+    [RequirePermission(QualifyAiPermissions.AgentsRead)]
     public IActionResult ToolNames() => Ok(tools.Names);
 
     [HttpPost("tools/{name}/execute")]
+    [RequirePermission(QualifyAiPermissions.AgentsManage)]
     public async Task<IActionResult> ExecuteTool(string name, [FromBody] string input, CancellationToken ct)
     {
         var tool = tools.Resolve(name);
