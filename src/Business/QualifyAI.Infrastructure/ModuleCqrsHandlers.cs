@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.Application.Abstractions.Persistence;
 using QualifyAI.Application.Commands.Modules;
 using QualifyAI.Application.Queries.Modules;
 using QualifyAI.Domain;
@@ -7,7 +8,7 @@ using QualifyAI.Infrastructure.Persistence;
 
 namespace QualifyAI.Infrastructure;
 
-public sealed class BusinessModuleQueryHandlers(AppDbContext db) :
+public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRepository knowledgeAi) :
     IRequestHandler<ListKnowledgeBasesQuery, IReadOnlyList<KnowledgeBase>>,
     IRequestHandler<ListKnowledgeDocumentsQuery, IReadOnlyList<KnowledgeDocument>>,
     IRequestHandler<ListKnowledgeGapsQuery, IReadOnlyList<KnowledgeGap>>,
@@ -31,10 +32,10 @@ public sealed class BusinessModuleQueryHandlers(AppDbContext db) :
     IRequestHandler<ListSalesTasksQuery, IReadOnlyList<CrmTask>>,
     IRequestHandler<ListRevenueAttributionQuery, IReadOnlyList<RevenueAttribution>>
 {
-    public async Task<IReadOnlyList<KnowledgeBase>> Handle(ListKnowledgeBasesQuery q, CancellationToken ct) => await db.KnowledgeBases.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
-    public async Task<IReadOnlyList<KnowledgeDocument>> Handle(ListKnowledgeDocumentsQuery q, CancellationToken ct) => await db.KnowledgeDocuments.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
-    public async Task<IReadOnlyList<KnowledgeGap>> Handle(ListKnowledgeGapsQuery q, CancellationToken ct) => await db.KnowledgeGaps.AsNoTracking().Where(x => x.TenantId == q.TenantId).OrderByDescending(x => x.ImpactScore).ToListAsync(ct);
-    public async Task<IReadOnlyList<AiAgent>> Handle(ListAiAgentsQuery q, CancellationToken ct) => await db.AiAgents.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
+    public Task<IReadOnlyList<KnowledgeBase>> Handle(ListKnowledgeBasesQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeBasesAsync(q.TenantId, ct);
+    public Task<IReadOnlyList<KnowledgeDocument>> Handle(ListKnowledgeDocumentsQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeDocumentsAsync(q.TenantId, ct);
+    public Task<IReadOnlyList<KnowledgeGap>> Handle(ListKnowledgeGapsQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeGapsAsync(q.TenantId, ct);
+    public Task<IReadOnlyList<AiAgent>> Handle(ListAiAgentsQuery q, CancellationToken ct) => knowledgeAi.ListAiAgentsAsync(q.TenantId, ct);
     public async Task<WorkflowDesignerDto> Handle(GetWorkflowDesignerQuery q, CancellationToken ct) => new(await db.WorkflowNodes.AsNoTracking().Where(x => x.TenantId == q.TenantId && x.FlowId == q.FlowId).ToListAsync(ct), await db.WorkflowEdges.AsNoTracking().Where(x => x.TenantId == q.TenantId && x.FlowId == q.FlowId).ToListAsync(ct));
     public async Task<IReadOnlyList<QualificationFlow>> Handle(ListWorkflowsQuery q, CancellationToken ct) => await db.QualificationFlows.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
     public async Task<SalesPipelinesDto> Handle(GetSalesPipelinesQuery q, CancellationToken ct) => new(await db.Pipelines.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct), await db.PipelineStages.AsNoTracking().Where(x => x.TenantId == q.TenantId).OrderBy(x => x.SortOrder).ToListAsync(ct));
@@ -61,12 +62,6 @@ public sealed class BusinessModuleQueryHandlers(AppDbContext db) :
 }
 
 public sealed class BusinessModuleCommandHandlers(AppDbContext db) :
-    IRequestHandler<CreateKnowledgeDocumentCommand, KnowledgeDocument>,
-    IRequestHandler<UpdateKnowledgeDocumentCommand, KnowledgeDocument?>,
-    IRequestHandler<ReindexKnowledgeDocumentCommand, ReindexResult?>,
-    IRequestHandler<UpdateKnowledgeGapCommand, KnowledgeGap?>,
-    IRequestHandler<CreateAiAgentCommand, AiAgent>,
-    IRequestHandler<UpdateAiAgentCommand, AiAgent?>,
     IRequestHandler<SaveWorkflowDesignerCommand, WorkflowSaveResult>,
     IRequestHandler<CreateAutomationCommand, AutomationRule>,
     IRequestHandler<UpdateAutomationCommand, AutomationRule?>,
@@ -79,12 +74,6 @@ public sealed class BusinessModuleCommandHandlers(AppDbContext db) :
     IRequestHandler<CreateMeetingCommand, MeetingBooking>,
     IRequestHandler<UpdateSalesTaskCommand, CrmTask?>
 {
-    public async Task<KnowledgeDocument> Handle(CreateKnowledgeDocumentCommand c, CancellationToken ct) { c.Document.Id = Guid.NewGuid(); c.Document.TenantId = c.TenantId; db.KnowledgeDocuments.Add(c.Document); await db.SaveChangesAsync(ct); return c.Document; }
-    public async Task<KnowledgeDocument?> Handle(UpdateKnowledgeDocumentCommand c, CancellationToken ct) { var x = await db.KnowledgeDocuments.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; x.Title = c.Document.Title; x.Body = c.Document.Body; x.Published = c.Document.Published; x.Version = Math.Max(x.Version + 1, c.Document.Version); await db.SaveChangesAsync(ct); return x; }
-    public async Task<ReindexResult?> Handle(ReindexKnowledgeDocumentCommand c, CancellationToken ct) { var x = await db.KnowledgeDocuments.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; var old = await db.KnowledgeChunks.Where(v => v.DocumentId == c.Id && v.TenantId == c.TenantId).ToListAsync(ct); db.KnowledgeChunks.RemoveRange(old); var chunks = (x.Body ?? string.Empty).Split(new[] { "\n\n", ". " }, StringSplitOptions.RemoveEmptyEntries).Take(100).ToArray(); for (var i = 0; i < chunks.Length; i++) db.KnowledgeChunks.Add(new KnowledgeChunk { TenantId = c.TenantId, DocumentId = c.Id, ChunkIndex = i, Text = chunks[i], VectorJson = "[]" }); await db.SaveChangesAsync(ct); return new(c.Id, chunks.Length, "indexed"); }
-    public async Task<KnowledgeGap?> Handle(UpdateKnowledgeGapCommand c, CancellationToken ct) { var x = await db.KnowledgeGaps.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; x.Status = c.Gap.Status; await db.SaveChangesAsync(ct); return x; }
-    public async Task<AiAgent> Handle(CreateAiAgentCommand c, CancellationToken ct) { c.Agent.Id = Guid.NewGuid(); c.Agent.TenantId = c.TenantId; db.AiAgents.Add(c.Agent); await db.SaveChangesAsync(ct); return c.Agent; }
-    public async Task<AiAgent?> Handle(UpdateAiAgentCommand c, CancellationToken ct) { var x = await db.AiAgents.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; x.Name = c.Agent.Name; x.Role = c.Agent.Role; x.Instructions = c.Agent.Instructions; x.Tone = c.Agent.Tone; x.Model = c.Agent.Model; x.LanguagesCsv = c.Agent.LanguagesCsv; x.Active = c.Agent.Active; x.KnowledgeBaseId = c.Agent.KnowledgeBaseId; await db.SaveChangesAsync(ct); return x; }
     public async Task<WorkflowSaveResult> Handle(SaveWorkflowDesignerCommand c, CancellationToken ct) { var oldN = await db.WorkflowNodes.Where(x => x.TenantId == c.TenantId && x.FlowId == c.FlowId).ToListAsync(ct); var oldE = await db.WorkflowEdges.Where(x => x.TenantId == c.TenantId && x.FlowId == c.FlowId).ToListAsync(ct); db.WorkflowNodes.RemoveRange(oldN); db.WorkflowEdges.RemoveRange(oldE); foreach (var n in c.Nodes) { n.Id = n.Id == Guid.Empty ? Guid.NewGuid() : n.Id; n.TenantId = c.TenantId; n.FlowId = c.FlowId; db.WorkflowNodes.Add(n); } foreach (var e in c.Edges) { e.Id = e.Id == Guid.Empty ? Guid.NewGuid() : e.Id; e.TenantId = c.TenantId; e.FlowId = c.FlowId; db.WorkflowEdges.Add(e); } await db.SaveChangesAsync(ct); return new(c.Nodes.Count, c.Edges.Count); }
     public async Task<AutomationRule> Handle(CreateAutomationCommand c, CancellationToken ct) { c.Rule.Id = Guid.NewGuid(); c.Rule.TenantId = c.TenantId; db.AutomationRules.Add(c.Rule); await db.SaveChangesAsync(ct); return c.Rule; }
     public async Task<AutomationRule?> Handle(UpdateAutomationCommand c, CancellationToken ct) { var x = await db.AutomationRules.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; x.Name = c.Rule.Name; x.Trigger = c.Rule.Trigger; x.ConditionsJson = c.Rule.ConditionsJson; x.ActionsJson = c.Rule.ActionsJson; x.Active = c.Rule.Active; await db.SaveChangesAsync(ct); return x; }

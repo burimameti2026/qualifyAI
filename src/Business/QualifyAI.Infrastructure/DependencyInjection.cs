@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IBusinessUnitOfWork, BusinessUnitOfWork>();
         services.AddScoped<ICrmRepository, CrmRepository>();
         services.AddScoped<ISupportRepository, SupportRepository>();
+        services.AddScoped<IKnowledgeAiRepository, KnowledgeAiRepository>();
         services.AddScoped<ITenantEntitlementRepository, TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
 
