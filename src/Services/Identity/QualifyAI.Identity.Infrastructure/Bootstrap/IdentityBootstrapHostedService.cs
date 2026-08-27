@@ -30,22 +30,7 @@ public sealed class IdentityBootstrapHostedService(
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
 
-        var hasMigrations = dbContext.Database.GetMigrations().Any();
-        if (hasMigrations)
-        {
-            await dbContext.Database.MigrateAsync(cancellationToken);
-        }
-        else if (configuration.GetValue<bool>("DatabaseBootstrap:AllowEnsureCreatedWithoutMigrations") ||
-                 string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase))
-        {
-            logger.LogWarning("Identity has no EF migrations; using EnsureCreated only for development/bootstrap mode.");
-            await dbContext.Database.EnsureCreatedAsync(cancellationToken);
-        }
-        else
-        {
-            throw new InvalidOperationException("Identity database has no EF migrations. Refusing production startup.");
-        }
+        await dbContext.Database.MigrateAsync(cancellationToken);
 
         var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "demo";
         var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "QualifyAI Demo";

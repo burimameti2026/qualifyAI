@@ -24,9 +24,6 @@ app.MapGetIntegration();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<IntegrationsDbContext>();
-    var hasMigrations = db.Database.GetMigrations().Any();
-    if (hasMigrations) await db.Database.MigrateAsync();
-    else if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DatabaseBootstrap:AllowEnsureCreatedWithoutMigrations")) await db.Database.EnsureCreatedAsync();
-    else throw new InvalidOperationException("Integrations database has no EF migrations. Refusing production startup.");
+    await db.Database.MigrateAsync();
 }
 app.Run();
