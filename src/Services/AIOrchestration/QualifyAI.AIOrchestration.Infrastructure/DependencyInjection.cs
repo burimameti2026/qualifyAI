@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.AIOrchestration.Application.Abstractions.Persistence;
-using QualifyAI.AIOrchestration.Domain.Agents;
 using QualifyAI.AIOrchestration.Infrastructure.Persistence;
 using QualifyAI.AIOrchestration.Infrastructure.Persistence.Repositories;
 
@@ -15,7 +14,9 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         services.AddDbContext<AIOrchestrationDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("AIOrchestrationDb")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("AIOrchestrationDb"),
+                sql => sql.EnableRetryOnFailure()));
 
         services.AddScoped<IAgentRepository, AgentRepository>();
         services.AddScoped<IAIOrchestrationUnitOfWork, AIOrchestrationUnitOfWork>();

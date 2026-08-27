@@ -1,9 +1,8 @@
-using MongoDB.Driver;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Driver;
 using QualifyAI.Knowledge.Application.Abstractions.Persistence;
-using QualifyAI.Knowledge.Domain.KnowledgeBases;
 using QualifyAI.Knowledge.Infrastructure.Mongo;
 using QualifyAI.Knowledge.Infrastructure.Persistence;
 using QualifyAI.Knowledge.Infrastructure.Persistence.Repositories;
@@ -17,7 +16,9 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         services.AddDbContext<KnowledgeDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("KnowledgeDb")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("KnowledgeDb"),
+                sql => sql.EnableRetryOnFailure()));
 
         services.AddScoped<IKnowledgeBaseRepository, KnowledgeBaseRepository>();
         services.AddScoped<IKnowledgeUnitOfWork, KnowledgeUnitOfWork>();

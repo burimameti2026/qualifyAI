@@ -25,7 +25,9 @@ public static class DependencyInjection
     {
         services.AddDbContext<IdentityDbContext>(options =>
         {
-            options.UseSqlServer(configuration.GetConnectionString("IdentityDb"));
+            options.UseSqlServer(
+                configuration.GetConnectionString("IdentityDb"),
+                sql => sql.EnableRetryOnFailure());
             options.UseOpenIddict();
         });
 
@@ -77,14 +79,13 @@ public static class DependencyInjection
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<ILicenseRepository, LicenseRepository>();
         services.AddScoped<IClientApplicationRepository, ClientApplicationRepository>();
-        services.AddScoped<IAccessControlRepository, AccessControlRepository>();
         services.AddScoped<IIdentityUnitOfWork, IdentityUnitOfWork>();
         services.AddScoped<IOutboxWriter, IdentityOutboxWriter>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IUserPermissionReader, UserPermissionReader>();
         services.AddScoped<IClientCredentialStore, OpenIddictClientCredentialStore>();
+        services.AddScoped<IAccessControlRepository, AccessControlRepository>();
 
-        services.AddHostedService<PermissionCatalogBootstrapHostedService>();
         services.AddHostedService<IdentityBootstrapHostedService>();
         services.AddHostedService<IdentityOutboxPublisherHostedService>();
         return services;

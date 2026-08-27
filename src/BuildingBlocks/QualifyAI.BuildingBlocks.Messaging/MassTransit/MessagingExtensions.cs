@@ -1,7 +1,9 @@
 using MassTransit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+
 namespace QualifyAI.BuildingBlocks.Messaging.MassTransit;
+
 public static class MessagingExtensions
 {
     public static IServiceCollection AddQualifyAiMessaging(
@@ -13,15 +15,29 @@ public static class MessagingExtensions
         {
             configure?.Invoke(x);
             x.SetKebabCaseEndpointNameFormatter();
-            x.UsingRabbitMq((context,cfg) =>
+
+            x.UsingRabbitMq((context, cfg) =>
             {
                 var host = configuration["RabbitMq:Host"] ?? "localhost";
                 var user = configuration["RabbitMq:Username"] ?? "guest";
                 var pass = configuration["RabbitMq:Password"] ?? "guest";
-                cfg.Host(host, "/", h => { h.Username(user); h.Password(pass); });
+
+                cfg.Host(host, "/", h =>
+                {
+                    h.Username(user);
+                    h.Password(pass);
+                });
+
+                cfg.UseMessageRetry(retry => retry.Intervals(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(3),
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromSeconds(30)));
+
                 cfg.ConfigureEndpoints(context);
             });
         });
+
         return services;
     }
 }
