@@ -1,4 +1,5 @@
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using QualifyAI.AIOrchestration.Api.Endpoints.Agents;
 using QualifyAI.AIOrchestration.Application;
 using QualifyAI.AIOrchestration.Infrastructure;
@@ -23,6 +24,9 @@ app.MapGetAgent();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AIOrchestrationDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    var hasMigrations = (await db.Database.GetMigrationsAsync()).Any();
+    if (hasMigrations) await db.Database.MigrateAsync();
+    else if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DatabaseBootstrap:AllowEnsureCreatedWithoutMigrations")) await db.Database.EnsureCreatedAsync();
+    else throw new InvalidOperationException("AI Orchestration database has no EF migrations. Refusing production startup.");
 }
 app.Run();

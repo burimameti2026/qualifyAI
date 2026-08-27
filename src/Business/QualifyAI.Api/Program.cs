@@ -81,13 +81,13 @@ app.MapExtendedAdmin();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var hasMigrations = (await db.Database.GetMigrationsAsync()).Any();
+    if (hasMigrations) await db.Database.MigrateAsync();
+    else if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DatabaseBootstrap:AllowEnsureCreatedWithoutMigrations")) await db.Database.EnsureCreatedAsync();
+    else throw new InvalidOperationException("Business database has no EF migrations. Refusing production startup.");
 
-    if (app.Environment.IsDevelopment())
-        await db.Database.EnsureCreatedAsync();
-    else
-        await db.Database.MigrateAsync();
-
-    await scope.ServiceProvider.GetRequiredService<DemoSeeder>().SeedAsync();
+    if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DemoSeed:Enabled"))
+        await scope.ServiceProvider.GetRequiredService<DemoSeeder>().SeedAsync();
 }
 
 app.Run();

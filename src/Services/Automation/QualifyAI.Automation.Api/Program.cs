@@ -1,4 +1,5 @@
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using QualifyAI.Automation.Api.Endpoints.AutomationDefinitions;
 using QualifyAI.Automation.Application;
 using QualifyAI.Automation.Infrastructure;
@@ -23,6 +24,9 @@ app.MapGetAutomationDefinition();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AutomationDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    var hasMigrations = (await db.Database.GetMigrationsAsync()).Any();
+    if (hasMigrations) await db.Database.MigrateAsync();
+    else if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DatabaseBootstrap:AllowEnsureCreatedWithoutMigrations")) await db.Database.EnsureCreatedAsync();
+    else throw new InvalidOperationException("Automation database has no EF migrations. Refusing production startup.");
 }
 app.Run();

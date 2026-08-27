@@ -1,4 +1,5 @@
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using QualifyAI.BuildingBlocks.Messaging.MassTransit;
 using QualifyAI.Knowledge.Api.Endpoints.KnowledgeBases;
 using QualifyAI.Knowledge.Application;
@@ -23,6 +24,9 @@ app.MapGetKnowledgeBase();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<KnowledgeDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    var hasMigrations = (await db.Database.GetMigrationsAsync()).Any();
+    if (hasMigrations) await db.Database.MigrateAsync();
+    else if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DatabaseBootstrap:AllowEnsureCreatedWithoutMigrations")) await db.Database.EnsureCreatedAsync();
+    else throw new InvalidOperationException("Knowledge database has no EF migrations. Refusing production startup.");
 }
 app.Run();
