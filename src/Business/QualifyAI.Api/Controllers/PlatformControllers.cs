@@ -18,7 +18,7 @@ namespace QualifyAI.Api.Controllers;
 public sealed class BillingController(ISender sender, ITenantContext tenant) : ControllerBase
 {
     [HttpGet("plans")]
-    public Task<IReadOnlyList<Plan>> Plans(CancellationToken ct) => sender.Send(new ListBillingPlansQuery(), ct);
+    public Task<IReadOnlyList<Plan>> Plans(CancellationToken ct) => sender.Send(new ListBillingPlansQuery(tenant.TenantId()), ct);
 
     [HttpGet("usage")]
     public Task<IReadOnlyList<UsageMeterDto>> Usage(CancellationToken ct) => sender.Send(new GetBillingUsageQuery(tenant.TenantId()), ct);
@@ -65,7 +65,7 @@ public sealed class WhiteLabelController(ISender sender, ITenantContext tenant) 
 public sealed class IndustryPacksController(ISender sender, ITenantContext tenant) : ControllerBase
 {
     [HttpGet]
-    public Task<IReadOnlyList<IndustryPack>> List(CancellationToken ct) => sender.Send(new ListIndustryPacksQuery(), ct);
+    public Task<IReadOnlyList<IndustryPack>> List(CancellationToken ct) => sender.Send(new ListIndustryPacksQuery(tenant.TenantId()), ct);
 
     [HttpPost("{id:guid}/install")]
     public async Task<IActionResult> Install(Guid id, CancellationToken ct)

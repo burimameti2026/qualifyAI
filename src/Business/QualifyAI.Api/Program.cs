@@ -5,6 +5,8 @@ using Microsoft.OpenApi.Models;
 using QualifyAI.Api;
 using QualifyAI.Api.Security;
 using QualifyAI.Application;
+using QualifyAI.BuildingBlocks.Application.Behaviors;
+using QualifyAI.BuildingBlocks.Application.Security;
 using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.Persistence;
@@ -15,8 +17,14 @@ builder.AddServiceDefaults();
 
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssemblyContaining<DashboardOverviewQueryHandler>());
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(TenantValidationBehavior<,>));
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(PermissionAuthorizationBehavior<,>));
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LicenseEntitlementBehavior<,>));
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ModuleEntitlementBehavior<,>));
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
 builder.Services.AddBusinessInfrastructure(builder.Configuration);
+builder.Services.AddScoped<IRequestSecurityContext, BusinessRequestSecurityContext>();
 builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
 
 builder.Services.AddScoped<LeadQualificationService>();

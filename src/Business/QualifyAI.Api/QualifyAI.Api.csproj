@@ -2,12 +2,13 @@
   <ItemGroup>
     <ProjectReference Include="../QualifyAI.Application/QualifyAI.Application.csproj" />
     <ProjectReference Include="../QualifyAI.Infrastructure/QualifyAI.Infrastructure.csproj" />
+    <ProjectReference Include="../../QualifyAI.ServiceDefaults/QualifyAI.ServiceDefaults.csproj" />
+    <ProjectReference Include="../../BuildingBlocks/QualifyAI.BuildingBlocks.Application/QualifyAI.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="../../BuildingBlocks/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
+    <ProjectReference Include="../QualifyAI.Application.Commands/QualifyAI.Application.Commands.csproj" />
+    <ProjectReference Include="../QualifyAI.Application.Queries/QualifyAI.Application.Queries.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
-      <ProjectReference Include="../../QualifyAI.ServiceDefaults/QualifyAI.ServiceDefaults.csproj" />
-      <ProjectReference Include="../../BuildingBlocks/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
-      <ProjectReference Include="../QualifyAI.Application.Commands/QualifyAI.Application.Commands.csproj" />
-      <ProjectReference Include="../QualifyAI.Application.Queries/QualifyAI.Application.Queries.csproj" />
-      <PackageReference Include="MediatR" />
+    <PackageReference Include="MediatR" />
   </ItemGroup>
 </Project>
