@@ -6,98 +6,59 @@ using QualifyAI.Domain;
 
 namespace QualifyAI.Infrastructure;
 
-public sealed class CreateContactCommandHandler(
-    ICrmRepository crm,
-    IBusinessUnitOfWork unitOfWork)
+public sealed class CreateContactCommandHandler(ICrmRepository crm, IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<CreateContactCommand, Contact>
 {
     public async Task<Contact> Handle(CreateContactCommand request, CancellationToken cancellationToken)
     {
-        var entity = Contact.Create(
-            request.TenantId,
-            request.CompanyId,
-            request.FirstName,
-            request.LastName,
-            request.Email,
-            request.Phone,
-            request.LifecycleStage);
-
+        var entity = Contact.Create(request.TenantId, request.CompanyId, request.FirstName, request.LastName, request.Email, request.Phone, request.LifecycleStage);
         crm.AddContact(entity);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return entity;
     }
 }
 
-public sealed class CreateLeadCommandHandler(
-    ICrmRepository crm,
-    IBusinessUnitOfWork unitOfWork)
+public sealed class CreateLeadCommandHandler(ICrmRepository crm, IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<CreateLeadCommand, Lead>
 {
     public async Task<Lead> Handle(CreateLeadCommand request, CancellationToken cancellationToken)
     {
         if (!await crm.ContactExistsAsync(request.TenantId, request.ContactId, cancellationToken))
             throw new InvalidOperationException("Lead contact does not exist in this tenant.");
-
-        var entity = Lead.Create(
-            request.TenantId,
-            request.ContactId,
-            request.CompanyId,
-            request.Source,
-            request.Score,
-            request.EstimatedValue,
-            request.IntentSummary);
-
+        var entity = Lead.Create(request.TenantId, request.ContactId, request.CompanyId, request.Source, request.Score, request.EstimatedValue, request.IntentSummary);
         crm.AddLead(entity);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return entity;
     }
 }
 
-public sealed class QualifyLeadCommandHandler(
-    ICrmRepository crm,
-    IBusinessUnitOfWork unitOfWork)
+public sealed class QualifyLeadCommandHandler(ICrmRepository crm, IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<QualifyLeadCommand, Lead?>
 {
     public async Task<Lead?> Handle(QualifyLeadCommand request, CancellationToken cancellationToken)
     {
         var lead = await crm.GetLeadAsync(request.TenantId, request.LeadId, cancellationToken);
         if (lead is null) return null;
-
         lead.Qualify();
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return lead;
     }
 }
 
-public sealed class CreateTicketCommandHandler(
-    ISupportRepository support,
-    IBusinessUnitOfWork unitOfWork)
+public sealed class CreateTicketCommandHandler(ISupportRepository support, IBusinessUnitOfWork unitOfWork)
     : IRequestHandler<CreateTicketCommand, Ticket>
 {
     public async Task<Ticket> Handle(CreateTicketCommand request, CancellationToken cancellationToken)
     {
-        var entity = new Ticket
-        {
-            Id = Guid.NewGuid(),
-            TenantId = request.TenantId,
-            ConversationId = request.ConversationId,
-            ContactId = request.ContactId,
-            Number = $"T-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
-            Subject = request.Subject?.Trim() ?? string.Empty,
-            Description = request.Description?.Trim() ?? string.Empty,
-            Priority = request.Priority,
-            SlaPolicyId = request.SlaPolicyId
-        };
-
+        var entity = Ticket.Create(request.TenantId, request.ConversationId, request.ContactId, request.Subject, request.Description, request.Priority, request.SlaPolicyId);
         support.AddTicket(entity);
+        support.AddTicketEvent(new TicketEvent { TenantId = entity.TenantId, TicketId = entity.Id, Type = "created", DataJson = "{}" });
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return entity;
     }
 }
 
-public sealed class DashboardOverviewQueryHandler(
-    ICrmRepository crm,
-    ISupportRepository support)
+public sealed class DashboardOverviewQueryHandler(ICrmRepository crm, ISupportRepository support)
     : IRequestHandler<DashboardOverviewQuery, DashboardOverviewDto>
 {
     public async Task<DashboardOverviewDto> Handle(DashboardOverviewQuery request, CancellationToken cancellationToken)
