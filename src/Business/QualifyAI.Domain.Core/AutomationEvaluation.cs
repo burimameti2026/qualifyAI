@@ -1,6 +1,4 @@
 namespace QualifyAI.Domain;
-public class AutomationRule : TenantEntity { public string Name { get; set; }=""; public string Trigger { get; set; }=""; public string ConditionsJson { get; set; }="[]"; public string ActionsJson { get; set; }="[]"; public bool Active { get; set; }=true; }
-public class AutomationRun : TenantEntity { public Guid RuleId { get; set; } public string TriggerDataJson { get; set; }="{}"; public string Status { get; set; }="running"; public string LogJson { get; set; }="[]"; public DateTime? CompletedAtUtc { get; set; } }
 public class EvaluationDataset : TenantEntity { public string Name { get; set; }=""; public string Description { get; set; }=""; }
 public class EvaluationTestCase : TenantEntity { public Guid DatasetId { get; set; } public string Input { get; set; }=""; public string ExpectedAnswer { get; set; }=""; public string ExpectedTool { get; set; }=""; }
 public class EvaluationRun : TenantEntity { public Guid DatasetId { get; set; } public Guid? AgentId { get; set; } public string Status { get; set; }="pending"; public decimal OverallScore { get; set; } }

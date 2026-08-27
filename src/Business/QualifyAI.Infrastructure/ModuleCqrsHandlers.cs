@@ -8,7 +8,7 @@ using QualifyAI.Infrastructure.Persistence;
 
 namespace QualifyAI.Infrastructure;
 
-public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRepository knowledgeAi) :
+public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRepository knowledgeAi, IWorkflowAutomationRepository workflowAutomation) :
     IRequestHandler<ListKnowledgeBasesQuery, IReadOnlyList<KnowledgeBase>>,
     IRequestHandler<ListKnowledgeDocumentsQuery, IReadOnlyList<KnowledgeDocument>>,
     IRequestHandler<ListKnowledgeGapsQuery, IReadOnlyList<KnowledgeGap>>,
@@ -36,12 +36,12 @@ public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRep
     public Task<IReadOnlyList<KnowledgeDocument>> Handle(ListKnowledgeDocumentsQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeDocumentsAsync(q.TenantId, ct);
     public Task<IReadOnlyList<KnowledgeGap>> Handle(ListKnowledgeGapsQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeGapsAsync(q.TenantId, ct);
     public Task<IReadOnlyList<AiAgent>> Handle(ListAiAgentsQuery q, CancellationToken ct) => knowledgeAi.ListAiAgentsAsync(q.TenantId, ct);
-    public async Task<WorkflowDesignerDto> Handle(GetWorkflowDesignerQuery q, CancellationToken ct) => new(await db.WorkflowNodes.AsNoTracking().Where(x => x.TenantId == q.TenantId && x.FlowId == q.FlowId).ToListAsync(ct), await db.WorkflowEdges.AsNoTracking().Where(x => x.TenantId == q.TenantId && x.FlowId == q.FlowId).ToListAsync(ct));
-    public async Task<IReadOnlyList<QualificationFlow>> Handle(ListWorkflowsQuery q, CancellationToken ct) => await db.QualificationFlows.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
+    public async Task<WorkflowDesignerDto> Handle(GetWorkflowDesignerQuery q, CancellationToken ct) => new(await workflowAutomation.ListWorkflowNodesAsync(q.TenantId, q.FlowId, cancellationToken: ct), await workflowAutomation.ListWorkflowEdgesAsync(q.TenantId, q.FlowId, cancellationToken: ct));
+    public Task<IReadOnlyList<QualificationFlow>> Handle(ListWorkflowsQuery q, CancellationToken ct) => workflowAutomation.ListWorkflowsAsync(q.TenantId, ct);
     public async Task<SalesPipelinesDto> Handle(GetSalesPipelinesQuery q, CancellationToken ct) => new(await db.Pipelines.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct), await db.PipelineStages.AsNoTracking().Where(x => x.TenantId == q.TenantId).OrderBy(x => x.SortOrder).ToListAsync(ct));
     public async Task<IReadOnlyList<MeetingBooking>> Handle(ListMeetingsQuery q, CancellationToken ct) => await db.MeetingBookings.AsNoTracking().Where(x => x.TenantId == q.TenantId).OrderBy(x => x.StartsAtUtc).ToListAsync(ct);
     public async Task<IReadOnlyList<IntegrationConnection>> Handle(ListIntegrationsQuery q, CancellationToken ct) => await db.IntegrationConnections.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
-    public async Task<IReadOnlyList<AutomationRule>> Handle(ListAutomationsQuery q, CancellationToken ct) => await db.AutomationRules.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
+    public Task<IReadOnlyList<AutomationRule>> Handle(ListAutomationsQuery q, CancellationToken ct) => workflowAutomation.ListAutomationRulesAsync(q.TenantId, ct);
     public async Task<IReadOnlyList<EvaluationDataset>> Handle(ListEvaluationDatasetsQuery q, CancellationToken ct) => await db.EvaluationDatasets.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct);
     public async Task<AnalyticsOverviewDto> Handle(GetAnalyticsOverviewQuery q, CancellationToken ct)
     {
@@ -62,10 +62,6 @@ public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRep
 }
 
 public sealed class BusinessModuleCommandHandlers(AppDbContext db) :
-    IRequestHandler<SaveWorkflowDesignerCommand, WorkflowSaveResult>,
-    IRequestHandler<CreateAutomationCommand, AutomationRule>,
-    IRequestHandler<UpdateAutomationCommand, AutomationRule?>,
-    IRequestHandler<RunAutomationCommand, AutomationRun?>,
     IRequestHandler<CreateIntegrationCommand, IntegrationConnection>,
     IRequestHandler<UpdateIntegrationCommand, IntegrationConnection?>,
     IRequestHandler<TestIntegrationCommand, IntegrationTestResult?>,
@@ -74,10 +70,6 @@ public sealed class BusinessModuleCommandHandlers(AppDbContext db) :
     IRequestHandler<CreateMeetingCommand, MeetingBooking>,
     IRequestHandler<UpdateSalesTaskCommand, CrmTask?>
 {
-    public async Task<WorkflowSaveResult> Handle(SaveWorkflowDesignerCommand c, CancellationToken ct) { var oldN = await db.WorkflowNodes.Where(x => x.TenantId == c.TenantId && x.FlowId == c.FlowId).ToListAsync(ct); var oldE = await db.WorkflowEdges.Where(x => x.TenantId == c.TenantId && x.FlowId == c.FlowId).ToListAsync(ct); db.WorkflowNodes.RemoveRange(oldN); db.WorkflowEdges.RemoveRange(oldE); foreach (var n in c.Nodes) { n.Id = n.Id == Guid.Empty ? Guid.NewGuid() : n.Id; n.TenantId = c.TenantId; n.FlowId = c.FlowId; db.WorkflowNodes.Add(n); } foreach (var e in c.Edges) { e.Id = e.Id == Guid.Empty ? Guid.NewGuid() : e.Id; e.TenantId = c.TenantId; e.FlowId = c.FlowId; db.WorkflowEdges.Add(e); } await db.SaveChangesAsync(ct); return new(c.Nodes.Count, c.Edges.Count); }
-    public async Task<AutomationRule> Handle(CreateAutomationCommand c, CancellationToken ct) { c.Rule.Id = Guid.NewGuid(); c.Rule.TenantId = c.TenantId; db.AutomationRules.Add(c.Rule); await db.SaveChangesAsync(ct); return c.Rule; }
-    public async Task<AutomationRule?> Handle(UpdateAutomationCommand c, CancellationToken ct) { var x = await db.AutomationRules.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; x.Name = c.Rule.Name; x.Trigger = c.Rule.Trigger; x.ConditionsJson = c.Rule.ConditionsJson; x.ActionsJson = c.Rule.ActionsJson; x.Active = c.Rule.Active; await db.SaveChangesAsync(ct); return x; }
-    public async Task<AutomationRun?> Handle(RunAutomationCommand c, CancellationToken ct) { var rule = await db.AutomationRules.FirstOrDefaultAsync(x => x.Id == c.Id && x.TenantId == c.TenantId, ct); if (rule is null) return null; var run = new AutomationRun { TenantId = c.TenantId, RuleId = c.Id, TriggerDataJson = "{\"manual\":true}", Status = "completed", LogJson = "[\"Rule evaluated\",\"Actions dispatched\"]", CompletedAtUtc = DateTime.UtcNow }; db.AutomationRuns.Add(run); await db.SaveChangesAsync(ct); return run; }
     public async Task<IntegrationConnection> Handle(CreateIntegrationCommand c, CancellationToken ct) { c.Connection.Id = Guid.NewGuid(); c.Connection.TenantId = c.TenantId; db.IntegrationConnections.Add(c.Connection); await db.SaveChangesAsync(ct); return c.Connection; }
     public async Task<IntegrationConnection?> Handle(UpdateIntegrationCommand c, CancellationToken ct) { var x = await db.IntegrationConnections.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; x.Name = c.Connection.Name; x.Provider = c.Connection.Provider; x.Status = c.Connection.Status; x.SettingsJson = c.Connection.SettingsJson; x.SecretReference = c.Connection.SecretReference; await db.SaveChangesAsync(ct); return x; }
     public async Task<IntegrationTestResult?> Handle(TestIntegrationCommand c, CancellationToken ct) { var x = await db.IntegrationConnections.FirstOrDefaultAsync(v => v.Id == c.Id && v.TenantId == c.TenantId, ct); if (x is null) return null; db.IntegrationSyncJobs.Add(new IntegrationSyncJob { TenantId = c.TenantId, ConnectionId = c.Id, Direction = "outbound", EntityType = "connection-test", Status = "completed" }); await db.SaveChangesAsync(ct); return new(true, x.Provider, DateTime.UtcNow); }
