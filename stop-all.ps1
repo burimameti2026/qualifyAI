@@ -1,2 +1,3 @@
-Push-Location "$PSScriptRoot\services"; docker compose down --remove-orphans; Pop-Location
-Push-Location "$PSScriptRoot\infra"; docker compose --env-file .env down; Pop-Location
+$ErrorActionPreference = "Stop"
+Push-Location $PSScriptRoot
+try { docker compose down --remove-orphans } finally { Pop-Location }
