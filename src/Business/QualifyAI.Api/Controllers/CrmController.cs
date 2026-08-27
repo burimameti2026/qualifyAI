@@ -33,55 +33,68 @@ public sealed class DashboardController(ISender sender, ITenantContext tenant) :
 [Route("api/crm")]
 public sealed class CrmController(ISender sender, ITenantContext tenant) : ControllerBase
 {
-    [HttpGet("contacts")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    [HttpGet("contacts")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Contact>> Contacts(CancellationToken ct) => sender.Send(new ListContactsQuery(tenant.TenantId()), ct);
 
-    [HttpPost("contacts")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    [HttpPost("contacts")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> CreateContact(Contact input, CancellationToken ct)
     {
-        var x = await sender.Send(new CreateContactCommand(tenant.TenantId(), input.CompanyId, input.FirstName, input.LastName, input.Email, input.Phone, input.LifecycleStage), ct);
-        return Created($"/api/crm/contacts/{x.Id}", x);
+        try
+        {
+            var x = await sender.Send(new CreateContactCommand(tenant.TenantId(), input.CompanyId, input.FirstName, input.LastName, input.Email, input.Phone, input.LifecycleStage), ct);
+            return Created($"/api/crm/contacts/{x.Id}", x);
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
-    [HttpPut("contacts/{id:guid}")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    [HttpPut("contacts/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> UpdateContact(Guid id, Contact input, CancellationToken ct)
-        => (await sender.Send(new UpdateContactCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound();
+    {
+        try { return (await sender.Send(new UpdateContactCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
 
-    [HttpGet("companies")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    [HttpGet("companies")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Company>> Companies(CancellationToken ct) => sender.Send(new ListCompaniesQuery(tenant.TenantId()), ct);
 
-    [HttpPost("companies")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    [HttpPost("companies")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> CreateCompany(Company input, CancellationToken ct)
     {
-        var x = await sender.Send(new CreateCompanyCommand(tenant.TenantId(), input), ct);
-        return Created($"/api/crm/companies/{x.Id}", x);
+        try { var x = await sender.Send(new CreateCompanyCommand(tenant.TenantId(), input), ct); return Created($"/api/crm/companies/{x.Id}", x); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
-    [HttpGet("leads")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    [HttpGet("leads")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Lead>> Leads(CancellationToken ct) => sender.Send(new ListLeadsQuery(tenant.TenantId()), ct);
 
-    [HttpGet("opportunities")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    [HttpGet("opportunities")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Opportunity>> Opportunities(CancellationToken ct) => sender.Send(new ListOpportunitiesQuery(tenant.TenantId()), ct);
 
-    [HttpPut("opportunities/{id:guid}")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    [HttpPut("opportunities/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> UpdateOpportunity(Guid id, Opportunity input, CancellationToken ct)
-        => (await sender.Send(new UpdateOpportunityCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound();
+    {
+        try { return (await sender.Send(new UpdateOpportunityCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
 
-    [HttpPut("opportunities/{id:guid}/stage")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    [HttpPut("opportunities/{id:guid}/stage")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> MoveOpportunity(Guid id, OpportunityStageInput input, CancellationToken ct)
     {
         try { return (await sender.Send(new MoveOpportunityStageCommand(tenant.TenantId(), id, input.StageId), ct)) is { } x ? Ok(x) : NotFound(); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
+
+    [HttpPost("opportunities/{id:guid}/close")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> CloseOpportunity(Guid id, OpportunityCloseInput input, CancellationToken ct)
+    {
+        try { return (await sender.Send(new CloseOpportunityCommand(tenant.TenantId(), id, input.Won, input.LossReason), ct)) is { } x ? Ok(x) : NotFound(); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("opportunities/{id:guid}/reopen")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> ReopenOpportunity(Guid id, CancellationToken ct)
+        => (await sender.Send(new ReopenOpportunityCommand(tenant.TenantId(), id), ct)) is { } x ? Ok(x) : NotFound();
 }
 
 public sealed record OpportunityStageInput(Guid StageId);
+public sealed record OpportunityCloseInput(bool Won, string? LossReason);
