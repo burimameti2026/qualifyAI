@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using QualifyAI.Api;
+using QualifyAI.Api.Security;
 using QualifyAI.Application;
 using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Infrastructure;
@@ -59,6 +60,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseMiddleware<TenantMiddleware>();
+app.UseMiddleware<TenantEntitlementEnforcementMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
