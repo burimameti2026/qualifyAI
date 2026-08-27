@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.Automation.Application.Abstractions.Persistence;
+using QualifyAI.Automation.Domain.AutomationDefinitions;
 using QualifyAI.Automation.Infrastructure.Persistence;
 using QualifyAI.Automation.Infrastructure.Persistence.Repositories;
 

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.Notifications.Application.Abstractions.Persistence;
+using QualifyAI.Notifications.Domain.Notifications;
 using QualifyAI.Notifications.Infrastructure.Persistence;
 using QualifyAI.Notifications.Infrastructure.Persistence.Repositories;
 

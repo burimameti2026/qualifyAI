@@ -30,7 +30,7 @@ public sealed class IdentityBootstrapHostedService(
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
 
-        var hasMigrations = (await dbContext.Database.GetMigrationsAsync(cancellationToken)).Any();
+        var hasMigrations = dbContext.Database.GetMigrations().Any();
         if (hasMigrations)
         {
             await dbContext.Database.MigrateAsync(cancellationToken);

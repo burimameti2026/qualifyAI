@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using QualifyAI.Knowledge.Application.Abstractions.Persistence;
+using QualifyAI.Knowledge.Domain.KnowledgeBases;
 using QualifyAI.Knowledge.Infrastructure.Mongo;
 using QualifyAI.Knowledge.Infrastructure.Persistence;
 using QualifyAI.Knowledge.Infrastructure.Persistence.Repositories;
