@@ -14,7 +14,12 @@ public interface ICrmRepository
     void AddLead(Lead lead);
 
     Task<IReadOnlyList<Company>> ListCompaniesAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    void AddCompany(Company company);
+
+    Task<Opportunity?> GetOpportunityAsync(Guid tenantId, Guid opportunityId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Opportunity>> ListOpportunitiesAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<PipelineStage?> GetPipelineStageAsync(Guid tenantId, Guid stageId, CancellationToken cancellationToken = default);
+    void AddActivity(CrmActivity activity);
 
     Task<int> CountContactsAsync(Guid tenantId, CancellationToken cancellationToken = default);
     Task<int> CountLeadsAsync(Guid tenantId, CancellationToken cancellationToken = default);

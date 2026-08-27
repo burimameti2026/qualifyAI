@@ -1,11 +1,13 @@
 using MediatR;
-using Microsoft.EntityFrameworkCore;
+using QualifyAI.Application.Abstractions.Persistence;
 using QualifyAI.Application.Commands.Modules;
 using QualifyAI.Domain;
 
 namespace QualifyAI.Infrastructure;
 
-public sealed class CrmLifecycleCommandHandlers(AppDbContext db) :
+public sealed class CrmLifecycleCommandHandlers(
+    ICrmRepository crm,
+    IBusinessUnitOfWork unitOfWork) :
     IRequestHandler<CreateCompanyCommand, Company>,
     IRequestHandler<UpdateContactCommand, Contact?>,
     IRequestHandler<UpdateOpportunityCommand, Opportunity?>,
@@ -13,57 +15,99 @@ public sealed class CrmLifecycleCommandHandlers(AppDbContext db) :
     IRequestHandler<CloseOpportunityCommand, Opportunity?>,
     IRequestHandler<ReopenOpportunityCommand, Opportunity?>
 {
-    public async Task<Company> Handle(CreateCompanyCommand c, CancellationToken ct)
+    public async Task<Company> Handle(CreateCompanyCommand command, CancellationToken cancellationToken)
     {
-        var x=new Company{Id=Guid.NewGuid(),TenantId=c.TenantId};
-        x.UpdateProfile(c.Company.Name,c.Company.Domain,c.Company.Industry,c.Company.Employees,c.Company.Country,c.Company.AnnualRevenue);
-        db.Companys.Add(x); await db.SaveChangesAsync(ct); return x;
+        var company = Company.Create(
+            command.TenantId,
+            command.Company.Name,
+            command.Company.Domain,
+            command.Company.Industry,
+            command.Company.Employees,
+            command.Company.Country,
+            command.Company.AnnualRevenue);
+
+        crm.AddCompany(company);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return company;
     }
 
-    public async Task<Contact?> Handle(UpdateContactCommand c,CancellationToken ct)
+    public async Task<Contact?> Handle(UpdateContactCommand command, CancellationToken cancellationToken)
     {
-        var x=await db.Contacts.FirstOrDefaultAsync(v=>v.Id==c.Id&&v.TenantId==c.TenantId,ct); if(x is null)return null;
-        x.UpdateProfile(c.Contact.CompanyId,c.Contact.FirstName,c.Contact.LastName,c.Contact.Email,c.Contact.Phone,c.Contact.LifecycleStage);
-        await db.SaveChangesAsync(ct); return x;
+        var contact = await crm.GetContactAsync(command.TenantId, command.Id, cancellationToken);
+        if (contact is null) return null;
+
+        contact.UpdateProfile(
+            command.Contact.CompanyId,
+            command.Contact.FirstName,
+            command.Contact.LastName,
+            command.Contact.Email,
+            command.Contact.Phone,
+            command.Contact.LifecycleStage);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return contact;
     }
 
-    public async Task<Opportunity?> Handle(UpdateOpportunityCommand c,CancellationToken ct)
+    public async Task<Opportunity?> Handle(UpdateOpportunityCommand command, CancellationToken cancellationToken)
     {
-        var x=await db.Opportunitys.FirstOrDefaultAsync(v=>v.Id==c.Id&&v.TenantId==c.TenantId,ct); if(x is null)return null;
-        x.UpdateDetails(c.Opportunity.Name,c.Opportunity.Amount,c.Opportunity.ExpectedCloseUtc);
-        if(c.Opportunity.PipelineStageId.HasValue&&c.Opportunity.PipelineStageId!=x.PipelineStageId)
-            await MoveStage(x,c.TenantId,c.Opportunity.PipelineStageId.Value,ct);
-        await db.SaveChangesAsync(ct); return x;
+        var opportunity = await crm.GetOpportunityAsync(command.TenantId, command.Id, cancellationToken);
+        if (opportunity is null) return null;
+
+        opportunity.UpdateDetails(command.Opportunity.Name, command.Opportunity.Amount, command.Opportunity.ExpectedCloseUtc);
+
+        if (command.Opportunity.PipelineStageId.HasValue && command.Opportunity.PipelineStageId != opportunity.PipelineStageId)
+            await MoveStageAsync(opportunity, command.TenantId, command.Opportunity.PipelineStageId.Value, cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return opportunity;
     }
 
-    public async Task<Opportunity?> Handle(MoveOpportunityStageCommand c,CancellationToken ct)
+    public async Task<Opportunity?> Handle(MoveOpportunityStageCommand command, CancellationToken cancellationToken)
     {
-        var x=await db.Opportunitys.FirstOrDefaultAsync(v=>v.Id==c.Id&&v.TenantId==c.TenantId,ct); if(x is null)return null;
-        await MoveStage(x,c.TenantId,c.StageId,ct); await db.SaveChangesAsync(ct); return x;
+        var opportunity = await crm.GetOpportunityAsync(command.TenantId, command.Id, cancellationToken);
+        if (opportunity is null) return null;
+
+        await MoveStageAsync(opportunity, command.TenantId, command.StageId, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return opportunity;
     }
 
-    public async Task<Opportunity?> Handle(CloseOpportunityCommand c,CancellationToken ct)
+    public async Task<Opportunity?> Handle(CloseOpportunityCommand command, CancellationToken cancellationToken)
     {
-        var x=await db.Opportunitys.FirstOrDefaultAsync(v=>v.Id==c.Id&&v.TenantId==c.TenantId,ct); if(x is null)return null;
-        if(c.Won)x.MarkWon(); else x.MarkLost(c.LossReason??"");
-        db.CrmActivitys.Add(Activity(x,c.TenantId,c.Won?"Opportunity won":"Opportunity lost",c.Won?"won":c.LossReason??"lost"));
-        await db.SaveChangesAsync(ct); return x;
+        var opportunity = await crm.GetOpportunityAsync(command.TenantId, command.Id, cancellationToken);
+        if (opportunity is null) return null;
+
+        if (command.Won)
+            opportunity.MarkWon();
+        else
+            opportunity.MarkLost(command.LossReason ?? string.Empty);
+
+        crm.AddActivity(CrmActivity.ForOpportunity(
+            opportunity,
+            command.Won ? "Opportunity won" : "Opportunity lost",
+            command.Won ? "won" : opportunity.LossReason));
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return opportunity;
     }
 
-    public async Task<Opportunity?> Handle(ReopenOpportunityCommand c,CancellationToken ct)
+    public async Task<Opportunity?> Handle(ReopenOpportunityCommand command, CancellationToken cancellationToken)
     {
-        var x=await db.Opportunitys.FirstOrDefaultAsync(v=>v.Id==c.Id&&v.TenantId==c.TenantId,ct); if(x is null)return null;
-        x.Reopen(); db.CrmActivitys.Add(Activity(x,c.TenantId,"Opportunity reopened","open")); await db.SaveChangesAsync(ct); return x;
+        var opportunity = await crm.GetOpportunityAsync(command.TenantId, command.Id, cancellationToken);
+        if (opportunity is null) return null;
+
+        opportunity.Reopen();
+        crm.AddActivity(CrmActivity.ForOpportunity(opportunity, "Opportunity reopened", "open"));
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return opportunity;
     }
 
-    private async Task MoveStage(Opportunity x,Guid tenantId,Guid stageId,CancellationToken ct)
+    private async Task MoveStageAsync(Opportunity opportunity, Guid tenantId, Guid stageId, CancellationToken cancellationToken)
     {
-        var stage=await db.PipelineStages.AsNoTracking().FirstOrDefaultAsync(v=>v.Id==stageId&&v.TenantId==tenantId,ct)
+        var stage = await crm.GetPipelineStageAsync(tenantId, stageId, cancellationToken)
             ?? throw new InvalidOperationException("Invalid pipeline stage.");
-        x.MoveToStage(stage.Id);
-        db.CrmActivitys.Add(Activity(x,tenantId,"Opportunity moved",stage.Name));
-    }
 
-    private static CrmActivity Activity(Opportunity x,Guid tenantId,string subject,string body)=>new()
-    { TenantId=tenantId,LeadId=x.LeadId,CompanyId=x.CompanyId,ContactId=x.ContactId,Type="pipeline",Subject=subject,Body=body };
+        opportunity.MoveToStage(stage.Id);
+        crm.AddActivity(CrmActivity.ForOpportunity(opportunity, "Opportunity moved", stage.Name));
+    }
 }
