@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.AddScoped<IIdentityUnitOfWork, IdentityUnitOfWork>();
         services.AddScoped<IOutboxWriter, IdentityOutboxWriter>();
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ISecurityLifecycleService, SecurityLifecycleService>();
         services.AddScoped<IUserPermissionReader, UserPermissionReader>();
         services.AddScoped<IClientCredentialStore, OpenIddictClientCredentialStore>();
         services.AddScoped<IAccessControlRepository, AccessControlRepository>();

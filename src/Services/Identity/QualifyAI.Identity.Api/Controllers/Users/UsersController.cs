@@ -9,6 +9,7 @@ using QualifyAI.Identity.Application.Users.CreateUser;
 using QualifyAI.Identity.Application.Users.GetUser;
 using QualifyAI.Identity.Application.Users.ListUsers;
 using QualifyAI.Identity.Application.Users.Mfa;
+using QualifyAI.Identity.Application.Users.Security;
 using QualifyAI.Identity.Application.Users.SetPermissions;
 using QualifyAI.Identity.Application.Users.SetRoles;
 using QualifyAI.Identity.Application.Users.SetStatus;
@@ -44,32 +45,18 @@ public sealed class UsersController(ISender sender) : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<AccountResult>> Create(
-        [FromBody] CreateUserRequest request,
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<AccountResult>> Create([FromBody] CreateUserRequest request, CancellationToken cancellationToken)
     {
         if (!TryTenantId(out var tenantId)) return Unauthorized();
         var tenantSlug = User.FindFirst(QualifyAiClaimTypes.TenantSlug)?.Value ?? string.Empty;
-
         var result = await sender.Send(
-            new CreateUserCommand(
-                tenantId,
-                tenantSlug,
-                request.Email,
-                request.Password,
-                request.FirstName,
-                request.LastName,
-                request.Roles ?? []),
+            new CreateUserCommand(tenantId, tenantSlug, request.Email, request.Password, request.FirstName, request.LastName, request.Roles ?? []),
             cancellationToken);
-
         return CreatedAtAction(nameof(Get), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:guid}/roles")]
-    public async Task<IActionResult> SetRoles(
-        Guid id,
-        [FromBody] RolesRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> SetRoles(Guid id, [FromBody] RolesRequest request, CancellationToken cancellationToken)
     {
         if (!TryTenantId(out var tenantId)) return Unauthorized();
         await sender.Send(new SetUserRolesCommand(tenantId, id, request.Roles), cancellationToken);
@@ -77,10 +64,7 @@ public sealed class UsersController(ISender sender) : ControllerBase
     }
 
     [HttpPut("{id:guid}/permissions")]
-    public async Task<IActionResult> SetPermissions(
-        Guid id,
-        [FromBody] PermissionsRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> SetPermissions(Guid id, [FromBody] PermissionsRequest request, CancellationToken cancellationToken)
     {
         if (!TryTenantId(out var tenantId)) return Unauthorized();
         await sender.Send(new SetUserPermissionsCommand(tenantId, id, request.Permissions), cancellationToken);
@@ -88,22 +72,17 @@ public sealed class UsersController(ISender sender) : ControllerBase
     }
 
     [HttpPost("{id:guid}/disable")]
-    public Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken)
-        => SetStatus(id, false, cancellationToken);
+    public Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken) => SetStatus(id, false, cancellationToken);
 
     [HttpPost("{id:guid}/enable")]
-    public Task<IActionResult> Enable(Guid id, CancellationToken cancellationToken)
-        => SetStatus(id, true, cancellationToken);
+    public Task<IActionResult> Enable(Guid id, CancellationToken cancellationToken) => SetStatus(id, true, cancellationToken);
 
     [HttpPost("me/change-password")]
-    public async Task<IActionResult> ChangePassword(
-        [FromBody] ChangePasswordRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
     {
         if (!TryTenantId(out var tenantId) || !TryUserId(out var userId)) return Unauthorized();
-        await sender.Send(
-            new ChangePasswordCommand(tenantId, userId, request.CurrentPassword, request.NewPassword),
-            cancellationToken);
+        await sender.Send(new ChangePasswordCommand(tenantId, userId, request.CurrentPassword, request.NewPassword), cancellationToken);
+        await sender.Send(new RevokeSessionsCommand(tenantId, userId), cancellationToken);
         return NoContent();
     }
 
@@ -115,13 +94,21 @@ public sealed class UsersController(ISender sender) : ControllerBase
     }
 
     [HttpPost("me/mfa/confirm")]
-    public async Task<IActionResult> ConfirmMfa(
-        [FromBody] MfaCodeRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> ConfirmMfa([FromBody] MfaCodeRequest request, CancellationToken cancellationToken)
     {
         if (!TryTenantId(out var tenantId) || !TryUserId(out var userId)) return Unauthorized();
         var valid = await sender.Send(new ConfirmMfaCommand(tenantId, userId, request.Code), cancellationToken);
-        return valid ? NoContent() : BadRequest(new { error = "invalid_code" });
+        if (!valid) return BadRequest(new { error = "invalid_code" });
+        await sender.Send(new RevokeSessionsCommand(tenantId, userId), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("me/mfa/recovery-codes")]
+    public async Task<ActionResult<IReadOnlyCollection<string>>> GenerateRecoveryCodes(CancellationToken cancellationToken)
+    {
+        if (!TryTenantId(out var tenantId) || !TryUserId(out var userId)) return Unauthorized();
+        var codes = await sender.Send(new GenerateRecoveryCodesCommand(tenantId, userId), cancellationToken);
+        return Ok(codes);
     }
 
     [HttpDelete("me/mfa")]
@@ -129,6 +116,15 @@ public sealed class UsersController(ISender sender) : ControllerBase
     {
         if (!TryTenantId(out var tenantId) || !TryUserId(out var userId)) return Unauthorized();
         await sender.Send(new DisableMfaCommand(tenantId, userId), cancellationToken);
+        await sender.Send(new RevokeSessionsCommand(tenantId, userId), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("me/revoke-sessions")]
+    public async Task<IActionResult> RevokeSessions(CancellationToken cancellationToken)
+    {
+        if (!TryTenantId(out var tenantId) || !TryUserId(out var userId)) return Unauthorized();
+        await sender.Send(new RevokeSessionsCommand(tenantId, userId), cancellationToken);
         return NoContent();
     }
 
@@ -146,13 +142,7 @@ public sealed class UsersController(ISender sender) : ControllerBase
         => Guid.TryParse(User.FindFirstValue("sub"), out userId);
 }
 
-public sealed record CreateUserRequest(
-    string Email,
-    string Password,
-    string FirstName,
-    string LastName,
-    string[]? Roles);
-
+public sealed record CreateUserRequest(string Email, string Password, string FirstName, string LastName, string[]? Roles);
 public sealed record RolesRequest(string[] Roles);
 public sealed record PermissionsRequest(string[] Permissions);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);

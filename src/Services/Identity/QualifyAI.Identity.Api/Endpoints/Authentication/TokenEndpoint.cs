@@ -17,6 +17,8 @@ namespace QualifyAI.Identity.Api.Endpoints.Authentication;
 
 public static class TokenEndpoint
 {
+    private const string SecurityStampClaim = "qai_security_stamp";
+
     public static IEndpointRouteBuilder MapTokenEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapPost("/connect/token", HandleAsync).AllowAnonymous();
@@ -34,33 +36,13 @@ public static class TokenEndpoint
             ?? throw new InvalidOperationException("OpenIddict request is unavailable.");
 
         if (request.IsPasswordGrantType())
-        {
-            return await HandlePasswordGrantAsync(
-                request,
-                userManager,
-                permissionReader,
-                sender,
-                cancellationToken);
-        }
+            return await HandlePasswordGrantAsync(request, userManager, permissionReader, sender, cancellationToken);
 
         if (request.IsRefreshTokenGrantType())
-        {
-            return await HandleRefreshGrantAsync(
-                httpContext,
-                request,
-                userManager,
-                permissionReader,
-                sender,
-                cancellationToken);
-        }
+            return await HandleRefreshGrantAsync(httpContext, request, userManager, permissionReader, sender, cancellationToken);
 
         if (request.IsClientCredentialsGrantType())
-        {
-            return await HandleClientCredentialsGrantAsync(
-                request,
-                sender,
-                cancellationToken);
-        }
+            return await HandleClientCredentialsGrantAsync(request, sender, cancellationToken);
 
         return Results.BadRequest(new { error = "unsupported_grant_type" });
     }
@@ -76,13 +58,9 @@ public static class TokenEndpoint
         if (string.IsNullOrWhiteSpace(tenantSlug))
             return Results.BadRequest(new { error = "tenant_required" });
 
-        var access = await sender.Send(
-            new ResolveTenantAccessQuery(tenantSlug),
-            cancellationToken);
-
+        var access = await sender.Send(new ResolveTenantAccessQuery(tenantSlug), cancellationToken);
         if (access is null || !access.TenantActive)
             return Results.BadRequest(new { error = "invalid_tenant" });
-
         if (!access.LicenseUsable)
             return Results.Json(new { error = "license_inactive" }, statusCode: StatusCodes.Status403Forbidden);
 
@@ -101,24 +79,15 @@ public static class TokenEndpoint
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
-
         var mfaResult = await ValidateMfaAsync(request, user, userManager);
         if (mfaResult is not null)
             return mfaResult;
 
-        var principal = await CreateUserPrincipalAsync(
-            user,
-            access,
-            userManager,
-            permissionReader,
-            cancellationToken);
-
+        var principal = await CreateUserPrincipalAsync(user, access, userManager, permissionReader, cancellationToken);
         principal.SetScopes(request.GetScopes().Union(["qualifyai-api", "offline_access"]));
         principal.SetResources("qualifyai-api");
 
-        return Results.SignIn(
-            principal,
-            authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        return Results.SignIn(principal, authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 
     private static async Task<IResult> HandleRefreshGrantAsync(
@@ -129,9 +98,7 @@ public static class TokenEndpoint
         ISender sender,
         CancellationToken cancellationToken)
     {
-        var authentication = await httpContext.AuthenticateAsync(
-            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-
+        var authentication = await httpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         var subject = authentication.Principal?.GetClaim(Claims.Subject);
         if (!Guid.TryParse(subject, out var userId))
             return Results.Unauthorized();
@@ -140,26 +107,20 @@ public static class TokenEndpoint
         if (user is null || !user.IsActive || await userManager.IsLockedOutAsync(user))
             return Results.Unauthorized();
 
-        var access = await sender.Send(
-            new ResolveTenantAccessQuery(user.TenantSlug),
-            cancellationToken);
+        var tokenStamp = authentication.Principal?.GetClaim(SecurityStampClaim);
+        if (string.IsNullOrWhiteSpace(tokenStamp) ||
+            !string.Equals(tokenStamp, user.SecurityStamp, StringComparison.Ordinal))
+            return Results.Unauthorized();
 
+        var access = await sender.Send(new ResolveTenantAccessQuery(user.TenantSlug), cancellationToken);
         if (access is null || !access.TenantActive || !access.LicenseUsable)
             return Results.Unauthorized();
 
-        var principal = await CreateUserPrincipalAsync(
-            user,
-            access,
-            userManager,
-            permissionReader,
-            cancellationToken);
-
+        var principal = await CreateUserPrincipalAsync(user, access, userManager, permissionReader, cancellationToken);
         principal.SetScopes(request.GetScopes());
         principal.SetResources("qualifyai-api");
 
-        return Results.SignIn(
-            principal,
-            authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        return Results.SignIn(principal, authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 
     private static async Task<IResult> HandleClientCredentialsGrantAsync(
@@ -170,16 +131,11 @@ public static class TokenEndpoint
         if (string.IsNullOrWhiteSpace(request.ClientId))
             return Results.BadRequest(new { error = "invalid_client" });
 
-        var access = await sender.Send(
-            new ResolveClientAccessQuery(request.ClientId),
-            cancellationToken);
-
+        var access = await sender.Send(new ResolveClientAccessQuery(request.ClientId), cancellationToken);
         if (access is null)
             return Results.Unauthorized();
-
         if (!access.TenantActive)
             return Results.Json(new { error = "tenant_inactive" }, statusCode: StatusCodes.Status403Forbidden);
-
         if (!access.LicenseUsable)
             return Results.Json(new { error = "license_inactive" }, statusCode: StatusCodes.Status403Forbidden);
 
@@ -187,7 +143,6 @@ public static class TokenEndpoint
         var unauthorizedScopes = requestedScopes
             .Where(scope => !access.AllowedScopes.Contains(scope, StringComparer.OrdinalIgnoreCase))
             .ToArray();
-
         if (unauthorizedScopes.Length > 0)
             return Results.BadRequest(new { error = "invalid_scope", scopes = unauthorizedScopes });
 
@@ -202,24 +157,18 @@ public static class TokenEndpoint
 
         if (access.TenantId is Guid tenantId)
         {
-            var tenantSlug = access.TenantSlug
-                ?? throw new InvalidOperationException("Tenant-bound client is missing tenant slug.");
-            var licensePlan = access.LicensePlan
-                ?? throw new InvalidOperationException("Tenant-bound client is missing license plan.");
-            var licenseStatus = access.LicenseStatus
-                ?? throw new InvalidOperationException("Tenant-bound client is missing license status.");
-            var licenseVersion = access.LicenseVersion
-                ?? throw new InvalidOperationException("Tenant-bound client is missing license version.");
-
             identity.SetClaim(QualifyAiClaimTypes.TenantId, tenantId.ToString());
-            identity.SetClaim(QualifyAiClaimTypes.TenantSlug, tenantSlug);
-            identity.SetClaim(QualifyAiClaimTypes.LicensePlan, licensePlan);
-            identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, licenseStatus);
-            identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, licenseVersion.ToString());
+            identity.SetClaim(QualifyAiClaimTypes.TenantSlug, access.TenantSlug);
+            identity.SetClaim(QualifyAiClaimTypes.LicensePlan, access.LicensePlan);
+            identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, access.LicenseStatus);
+            identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, access.LicenseVersion?.ToString());
 
             foreach (var module in access.Modules)
                 identity.AddClaim(new Claim(QualifyAiClaimTypes.Module, module));
         }
+
+        foreach (var permission in access.Permissions)
+            identity.AddClaim(new Claim(QualifyAiClaimTypes.Permission, permission));
 
         identity.SetDestinations(_ => [Destinations.AccessToken]);
 
@@ -227,9 +176,7 @@ public static class TokenEndpoint
         principal.SetScopes(requestedScopes.Length > 0 ? requestedScopes : access.AllowedScopes);
         principal.SetResources("qualifyai-api");
 
-        return Results.SignIn(
-            principal,
-            authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        return Results.SignIn(principal, authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 
     private static async Task<IResult?> ValidateMfaAsync(
@@ -244,12 +191,16 @@ public static class TokenEndpoint
         if (string.IsNullOrWhiteSpace(code))
             return Results.Json(new { error = "mfa_required" }, statusCode: StatusCodes.Status401Unauthorized);
 
-        var valid = await userManager.VerifyTwoFactorTokenAsync(
+        var normalizedCode = code.Replace(" ", string.Empty).Replace("-", string.Empty);
+        var authenticatorValid = await userManager.VerifyTwoFactorTokenAsync(
             user,
             TokenOptions.DefaultAuthenticatorProvider,
-            code.Replace(" ", string.Empty).Replace("-", string.Empty));
+            normalizedCode);
+        if (authenticatorValid)
+            return null;
 
-        return valid
+        var recoveryResult = await userManager.RedeemTwoFactorRecoveryCodeAsync(user, normalizedCode);
+        return recoveryResult.Succeeded
             ? null
             : Results.Json(new { error = "invalid_mfa_code" }, statusCode: StatusCodes.Status401Unauthorized);
     }
@@ -274,19 +225,13 @@ public static class TokenEndpoint
         identity.SetClaim(QualifyAiClaimTypes.LicensePlan, access.LicensePlan);
         identity.SetClaim(QualifyAiClaimTypes.LicenseStatus, access.LicenseStatus);
         identity.SetClaim(QualifyAiClaimTypes.LicenseVersion, access.LicenseVersion.ToString());
+        identity.SetClaim(SecurityStampClaim, user.SecurityStamp ?? string.Empty);
 
         var storageRoles = await userManager.GetRolesAsync(user);
         foreach (var storageRole in storageRoles)
-        {
-            var displayRole = TenantRoleNameCodec.ToDisplayName(user.TenantId, storageRole);
-            identity.AddClaim(new Claim(Claims.Role, displayRole));
-        }
+            identity.AddClaim(new Claim(Claims.Role, TenantRoleNameCodec.ToDisplayName(user.TenantId, storageRole)));
 
-        var permissions = await permissionReader.ListAsync(
-            user.TenantId,
-            user.Id,
-            cancellationToken);
-
+        var permissions = await permissionReader.ListAsync(user.TenantId, user.Id, cancellationToken);
         foreach (var permission in permissions)
             identity.AddClaim(new Claim(QualifyAiClaimTypes.Permission, permission));
 
@@ -297,6 +242,7 @@ public static class TokenEndpoint
         {
             Claims.Name or Claims.Email or Claims.Role
                 => [Destinations.AccessToken, Destinations.IdentityToken],
+            SecurityStampClaim => [],
             _ => [Destinations.AccessToken]
         });
 
