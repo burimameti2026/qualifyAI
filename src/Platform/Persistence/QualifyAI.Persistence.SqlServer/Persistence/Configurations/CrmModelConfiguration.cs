@@ -14,6 +14,6 @@ internal static class CrmModelConfiguration
         builder.Entity<Opportunity>().Property(x => x.LossReason).HasMaxLength(1000);
         builder.Entity<Pipeline>().HasIndex(x => new { x.TenantId, x.IsDefault });
         builder.Entity<PipelineStage>().HasIndex(x => new { x.TenantId, x.PipelineId, x.SortOrder }).IsUnique();
-        builder.Entity<PipelineStage>().Property(x => x.Probability).HasPrecision(5, 2);
+        builder.Entity<PipelineStage>().Property(x => x.Probability).HasColumnType("decimal(5,2)");
     }
 }

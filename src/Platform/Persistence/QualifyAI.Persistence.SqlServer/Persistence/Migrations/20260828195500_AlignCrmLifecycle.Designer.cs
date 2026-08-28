@@ -1965,7 +1965,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Probability")
-                        .HasPrecision(5, 2);
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");

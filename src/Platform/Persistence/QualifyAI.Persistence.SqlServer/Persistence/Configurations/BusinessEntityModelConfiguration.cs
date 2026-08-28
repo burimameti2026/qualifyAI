@@ -12,6 +12,14 @@ internal static class BusinessEntityModelConfiguration
             if (typeof(Entity).IsAssignableFrom(entityType.ClrType))
                 builder.Entity(entityType.ClrType).HasKey(nameof(Entity.Id));
 
+            foreach (var property in entityType.GetProperties()
+                         .Where(x => x.ClrType == typeof(decimal) || x.ClrType == typeof(decimal?)))
+            {
+                builder.Entity(entityType.ClrType)
+                    .Property(property.Name)
+                    .HasColumnType("decimal(18,2)");
+            }
+
         }
     }
 }
