@@ -146,7 +146,7 @@ services:
       SERVICE_NAME: identity-api
       SERVICE_ADDRESS: identity-api
       SERVICE_PORT: "8080"
-      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-Admin123!}
+      IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD:-Admin123!ChangeMe}
       ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=QualifyAI_IdentityDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
       Services__TenantManagement: http://platform-api:8080/internal
       Identity__Issuer: http://identity-api:8080

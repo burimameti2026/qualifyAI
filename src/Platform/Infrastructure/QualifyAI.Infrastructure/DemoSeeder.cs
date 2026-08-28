@@ -18,7 +18,7 @@ public sealed class DemoSeeder(AppDbContext db, IPasswordService passwords)
             TenantId = tenant.Id,
             Email = "admin@demo.local",
             DisplayName = "Demo Admin",
-            PasswordHash = passwords.Hash("Admin123!")
+            PasswordHash = passwords.Hash("Admin123!ChangeMe")
         };
         db.AppUsers.Add(admin);
 

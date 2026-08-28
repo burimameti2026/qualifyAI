@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $tenant = "demo"
 $email = "admin@demo.local"
-$password = "Admin123!"
+$password = "Admin123!ChangeMe"
 
 $token = Invoke-RestMethod -Method Post -Uri "http://localhost:8081/connect/token" -ContentType "application/x-www-form-urlencoded" -Body @{
     grant_type = "password"
