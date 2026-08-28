@@ -3,7 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.Application;
 using QualifyAI.Application.Abstractions.Persistence;
-using QualifyAI.Infrastructure.Messaging.Consumers;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Repositories;
 
@@ -29,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IdentityEntitlementInboxProcessor>();
 
         services.AddScoped<ITenantContext, TenantContext>();
+        services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
         services.AddScoped<IAiProvider, LocalAiProvider>();
         services.AddScoped<IAiTool, CreateLeadTool>();
