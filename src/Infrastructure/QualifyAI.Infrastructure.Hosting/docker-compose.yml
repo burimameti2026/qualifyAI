@@ -10,10 +10,6 @@ x-api-common: &api-common
     RabbitMq__Host: rabbitmq
     RabbitMq__Username: ${RABBITMQ_USER:-qualifyai}
     RabbitMq__Password: ${RABBITMQ_PASSWORD:-QualifyAI_Rabbit_ChangeMe!}
-  depends_on:
-    rabbitmq: { condition: service_healthy }
-    redis: { condition: service_healthy }
-    consul: { condition: service_healthy }
 
 services:
   sqlserver:
@@ -138,11 +134,6 @@ services:
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
-    depends_on:
-      mongodb: { condition: service_healthy }
-      rabbitmq: { condition: service_healthy }
-      redis: { condition: service_healthy }
-      consul: { condition: service_healthy }
 
   identity-api:
     <<: *api-common
@@ -173,9 +164,6 @@ services:
       CONSUL_HTTP_ADDR: http://consul:8500
       SEQ_URL: http://seq:5341
     networks: [qualifyai]
-    depends_on:
-      - platform-api
-      - identity-api
     restart: unless-stopped
 
 networks:
