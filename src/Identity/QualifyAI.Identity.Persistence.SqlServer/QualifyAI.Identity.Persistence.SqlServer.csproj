@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../Shared/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
+    <ProjectReference Include="../QualifyAI.Identity.Domain/QualifyAI.Identity.Domain.csproj" />
+    <ProjectReference Include="../QualifyAI.Identity.Application/QualifyAI.Identity.Application.csproj" />
+    <ProjectReference Include="../../Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" />
+  </ItemGroup>
+</Project>

@@ -5,16 +5,9 @@ $violations = New-Object System.Collections.Generic.List[string]
 
 function Get-ServiceRoots {
     $roots = @(
-        (Join-Path $repoRoot 'src/Business'),
-        (Join-Path $repoRoot 'src/Services/Identity')
+        (Join-Path $repoRoot 'src/Platform'),
+        (Join-Path $repoRoot 'src/Identity')
     )
-
-    $servicesRoot = Join-Path $repoRoot 'src/Services'
-    if (Test-Path $servicesRoot) {
-        Get-ChildItem $servicesRoot -Directory |
-            Where-Object { $_.Name -ne 'Identity' } |
-            ForEach-Object { $roots += $_.FullName }
-    }
 
     return $roots | Where-Object { Test-Path $_ }
 }
@@ -39,9 +32,9 @@ foreach ($serviceRoot in Get-ServiceRoots) {
 
 Write-Host 'Checking API persistence leaks...'
 $legacyApiAllowList = @(
-    'src/Business/QualifyAI.Api/ModuleEndpoints.cs',
-    'src/Business/QualifyAI.Api/ExtendedAdminEndpoints.cs',
-    'src/Business/QualifyAI.Api/PublicChatEndpoints.cs'
+    'src/Platform/Presentation/QualifyAI.Api/ModuleEndpoints.cs',
+    'src/Platform/Presentation/QualifyAI.Api/ExtendedAdminEndpoints.cs',
+    'src/Platform/Presentation/QualifyAI.Api/PublicChatEndpoints.cs'
 )
 
 $apiFiles = Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter '*.cs' |

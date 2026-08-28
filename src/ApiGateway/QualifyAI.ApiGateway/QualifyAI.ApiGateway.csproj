@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="Yarp.ReverseProxy" />
-    <ProjectReference Include="../../QualifyAI.ServiceDefaults/QualifyAI.ServiceDefaults.csproj" />
+    <ProjectReference Include="../../Shared/QualifyAI.ServiceDefaults/QualifyAI.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>

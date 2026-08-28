@@ -115,7 +115,7 @@ services:
     container_name: qualifyai-platform-api
     build:
       context: .
-      dockerfile: src/Business/QualifyAI.Api/Dockerfile
+      dockerfile: src/Platform/Presentation/QualifyAI.Api/Dockerfile
     environment:
       <<: *api-environment
       SERVICE_NAME: platform-api
@@ -145,7 +145,7 @@ services:
     container_name: qualifyai-identity-api
     build:
       context: .
-      dockerfile: src/Services/Identity/QualifyAI.Identity.Api/Dockerfile
+      dockerfile: src/Identity/QualifyAI.Identity.Api/Dockerfile
     environment:
       <<: *api-environment
       SERVICE_NAME: identity-api
