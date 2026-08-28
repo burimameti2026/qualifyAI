@@ -495,7 +495,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -608,7 +608,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal?>("AnnualRevenue")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<string>("Country")
                         .IsRequired()
@@ -1071,16 +1071,16 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Accuracy")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<decimal>("Cost")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<decimal>("Groundedness")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<long>("LatencyMs")
                         .HasColumnType("bigint");
@@ -1125,7 +1125,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("OverallScore")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1469,7 +1469,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("ImpactScore")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<int>("Occurrences")
                         .HasColumnType("int");
@@ -1551,7 +1551,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("EstimatedValue")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<string>("IntentSummary")
                         .IsRequired()
@@ -1765,7 +1765,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal>("Value")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.HasKey("Id");
 
@@ -1813,7 +1813,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<Guid?>("CompanyId")
                         .HasColumnType("uniqueidentifier");
@@ -1963,8 +1963,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Probability")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                        .HasPrecision(5, 2);
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
@@ -2005,7 +2004,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("MonthlyPrice")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2126,7 +2125,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal>("InfluencedRevenue")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<Guid?>("LeadId")
                         .HasColumnType("uniqueidentifier");
@@ -2696,7 +2695,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("Quantity")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(18, 2);
 
                     b.Property<DateTime>("RecordedAtUtc")
                         .HasColumnType("datetime2");
