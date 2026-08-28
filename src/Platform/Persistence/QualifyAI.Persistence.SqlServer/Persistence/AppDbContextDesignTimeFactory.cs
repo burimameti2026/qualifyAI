@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace QualifyAI.Infrastructure;
+namespace QualifyAI.Persistence.SqlServer;
 
 public sealed class AppDbContextDesignTimeFactory : IDesignTimeDbContextFactory<AppDbContext>
 {

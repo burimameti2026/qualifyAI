@@ -3,7 +3,7 @@ using QualifyAI.Domain;
 using QualifyAI.Persistence.SqlServer.Configurations;
 using QualifyAI.Persistence.SqlServer.Projections;
 
-namespace QualifyAI.Infrastructure;
+namespace QualifyAI.Persistence.SqlServer;
 
 /// <summary>
 /// Single relational persistence boundary for the Business service.
