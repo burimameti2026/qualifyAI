@@ -21,7 +21,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddIdentityInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        bool allowDevelopmentHttp = false)
     {
         services.AddDbContext<IdentityDbContext>(options =>
         {
@@ -68,7 +69,11 @@ public static class DependencyInjection
                 options.DisableAccessTokenEncryption();
                 options.AddDevelopmentEncryptionCertificate();
                 options.AddDevelopmentSigningCertificate();
-                options.UseAspNetCore().EnableTokenEndpointPassthrough();
+                var aspNetCore = options.UseAspNetCore()
+                    .EnableTokenEndpointPassthrough();
+
+                if (allowDevelopmentHttp)
+                    aspNetCore.DisableTransportSecurityRequirement();
             })
             .AddValidation(options =>
             {

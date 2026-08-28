@@ -11,7 +11,9 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddIdentityApplication();
-builder.Services.AddIdentityInfrastructure(builder.Configuration);
+builder.Services.AddIdentityInfrastructure(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 builder.Services.AddQualifyAiMessaging(builder.Configuration);
 
 var app = builder.Build();
