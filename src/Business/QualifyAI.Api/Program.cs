@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using QualifyAI.Api;
 using QualifyAI.Api.Security;
+using QualifyAI.Api.Modules;
 using QualifyAI.Application;
 using QualifyAI.BuildingBlocks.Application.Behaviors;
 using QualifyAI.BuildingBlocks.Application.Security;
@@ -24,6 +25,7 @@ builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ModuleEntitle
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
 builder.Services.AddBusinessInfrastructure(builder.Configuration);
+builder.Services.AddPlatformModules(builder.Configuration);
 builder.Services.AddScoped<IRequestSecurityContext, BusinessRequestSecurityContext>();
 builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
 
@@ -77,11 +79,13 @@ app.MapControllers();
 app.MapHub<ConversationHub>("/hubs/conversations");
 app.MapPublicChat();
 app.MapExtendedAdmin();
+app.MapPlatformModules();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
+    await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
 
     if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DemoSeed:Enabled"))
         await scope.ServiceProvider.GetRequiredService<DemoSeeder>().SeedAsync();

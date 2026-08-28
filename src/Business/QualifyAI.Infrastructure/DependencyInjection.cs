@@ -3,8 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.Application;
 using QualifyAI.Application.Abstractions.Persistence;
-using QualifyAI.BuildingBlocks.Messaging.MassTransit;
-using QualifyAI.Infrastructure.Messaging.Consumers;
 using QualifyAI.Infrastructure.Persistence;
 using QualifyAI.Infrastructure.Persistence.Repositories;
 
@@ -28,13 +26,6 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowAutomationRepository, WorkflowAutomationRepository>();
         services.AddScoped<ITenantEntitlementRepository, TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
-
-        services.AddQualifyAiMessaging(configuration, bus =>
-        {
-            bus.AddConsumer<TenantCreatedConsumer>();
-            bus.AddConsumer<TenantStatusChangedConsumer>();
-            bus.AddConsumer<TenantLicenseChangedConsumer>();
-        });
 
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();

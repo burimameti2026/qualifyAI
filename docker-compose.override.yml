@@ -33,24 +33,32 @@ services:
   portainer:
     ports: ["9000:9000", "9443:9443"]
 
-  business-api:
+  platform-api:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: business-api
-      SERVICE_ADDRESS: business-api
+      SERVICE_NAME: platform-api
+      SERVICE_ADDRESS: platform-api
       SERVICE_PORT: "8080"
       CONSUL_HTTP_ADDR: http://consul:8500
       Consul__Address: http://consul:8500
       SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
       ConnectionStrings__DefaultConnection: "Server=${DB_SERVER};Database=QualifyAI_Business;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER};Database=QualifyAI_AutomationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER};Database=QualifyAI_NotificationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER}
       RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin"
+      Mongo__Database: QualifyAI_Knowledge
+      OpenAI__ApiKey: ${OPENAI_API_KEY}
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
     ports: ["8080:8080"]
@@ -69,7 +77,7 @@ services:
       ConnectionStrings__IdentityDb: "Server=${DB_SERVER};Database=QualifyAI_IdentityDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Issuer: http://identity-api:8080
       Identity__Audience: qualifyai-api
-      Services__TenantManagement: http://business-api:8080/internal
+      Services__TenantManagement: http://platform-api:8080/internal
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER}
@@ -77,108 +85,7 @@ services:
       IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD}
     ports: ["8081:8080"]
 
-  automation-api:
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: automation-api
-      SERVICE_ADDRESS: automation-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
-      Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
-      Seq__Url: http://seq:5341
-      ConnectionStrings__AutomationDb: "Server=${DB_SERVER};Database=QualifyAI_AutomationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Authority: http://identity-api:8080
-      Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-    ports: ["8082:8080"]
-
-  notifications-api:
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: notifications-api
-      SERVICE_ADDRESS: notifications-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
-      Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
-      Seq__Url: http://seq:5341
-      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER};Database=QualifyAI_NotificationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Authority: http://identity-api:8080
-      Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-    ports: ["8083:8080"]
-
-  knowledge-api:
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: knowledge-api
-      SERVICE_ADDRESS: knowledge-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
-      Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
-      Seq__Url: http://seq:5341
-      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Authority: http://identity-api:8080
-      Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin"
-      Mongo__Database: QualifyAI_Knowledge
-    ports: ["8084:8080"]
-
-  aiorchestration-api:
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: aiorchestration-api
-      SERVICE_ADDRESS: aiorchestration-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
-      Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
-      Seq__Url: http://seq:5341
-      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Authority: http://identity-api:8080
-      Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-      OpenAI__ApiKey: ${OPENAI_API_KEY}
-    ports: ["8085:8080"]
-
-  integrations-api:
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: integrations-api
-      SERVICE_ADDRESS: integrations-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
-      Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
-      Seq__Url: http://seq:5341
-      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Authority: http://identity-api:8080
-      Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-    ports: ["8086:8080"]
-
   api-gateway:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
     ports: ["10000:8080"]

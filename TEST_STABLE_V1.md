@@ -59,6 +59,6 @@ For any failure inspect Seq first: `http://localhost:5341`.
 For container logs:
 
 ```powershell
-docker compose logs --tail 200 business-api
+docker compose logs --tail 200 platform-api
 docker compose logs --tail 200 identity-api
 ```

@@ -1,6 +1,7 @@
 # QualifyAI local Docker stack
 
-The solution root is the single entry point for all backend APIs and their infrastructure.
+The solution root is the single entry point for the modular platform API, Identity, API Gateway,
+and their infrastructure.
 The Angular admin UI lives in the separate `qualifyai-admin` repository and is not built by this compose project.
 
 ## Start
@@ -36,13 +37,8 @@ You can also run `./start-all.ps1` from PowerShell.
 | Component | URL |
 |---|---|
 | API Gateway | http://localhost:10000 |
-| Business API | http://localhost:8080/swagger |
+| Platform API | http://localhost:8080/swagger |
 | Identity API | http://localhost:8081/swagger |
-| Automation API | http://localhost:8082/swagger |
-| Notifications API | http://localhost:8083/swagger |
-| Knowledge API | http://localhost:8084/swagger |
-| AI Orchestration API | http://localhost:8085/swagger |
-| Integrations API | http://localhost:8086/swagger |
 | Consul | http://localhost:8500 |
 | RabbitMQ management | http://localhost:15672 |
 | Seq | http://localhost:5341 |

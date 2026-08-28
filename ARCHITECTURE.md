@@ -1,136 +1,110 @@
 # Architecture
 
+## Deployment model
+
+QualifyAI is a modular platform with three deployable .NET hosts:
+
+1. `QualifyAI.ApiGateway` — YARP edge routing.
+2. `QualifyAI.Api` — the authenticated platform HTTP host and SignalR endpoint.
+3. `QualifyAI.Identity.Api` — OpenIddict, users, tenants, roles, permissions and licenses.
+
+Automation, Notifications, Knowledge, AI Orchestration and Integrations are modules inside the
+platform process. Each module retains separate Domain, Application and Infrastructure projects,
+its own EF Core DbContext and its own database. They are not separate Web API processes.
+
 ## Public request path
 
 ```text
 Browser / Angular
        |
        v
-Nginx :8088
-  |            |
-  | /connect   | /api + /hubs
-  v            v
-Identity API   Business API
-OpenIddict     CRM / Sales / Inbox / Ticketing / Billing / Analytics / Admin
+QualifyAI.ApiGateway :10000
+  |                         |
+  | /connect + /identity    | /api + /hubs + /services
+  v                         v
+Identity API                Platform API
+OpenIddict                  CRM / Support / Sales / Modules / SignalR
 ```
 
-Identity is a separate bounded service with its own SQL database. The Business API validates access tokens issued by Identity and resolves the tenant from `tenant_slug` / `tenant_id` claims.
+The Angular UI uses relative URLs through the gateway and never addresses an internal container
+directly.
 
-## Service architecture rule
+## HTTP contract
 
-All transactional services follow the same dependency direction:
+- `/connect/*` and `/identity/*` route to Identity.
+- `/api/*` and `/hubs/*` route to the platform API.
+- `/services/{module}/*` is a compatibility route to `/api/modules/{module}/*`.
+
+## Application dependency rule
+
+All modules follow the same dependency direction:
 
 ```text
-API / Controller / Endpoint
-        |
-        v
-Application Command / Query
-        |
-        v
-Handler / Application Service
-        |
-        v
-Repository Contract + Unit of Work
-        |
-        v
-Infrastructure Repository
-        |
-        v
-DbContext / External Store
-        |
-        v
-Domain Aggregate
+HTTP Endpoint
+    -> Application Command / Query
+    -> Handler / Application Service
+    -> Repository Contract + Unit of Work
+    -> Infrastructure Repository
+    -> DbContext / External Store
+    -> Domain Aggregate
 ```
 
-API code must not contain business rules. Direct `DbContext` access from API endpoints is legacy code and is migrated feature-by-feature behind application contracts.
+API code must not contain business rules. Direct `DbContext` access from API endpoints is legacy
+code and is migrated feature-by-feature behind application contracts.
 
-## Bounded contexts
+## Module boundaries
 
-A bounded context exists only when there is a real domain ownership boundary: different invariants, lifecycle, security model, transaction boundary, scaling characteristic or persistence technology. A folder, screen, entity, use case, command or feature is not automatically a bounded context.
+A module exists when there is a real domain ownership, persistence, lifecycle or integration
+boundary. A screen, entity or folder alone is not a module.
 
-Inside one microservice, related aggregates may share the same relational persistence boundary. We intentionally avoid creating one DbContext per feature.
+Each module keeps the following shape:
 
-## DbContext policy
+```text
+<Module>.Domain
+<Module>.Application
+<Module>.Infrastructure
+```
 
-- Default: **one relational DbContext per microservice**.
-- A service may use **up to 4–5 contexts only when there are genuinely separate persistence or transaction boundaries**.
-- Do not create `CrmDbContext`, `TicketDbContext`, `BillingDbContext`, etc. only to mirror feature folders when those areas are part of one transactional service/database.
-- Organize a large context with domain-oriented `Persistence/Configurations` and repositories rather than splitting it artificially.
-- Separate stores such as MongoDB/vector storage are adapters, not a reason to multiply relational DbContexts.
-- Cross-service synchronization uses integration events/outbox/inbox patterns; services do not share DbContexts.
+The shared platform API owns HTTP composition only. This keeps modules extractable if a future
+scaling or operational requirement justifies moving one back into a separate process.
 
-Current intended persistence boundaries:
+## Persistence boundaries
 
-| Service | Relational DbContext policy | Notes |
+| Module | Relational context | Additional store |
 | --- | --- | --- |
-| Identity | 1 Identity context | Users, roles, permissions, tenants, licensing, clients, outbox |
-| Business | 1 Business context | CRM, sales, inbox/support, workflows, billing, analytics, white-label |
-| Automation | 1 Automation context | Definitions and executions owned by Automation |
-| Knowledge | 1 Knowledge SQL context | Mongo/vector store is a separate adapter for unstructured chunks |
-| Integrations | 1 Integrations context | Connections and integration metadata |
-| Notifications | 1 Notifications context | Notification persistence/delivery state |
-| AI Orchestration | 1 AI orchestration context | Agent metadata and runtime configuration |
+| Platform | `AppDbContext` | Redis cache |
+| Identity | `IdentityDbContext` | — |
+| Automation | `AutomationDbContext` | — |
+| Notifications | `NotificationsDbContext` | — |
+| Knowledge | `KnowledgeDbContext` | MongoDB chunks |
+| AI Orchestration | `AIOrchestrationDbContext` | provider APIs |
+| Integrations | `IntegrationsDbContext` | provider APIs |
 
-## Specialized services
-
-Automation, Notifications, Knowledge, AI Orchestration and Integrations remain separate workloads because their execution/storage/integration characteristics differ from conventional transactional business modules. They share RabbitMQ/Consul/Seq infrastructure.
-
-They should follow the same four-layer structure used by Identity:
-
-```text
-<Service>.Domain
-<Service>.Application
-<Service>.Infrastructure
-<Service>.Api
-```
-
-Within those projects, organize code by domain capability, for example:
-
-```text
-Application/
-  Agents/
-    Commands/
-    Queries/
-  Runtime/
-  Tools/
-
-Infrastructure/
-  Persistence/
-    Configurations/
-    Repositories/
-  Messaging/
-  Integrations/
-```
-
-This organization does not imply a separate DbContext for every folder.
-
-## Data
-
-- Business DB: `QualifyAI_Business`
-- Identity DB: `QualifyAI_IdentityDb`
-- specialized services: independent databases
-- MongoDB: knowledge/vector/unstructured workloads where enabled
-- Redis: shared cache/idempotency infrastructure
-
-Each service owns its schema. Other services consume published contracts/events rather than querying another service's tables.
+The platform host migrates its module databases during startup. Identity migrates and owns its
+database separately.
 
 ## Authentication
 
-Identity uses ASP.NET Core Identity + OpenIddict:
-
-- password grant for the first-party admin client
-- refresh tokens
-- client credentials for service-to-service clients
-- tenant claims
-- license/entitlement claims
-- roles + permissions
-- lockout
-- authenticator MFA
-- password reset/change
-- user enable/disable
-
-The Angular admin uses `/connect/token` through Nginx. Business and specialized APIs use Identity as their JWT authority.
+Identity uses ASP.NET Core Identity and OpenIddict with password, refresh-token and
+client-credentials flows. It issues tenant, license, module, role and permission claims. The
+platform API validates tokens using Identity as its JWT authority and the `qualifyai-api`
+audience.
 
 ## Messaging and consistency
 
-Identity is authoritative for tenant, licensing and access state. Changes are written transactionally to its outbox and published over RabbitMQ. Other services maintain only the projections they need and must process integration events idempotently through inbox/consumer patterns.
+The platform host configures one MassTransit bus instance with all module consumers. Identity is
+authoritative for tenant, licensing and access state. Identity changes are written to its outbox
+and published through RabbitMQ; module consumers update their projections idempotently through
+their inbox state.
+
+## Infrastructure contract
+
+- SQL Server: external Windows SQL Express in development, configured through the ignored `.env`.
+- MongoDB: knowledge chunk documents.
+- Redis: distributed cache registered through ServiceDefaults.
+- RabbitMQ: integration events and entitlement propagation.
+- Consul: host registration and health discovery.
+- Seq: centralized structured logs.
+- Portainer: local container operations.
+
+The Docker network is `qualifyai-network`.
