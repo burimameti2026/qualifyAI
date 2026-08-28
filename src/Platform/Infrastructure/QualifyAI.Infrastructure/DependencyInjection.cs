@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.Application;
@@ -13,12 +14,21 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddBusinessInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        bool allowDevelopmentModelDrift = false)
     {
         services.AddDbContext<AppDbContext>(options =>
+        {
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
-                sql => sql.EnableRetryOnFailure()));
+                sql => sql.EnableRetryOnFailure());
+
+            // Local development must remain startable while model changes are being
+            // captured in explicit migrations. Production keeps EF's strict guard.
+            if (allowDevelopmentModelDrift)
+                options.ConfigureWarnings(warnings =>
+                    warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+        });
 
         services.AddScoped<IBusinessUnitOfWork, BusinessUnitOfWork>();
         services.AddScoped<ICrmRepository, CrmRepository>();

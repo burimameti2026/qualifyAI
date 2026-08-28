@@ -24,7 +24,9 @@ builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LicenseEntitl
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ModuleEntitlementBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
-builder.Services.AddBusinessInfrastructure(builder.Configuration);
+builder.Services.AddBusinessInfrastructure(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 builder.Services.AddPlatformModules(builder.Configuration);
 builder.Services.AddScoped<IRequestSecurityContext, BusinessRequestSecurityContext>();
 builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
