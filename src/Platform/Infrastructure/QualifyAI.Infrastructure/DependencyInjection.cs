@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QualifyAI.Application;
 using QualifyAI.Application.Abstractions.Persistence;
+using QualifyAI.Infrastructure.Messaging.Consumers;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Repositories;
 
