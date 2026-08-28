@@ -26,8 +26,8 @@ The Angular admin UI lives in the separate `qualifyai-admin` repository and is n
 4. Build and start the complete backend:
 
    ```powershell
-   docker compose up -d --build
-   docker compose ps
+   docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting up -d --build
+   docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting ps
    ```
 
 You can also run `./start-all.ps1` from PowerShell.
@@ -49,9 +49,9 @@ Run the Angular UI from `qualifyai-admin` on `http://localhost:4200`.
 ## Diagnose and stop
 
 ```powershell
-docker compose logs -f --tail=200
-docker compose ps
-docker compose down
+docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting logs -f --tail=200
+docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting ps
+docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting down
 ```
 
-Use `docker compose down -v` only when you intentionally want to delete all local database and broker data.
+Use `docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting down -v` only when you intentionally want to delete all local database and broker data.

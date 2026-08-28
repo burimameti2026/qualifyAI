@@ -114,7 +114,7 @@ services:
     <<: *api-common
     container_name: qualifyai-platform-api
     build:
-      context: .
+      context: ../../..
       dockerfile: src/Platform/Presentation/QualifyAI.Api/Dockerfile
     environment:
       <<: *api-environment
@@ -144,7 +144,7 @@ services:
     <<: *api-common
     container_name: qualifyai-identity-api
     build:
-      context: .
+      context: ../../..
       dockerfile: src/Identity/QualifyAI.Identity.Api/Dockerfile
     environment:
       <<: *api-environment
@@ -159,7 +159,7 @@ services:
   api-gateway:
     container_name: qualifyai-api-gateway
     build:
-      context: .
+      context: ../../..
       dockerfile: src/ApiGateway/QualifyAI.ApiGateway/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
