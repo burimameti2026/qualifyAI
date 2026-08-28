@@ -32,6 +32,24 @@ public partial class AlignCrmLifecycle : Migration
             oldClrType: typeof(decimal),
             oldType: "decimal(18,2)");
 
+        migrationBuilder.AlterColumn<string>(
+            name: "Domain",
+            table: "Companys",
+            type: "nvarchar(253)",
+            maxLength: 253,
+            nullable: false,
+            oldClrType: typeof(string),
+            oldType: "nvarchar(max)");
+
+        migrationBuilder.AlterColumn<string>(
+            name: "Email",
+            table: "Contacts",
+            type: "nvarchar(320)",
+            maxLength: 320,
+            nullable: false,
+            oldClrType: typeof(string),
+            oldType: "nvarchar(max)");
+
         migrationBuilder.CreateIndex(
             name: "IX_Companys_TenantId_Domain",
             table: "Companys",
@@ -69,6 +87,24 @@ public partial class AlignCrmLifecycle : Migration
 
         migrationBuilder.DropColumn(name: "ClosedAtUtc", table: "Opportunitys");
         migrationBuilder.DropColumn(name: "LossReason", table: "Opportunitys");
+
+        migrationBuilder.AlterColumn<string>(
+            name: "Domain",
+            table: "Companys",
+            type: "nvarchar(max)",
+            nullable: false,
+            oldClrType: typeof(string),
+            oldType: "nvarchar(253)",
+            oldMaxLength: 253);
+
+        migrationBuilder.AlterColumn<string>(
+            name: "Email",
+            table: "Contacts",
+            type: "nvarchar(max)",
+            nullable: false,
+            oldClrType: typeof(string),
+            oldType: "nvarchar(320)",
+            oldMaxLength: 320);
 
         migrationBuilder.AlterColumn<decimal>(
             name: "Probability",

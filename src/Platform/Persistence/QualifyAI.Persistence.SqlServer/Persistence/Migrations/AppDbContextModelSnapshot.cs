@@ -619,7 +619,8 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
 
                     b.Property<string>("Domain")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
 
                     b.Property<int?>("Employees")
                         .HasColumnType("int");
@@ -696,7 +697,8 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
