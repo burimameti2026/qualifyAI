@@ -4,11 +4,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OpenIddict.Abstractions;
 using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Domain.Tenants;
 using QualifyAI.Identity.Persistence.SqlServer.Identity;
 using QualifyAI.Identity.Persistence.SqlServer;
+using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace QualifyAI.Identity.Infrastructure.Bootstrap;
 
@@ -29,8 +31,10 @@ public sealed class IdentityBootstrapHostedService(
         var dbContext = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+        var applicationManager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
 
         await dbContext.Database.MigrateAsync(cancellationToken);
+        await EnsureAdminUiClientAsync(applicationManager, cancellationToken);
 
         var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "demo";
         var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "QualifyAI Demo";
@@ -150,6 +154,32 @@ public sealed class IdentityBootstrapHostedService(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static async Task EnsureAdminUiClientAsync(
+        IOpenIddictApplicationManager applicationManager,
+        CancellationToken cancellationToken)
+    {
+        const string clientId = "qualifyai-admin";
+        if (await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is not null)
+            return;
+
+        await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
+        {
+            ClientId = clientId,
+            DisplayName = "QualifyAI Admin UI",
+            ClientType = ClientTypes.Public,
+            ConsentType = ConsentTypes.Implicit,
+            Permissions =
+            {
+                Permissions.Endpoints.Token,
+                Permissions.GrantTypes.Password,
+                Permissions.GrantTypes.RefreshToken,
+                Permissions.Prefixes.Scope + "qualifyai-api",
+                Permissions.Prefixes.Scope + "profile",
+                Permissions.Prefixes.Scope + "email"
+            }
+        }, cancellationToken);
+    }
 
     private static void EnsureSucceeded(IdentityResult result)
     {
