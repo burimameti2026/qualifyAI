@@ -54,7 +54,7 @@ public sealed class EmailOperationsController(AppDbContext db, ITenantContext te
     {
         var email = input.Email.Trim().ToLowerInvariant();
         var contact = await db.Contacts.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Email == email, ct);
-        if (contact is null) { contact = Contact.Create(TenantId, null, "Suppressed", "Recipient", email, "", "suppressed"); db.Contacts.Add(contact); }
+        if (contact is null) { contact = Contact.Create(TenantId, null, "Suppressed", "Recipient", email, "", "subscriber"); db.Contacts.Add(contact); }
         var consent = await db.ConsentRecords.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.ContactId == contact.Id && x.Type == "marketing", ct);
         if (consent is null) { consent = new ConsentRecord { TenantId = TenantId, ContactId = contact.Id, Type = "marketing" }; db.ConsentRecords.Add(consent); }
         consent.Granted = false; consent.RecordedAtUtc = DateTime.UtcNow; consent.Source = string.IsNullOrWhiteSpace(input.Reason) ? "manual-suppression" : input.Reason.Trim();

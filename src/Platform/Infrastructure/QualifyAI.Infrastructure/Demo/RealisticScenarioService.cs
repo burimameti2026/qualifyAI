@@ -113,7 +113,7 @@ public sealed class RealisticScenarioService(AppDbContext db)
         var company = await db.Companys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Domain == prospect.Domain, ct);
         if (company is null) { company = Company.Create(tenantId, prospect.CompanyName, prospect.Domain, prospect.Industry, 86, prospect.Country, 18_400_000m); db.Companys.Add(company); }
         var contact = await db.Contacts.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Email == prospect.Email, ct);
-        if (contact is null) { var names = prospect.ContactName.Split(' ', 2); contact = Contact.Create(tenantId, company.Id, names[0], names.Length > 1 ? names[1] : "", prospect.Email, "+49 30 555 0142", "qualified"); db.Contacts.Add(contact); }
+        if (contact is null) { var names = prospect.ContactName.Split(' ', 2); contact = Contact.Create(tenantId, company.Id, names[0], names.Length > 1 ? names[1] : "", prospect.Email, "+49 30 555 0142", "sql"); db.Contacts.Add(contact); }
         var lead = await db.Leads.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ContactId == contact.Id, ct);
         if (lead is null) { lead = Lead.Create(tenantId, contact.Id, company.Id, "outbound-campaign", 94, 48_000m, "Fleet expansion and freight technology tender; interested reply received."); lead.Qualify(); db.Leads.Add(lead); }
         var opportunity = await db.Opportunitys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.LeadId == lead.Id, ct);
