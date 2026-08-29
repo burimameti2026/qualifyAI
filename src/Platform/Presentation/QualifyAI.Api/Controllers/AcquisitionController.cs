@@ -110,6 +110,96 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
         return Created($"/api/acquisition/prospects/{input.Id}", input);
     }
 
+    [HttpPost("prospects/import")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    [RequestSizeLimit(15_000_000)]
+    public async Task<IActionResult> ImportProspects(ProspectImportRequest input, CancellationToken ct)
+    {
+        if (input.Prospects is null || input.Prospects.Length is < 1 or > 10_000)
+            return BadRequest(new { code = "invalid_batch_size", detail = "Import between 1 and 10,000 companies per batch." });
+        if (string.IsNullOrWhiteSpace(input.Source) || !input.ComplianceConfirmed)
+            return BadRequest(new { code = "source_confirmation_required", detail = "Record the licensed/public source and confirm that this company data may be processed." });
+
+        var tenantId = TenantId;
+        var existing = await db.Prospects.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .Select(x => new { x.Domain, x.Email }).ToListAsync(ct);
+        var domains = existing.Select(x => NormalizeDomain(x.Domain)).Where(x => x.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var emails = existing.Select(x => NormalizeEmail(x.Email)).Where(x => x.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var accepted = new List<Prospect>(input.Prospects.Length);
+        var rejected = 0;
+        var duplicates = 0;
+        var now = DateTime.UtcNow;
+
+        foreach (var row in input.Prospects)
+        {
+            var domain = NormalizeDomain(row.Domain);
+            var email = NormalizeEmail(row.Email);
+            if (string.IsNullOrWhiteSpace(row.CompanyName) || domain.Length == 0)
+            {
+                rejected++;
+                continue;
+            }
+            if (domains.Contains(domain) || (email.Length > 0 && emails.Contains(email)))
+            {
+                duplicates++;
+                continue;
+            }
+
+            var prospect = new Prospect
+            {
+                TenantId = tenantId,
+                CompanyName = row.CompanyName.Trim(),
+                Domain = domain,
+                ContactName = row.ContactName?.Trim() ?? string.Empty,
+                Email = email,
+                JobTitle = row.JobTitle?.Trim() ?? string.Empty,
+                Industry = row.Industry?.Trim() ?? string.Empty,
+                Country = row.Country?.Trim() ?? string.Empty,
+                Source = input.Source.Trim(),
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+            prospect.Evaluate(row.FitScore, row.IntentScore);
+            accepted.Add(prospect);
+            domains.Add(domain);
+            if (email.Length > 0) emails.Add(email);
+        }
+
+        db.Prospects.AddRange(accepted);
+        TargetList? targetList = null;
+        if (!string.IsNullOrWhiteSpace(input.TargetListName) && accepted.Count > 0)
+        {
+            if (input.IcpProfileId.HasValue && !await db.IcpProfiles.AnyAsync(x => x.TenantId == tenantId && x.Id == input.IcpProfileId, ct))
+                return BadRequest(new { code = "icp_not_found", detail = "The selected ideal customer profile does not belong to this tenant." });
+
+            targetList = new TargetList
+            {
+                TenantId = tenantId,
+                Name = input.TargetListName.Trim(),
+                Description = $"Imported from {input.Source.Trim()} on {now:yyyy-MM-dd}. {accepted.Count} unique companies.",
+                IcpProfileId = input.IcpProfileId,
+                Dynamic = false
+            };
+            db.TargetLists.Add(targetList);
+            db.TargetListMembers.AddRange(accepted.Select(prospect => new TargetListMember
+            {
+                TenantId = tenantId,
+                TargetListId = targetList.Id,
+                ProspectId = prospect.Id,
+                AddedAtUtc = now
+            }));
+        }
+        await db.SaveChangesAsync(ct);
+        return Ok(new
+        {
+            received = input.Prospects.Length,
+            imported = accepted.Count,
+            duplicates,
+            rejected,
+            targetListId = targetList?.Id,
+            nextStep = targetList is null ? "create-target-list" : "create-campaign"
+        });
+    }
+
     [HttpPost("prospects/{id:guid}/signals")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> AddSignal(Guid id, ProspectSignal input, CancellationToken ct)
     {
@@ -198,6 +288,16 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
     private static string[] Split(string? value) => (value ?? string.Empty)
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    private static string NormalizeDomain(string? value)
+    {
+        var domain = (value ?? string.Empty).Trim().ToLowerInvariant();
+        domain = domain.Replace("https://", string.Empty).Replace("http://", string.Empty);
+        if (domain.StartsWith("www.")) domain = domain[4..];
+        return domain.Split('/')[0].TrimEnd('.');
+    }
+
+    private static string NormalizeEmail(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
+
     private static readonly DiscoveryCandidate[] DiscoveryCandidates =
     [
         new("NordCargo Solutions", "nordcargo.example", "Logistics", "Germany", 86, "Lukas Meyer", "Head of Operations", "lukas.meyer@nordcargo.example", 92, 81),
@@ -212,6 +312,8 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
 }
 
 public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
+public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
+public sealed record ProspectImportRow(string CompanyName, string Domain, string? ContactName, string? Email, string? JobTitle, string? Industry, string? Country, int FitScore, int IntentScore);
 public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
 public sealed record CampaignInput(Guid TargetListId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
