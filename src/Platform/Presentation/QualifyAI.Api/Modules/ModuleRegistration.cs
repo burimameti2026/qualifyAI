@@ -57,6 +57,7 @@ public static class ModuleRegistration
             bus.AddConsumer<KnowledgeEntitlementConsumer>();
             bus.AddConsumer<AIEntitlementConsumer>();
             bus.AddConsumer<IntegrationsEntitlementConsumer>();
+            bus.AddConsumer<AutomationTriggerConsumer>();
         });
 
         return services;

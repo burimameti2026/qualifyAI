@@ -2,13 +2,14 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure.Demo;
+using QualifyAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Infrastructure.Automation;
 
 public sealed record AutomationExecutionResult(bool Success, string LogJson, string? Error = null);
 
-public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioService scenarios)
+public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioService scenarios, EmailDeliveryService emailDelivery)
 {
     public async Task<AutomationExecutionResult> ExecuteAsync(
         AutomationRule rule,
@@ -119,7 +120,10 @@ public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioS
                 return ("scheduled", $"Next action delay: {ReadInt(action, "hours", 1)} hour(s).");
 
             case "sendemail":
-                return ("blocked", "Email action requires an active email provider connection.");
+                var messageId = ReadGuid(action, "messageId") ?? ReadGuid(run.TriggerDataJson, "messageId");
+                if (!messageId.HasValue) return ("blocked", "Email action requires a messageId from the action or trigger payload.");
+                var delivery = await emailDelivery.SendApprovedAsync(tenantId, messageId.Value, cancellationToken);
+                return delivery.Success ? ("completed", $"Email accepted by provider as {delivery.ProviderMessageId}.") : ("blocked", delivery.Error ?? "Email delivery failed.");
 
             case "bookmeeting":
                 return ("blocked", "Meeting action requires an active calendar provider connection.");
@@ -163,4 +167,13 @@ public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioS
 
     private static int ReadInt(JsonElement element, string name, int fallback) =>
         element.TryGetProperty(name, out var value) && value.TryGetInt32(out var parsed) ? parsed : fallback;
+
+    private static Guid? ReadGuid(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && Guid.TryParse(value.GetString(), out var parsed) ? parsed : null;
+
+    private static Guid? ReadGuid(string json, string name)
+    {
+        try { using var document = JsonDocument.Parse(json); return ReadGuid(document.RootElement, name); }
+        catch { return null; }
+    }
 }

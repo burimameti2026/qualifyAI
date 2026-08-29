@@ -8,6 +8,7 @@ using QualifyAI.Infrastructure.Messaging.Consumers;
 using QualifyAI.Infrastructure.Acquisition;
 using QualifyAI.Infrastructure.Automation;
 using QualifyAI.Infrastructure.Demo;
+using QualifyAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Repositories;
 
@@ -55,6 +56,10 @@ public static class DependencyInjection
         services.AddScoped<CampaignExecutionService>();
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
+        services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
+        services.AddHttpClient<SendGridEmailProvider>();
+        services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
+        services.AddScoped<EmailDeliveryService>();
 
         return services;
     }

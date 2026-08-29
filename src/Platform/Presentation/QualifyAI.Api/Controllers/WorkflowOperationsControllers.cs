@@ -10,6 +10,8 @@ using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.Automation;
 using QualifyAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
+using MassTransit;
+using QualifyAI.Automation.Application.IntegrationEvents;
 
 namespace QualifyAI.Api.Controllers;
 
@@ -37,7 +39,7 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant) :
 [Authorize]
 [RequireModule(QualifyAiModules.Automation)]
 [Route("api/automations")]
-public sealed class AutomationsController(ISender sender, ITenantContext tenant, AppDbContext db, AutomationActionExecutor executor) : ControllerBase
+public sealed class AutomationsController(ISender sender, ITenantContext tenant, AppDbContext db, AutomationActionExecutor executor, IPublishEndpoint publisher) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.AutomationRead)]
@@ -57,10 +59,27 @@ public sealed class AutomationsController(ISender sender, ITenantContext tenant,
     public async Task<IActionResult> Run(Guid id, CancellationToken ct)
         => (await sender.Send(new RunAutomationCommand(tenant.TenantId(), id), ct)) is { } x ? Ok(x) : NotFound();
 
+    [HttpPost("{id:guid}/publish-trigger")]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public async Task<IActionResult> PublishTrigger(Guid id, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        if (!await db.AutomationRules.AnyAsync(x => x.TenantId == tenantId && x.Id == id && x.Active, ct)) return NotFound();
+        var eventId = Guid.NewGuid();
+        await publisher.Publish(new AutomationTriggeredIntegrationEvent(eventId, tenantId, DateTime.UtcNow, Guid.NewGuid(), id), ct);
+        return Accepted(new { eventId, ruleId = id, transport = "rabbitmq" });
+    }
+
     [HttpGet("runs")]
     [RequirePermission(QualifyAiPermissions.AutomationRead)]
     public Task<List<AutomationRun>> Runs(CancellationToken ct) => db.AutomationRuns.AsNoTracking()
         .Where(x => x.TenantId == tenant.TenantId()).OrderByDescending(x => x.CreatedAtUtc).Take(200).ToListAsync(ct);
+
+    [HttpGet("dead-letters")]
+    [RequirePermission(QualifyAiPermissions.AutomationRead)]
+    public Task<List<IntegrationSyncJob>> DeadLetters(CancellationToken ct) => db.IntegrationSyncJobs.AsNoTracking()
+        .Where(x => x.TenantId == tenant.TenantId() && x.Status == "dead-letter")
+        .OrderByDescending(x => x.CreatedAtUtc).Take(200).ToListAsync(ct);
 
     [HttpPost("runs/{runId:guid}/retry")]
     [RequirePermission(QualifyAiPermissions.AutomationManage)]

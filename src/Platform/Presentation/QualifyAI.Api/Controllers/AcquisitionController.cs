@@ -143,6 +143,19 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
     [HttpGet("campaigns")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<List<Campaign>> Campaigns(CancellationToken ct) => db.Campaigns.Where(x => x.TenantId == TenantId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
 
+    [HttpGet("messages")][RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> Messages([FromQuery] OutreachStatus? status, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var query = from message in db.OutreachMessages.AsNoTracking()
+                    join prospect in db.Prospects.AsNoTracking() on message.ProspectId equals prospect.Id
+                    join campaign in db.Campaigns.AsNoTracking() on message.CampaignId equals campaign.Id
+                    where message.TenantId == tenantId && (!status.HasValue || message.Status == status.Value)
+                    orderby message.CreatedAtUtc descending
+                    select new { message.Id, message.CampaignId, campaign = campaign.Name, message.ProspectId, prospect = prospect.CompanyName, prospect.ContactName, prospect.Email, message.Subject, message.Body, message.Status, message.ProviderMessageId, message.SentAtUtc, message.CreatedAtUtc, approvalRequested = db.CrmTasks.Any(task => task.TenantId == tenantId && task.Title == "APPROVAL: Send outreach " + message.Id) };
+        return Ok(await query.Take(200).ToListAsync(ct));
+    }
+
     [HttpPost("campaigns")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> CreateCampaign(CampaignInput input, CancellationToken ct)
     {

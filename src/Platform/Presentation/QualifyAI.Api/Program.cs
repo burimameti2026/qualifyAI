@@ -44,6 +44,8 @@ builder.Services.AddHostedService<RevenueAutomationWorker>();
 builder.Services.AddHostedService<AcquisitionCampaignWorker>();
 builder.Services.Configure<AutomationSchedulerOptions>(builder.Configuration.GetSection("AutomationScheduler"));
 builder.Services.AddHostedService<AutomationSchedulerWorker>();
+builder.Services.Configure<AutomationRetryOptions>(builder.Configuration.GetSection("AutomationRetry"));
+builder.Services.AddHostedService<AutomationRetryWorker>();
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
