@@ -3,6 +3,7 @@ using MediatR;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Application.Licensing;
 using QualifyAI.Identity.Domain.Licensing;
 
 namespace QualifyAI.Identity.Application.Licensing.UpdateLicense;
@@ -38,8 +39,9 @@ public sealed class UpdateLicenseCommandHandler(
         var license = await licenses.GetByTenantIdAsync(request.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("License not found.");
 
+        var modules = LicensePlanCatalog.ValidateModules(request.Plan, request.Modules);
         license.ChangePlan(request.Plan, request.MaxUsers, request.ExpiresAtUtc);
-        license.ReplaceModules(request.Modules);
+        license.ReplaceModules(modules);
 
         QueueLicenseChanged(outbox, license);
         await unitOfWork.SaveChangesAsync(cancellationToken);

@@ -3,6 +3,7 @@ using MediatR;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Application.Licensing;
 using QualifyAI.Identity.Domain.Licensing;
 
 namespace QualifyAI.Identity.Application.Licensing.AssignLicense;
@@ -55,13 +56,14 @@ public sealed class AssignLicenseCommandHandler(
         if (existing is not null)
             throw new InvalidOperationException("Tenant already has a license. Use the license update flow.");
 
+        var modules = LicensePlanCatalog.ValidateModules(request.Plan, request.Modules);
         var license = License.Create(
             request.TenantId,
             request.Plan,
             request.StartsAtUtc,
             request.ExpiresAtUtc,
             request.MaxUsers,
-            request.Modules);
+            modules);
 
         await licenses.AddAsync(license, cancellationToken);
 
