@@ -21,5 +21,16 @@ public class PipelineStage : TenantEntity
         Name=name.Trim(); SortOrder=sortOrder; Probability=probability; Touch();
     }
 }
-public class IcpProfile : TenantEntity { public string Name { get; set; }="Ideal Customer"; public string CriteriaJson { get; set; }="{}"; }
+public class IcpProfile : TenantEntity
+{
+    public string Name { get; set; }="Ideal Customer";
+    public string Industry { get; set; }="";
+    public string CountriesCsv { get; set; }="";
+    public int? MinimumEmployees { get; set; }
+    public int? MaximumEmployees { get; set; }
+    public string IntentKeywordsCsv { get; set; }="";
+    public string CriteriaJson { get; set; }="{}";
+    public bool Active { get; set; }=true;
+    public DateTime? LastDiscoveryAtUtc { get; set; }
+}
 public class LeadScoreExplanation : TenantEntity { public Guid LeadId { get; set; } public string Factor { get; set; }=""; public int Points { get; set; } public string Reason { get; set; }=""; }

@@ -44,6 +44,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<SalesSequence> SalesSequences => Set<SalesSequence>();
     public DbSet<SequenceStep> SequenceSteps => Set<SequenceStep>();
     public DbSet<SequenceEnrollment> SequenceEnrollments => Set<SequenceEnrollment>();
+    public DbSet<Prospect> Prospects => Set<Prospect>();
+    public DbSet<ProspectSignal> ProspectSignals => Set<ProspectSignal>();
+    public DbSet<TargetList> TargetLists => Set<TargetList>();
+    public DbSet<TargetListMember> TargetListMembers => Set<TargetListMember>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<CampaignStep> CampaignSteps => Set<CampaignStep>();
+    public DbSet<CampaignRecipient> CampaignRecipients => Set<CampaignRecipient>();
+    public DbSet<OutreachMessage> OutreachMessages => Set<OutreachMessage>();
+    public DbSet<ProspectReply> ProspectReplies => Set<ProspectReply>();
 
     // Conversations / support
     public DbSet<Channel> Channels => Set<Channel>();
@@ -112,6 +121,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         builder.ConfigureBusinessEntityKeys();
         builder.ConfigurePlatformModel();
         builder.ConfigureCrmModel();
+        builder.ConfigureAcquisitionModel();
         builder.ConfigureConversationSupportModel();
         builder.ConfigureKnowledgeAiModel();
 

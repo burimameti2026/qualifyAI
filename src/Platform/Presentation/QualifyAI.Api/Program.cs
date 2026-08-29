@@ -41,6 +41,7 @@ builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>(
 builder.Services.Configure<RevenueAutomationOptions>(
     builder.Configuration.GetSection("RevenueAutomation"));
 builder.Services.AddHostedService<RevenueAutomationWorker>();
+builder.Services.AddHostedService<AcquisitionCampaignWorker>();
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
