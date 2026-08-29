@@ -57,6 +57,12 @@ public static class DependencyInjection
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
+        services.AddHttpClient<BrevoEmailProvider>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.brevo.com/v3/");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<BrevoEmailProvider>());
         services.AddHttpClient<SendGridEmailProvider>();
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
         services.AddScoped<EmailDeliveryService>();

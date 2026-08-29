@@ -62,6 +62,7 @@ services:
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
       Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
       Email__Smtp__Host: ${SMTP_HOST:-}
       Email__Smtp__Port: ${SMTP_PORT:-587}
       Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}

@@ -13,27 +13,70 @@ namespace QualifyAI.Api.Controllers;
 
 [ApiController, Authorize, RequireModule(QualifyAiModules.Integrations)]
 [Route("api/email-operations")]
-public sealed class EmailOperationsController(AppDbContext db, ITenantContext tenant, EmailDeliveryService delivery) : ControllerBase
+public sealed class EmailOperationsController(
+    AppDbContext db,
+    ITenantContext tenant,
+    EmailDeliveryService delivery,
+    BrevoEmailProvider brevo) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
     [HttpGet("senders"), RequirePermission(QualifyAiPermissions.IntegrationsRead)]
-    public async Task<IActionResult> Senders(CancellationToken ct) => Ok(await db.IntegrationConnections.AsNoTracking()
-        .Where(x => x.TenantId == TenantId && x.Provider == "email-sender").Select(x => new { x.Id, x.Name, x.Status, x.SettingsJson, x.CreatedAtUtc }).ToListAsync(ct));
+    public async Task<IActionResult> Senders(CancellationToken ct)
+    {
+        var senders = await db.IntegrationConnections.AsNoTracking()
+            .Where(x => x.TenantId == TenantId && x.Provider == "email-sender")
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+        return Ok(senders.Select(ToSenderResponse));
+    }
 
     [HttpPost("senders"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
     public async Task<IActionResult> ConfigureSender(SenderInput input, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(input.Email) || !input.Email.Contains('@')) return BadRequest(new { detail = "A valid sender email is required." });
         var normalized = input.Email.Trim().ToLowerInvariant();
+        var provider = input.Provider.Trim().ToLowerInvariant();
+        if (provider is not ("brevo" or "smtp" or "sendgrid"))
+            return BadRequest(new { detail = "Provider must be brevo, smtp or sendgrid." });
+
         var sender = await db.IntegrationConnections.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Provider == "email-sender" && x.Name == normalized, ct);
-        var token = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
         if (sender is null) { sender = new IntegrationConnection { TenantId = TenantId, Provider = "email-sender", Name = normalized }; db.IntegrationConnections.Add(sender); }
-        sender.Status = IntegrationStatus.Disconnected;
-        sender.SettingsJson = JsonSerializer.Serialize(new { email = normalized, name = input.Name.Trim(), verified = false, verificationToken = token });
-        sender.SecretReference = $"Email:{input.Provider}:credentials";
+
+        string? token = null;
+        long? providerSenderId = null;
+        var verified = false;
+        var instruction = "Verify only after proving control of this mailbox/domain.";
+        if (provider == "brevo")
+        {
+            var result = await brevo.EnsureSenderAsync(normalized, input.Name.Trim(), ct);
+            if (!result.Success)
+                return StatusCode(StatusCodes.Status502BadGateway, new { detail = result.Error });
+
+            verified = result.Verified;
+            providerSenderId = result.SenderId;
+            instruction = verified
+                ? "Sender is already active in Brevo."
+                : "Open the Brevo verification email, confirm the sender, then click Check verification.";
+        }
+        else
+        {
+            token = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
+        }
+
+        sender.Status = verified ? IntegrationStatus.Connected : IntegrationStatus.Disconnected;
+        sender.SettingsJson = JsonSerializer.Serialize(new
+        {
+            email = normalized,
+            name = input.Name.Trim(),
+            provider,
+            verified,
+            providerSenderId,
+            verificationToken = token
+        });
+        sender.SecretReference = $"Email:{provider}:credentials";
         await db.SaveChangesAsync(ct);
-        return Ok(new { sender.Id, sender.Name, sender.Status, verificationToken = token, instruction = "Verify only after proving control of this mailbox/domain." });
+        return Ok(new { sender.Id, sender.Name, sender.Status, provider, verified, verificationToken = token, instruction });
     }
 
     [HttpPost("senders/{id:guid}/verify"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
@@ -42,11 +85,34 @@ public sealed class EmailOperationsController(AppDbContext db, ITenantContext te
         var sender = await db.IntegrationConnections.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id && x.Provider == "email-sender", ct);
         if (sender is null) return NotFound();
         using var settings = JsonDocument.Parse(sender.SettingsJson);
-        if (!settings.RootElement.TryGetProperty("verificationToken", out var expected) || expected.GetString() != input.Token) return BadRequest(new { detail = "Verification token is invalid." });
-        var email = settings.RootElement.GetProperty("email").GetString() ?? "";
-        var name = settings.RootElement.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-        sender.SettingsJson = JsonSerializer.Serialize(new { email, name, verified = true, verifiedAtUtc = DateTime.UtcNow }); sender.Status = IntegrationStatus.Connected;
-        await db.SaveChangesAsync(ct); return Ok(new { sender.Id, sender.Name, sender.Status, verified = true });
+        var root = settings.RootElement;
+        var email = root.GetProperty("email").GetString() ?? "";
+        var name = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+        var provider = root.TryGetProperty("provider", out var p) ? p.GetString() ?? "smtp" : "smtp";
+        long? providerSenderId = root.TryGetProperty("providerSenderId", out var senderId) &&
+                                 senderId.ValueKind == JsonValueKind.Number &&
+                                 senderId.TryGetInt64(out var value)
+            ? value
+            : null;
+
+        if (provider.Equals("brevo", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = await brevo.FindSenderAsync(email, ct);
+            if (!result.Success)
+                return StatusCode(StatusCodes.Status502BadGateway, new { detail = result.Error });
+            if (!result.Verified)
+                return Conflict(new { detail = "The sender is not active in Brevo yet. Confirm the verification email or authenticate the domain first." });
+            providerSenderId = result.SenderId;
+        }
+        else if (!root.TryGetProperty("verificationToken", out var expected) || expected.GetString() != input.Token)
+        {
+            return BadRequest(new { detail = "Verification token is invalid." });
+        }
+
+        sender.SettingsJson = JsonSerializer.Serialize(new { email, name, provider, verified = true, providerSenderId, verifiedAtUtc = DateTime.UtcNow });
+        sender.Status = IntegrationStatus.Connected;
+        await db.SaveChangesAsync(ct);
+        return Ok(new { sender.Id, sender.Name, sender.Status, provider, verified = true });
     }
 
     [HttpPost("suppressions"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
@@ -80,8 +146,32 @@ public sealed class EmailOperationsController(AppDbContext db, ITenantContext te
         var result = await delivery.SendApprovedAsync(TenantId, id, ct);
         return result.Success ? Ok(result) : Conflict(new { detail = result.Error });
     }
+
+    private static object ToSenderResponse(IntegrationConnection sender)
+    {
+        try
+        {
+            using var settings = JsonDocument.Parse(sender.SettingsJson);
+            var root = settings.RootElement;
+            return new
+            {
+                sender.Id,
+                sender.Name,
+                sender.Status,
+                email = root.TryGetProperty("email", out var email) ? email.GetString() : sender.Name,
+                displayName = root.TryGetProperty("name", out var name) ? name.GetString() : "",
+                provider = root.TryGetProperty("provider", out var provider) ? provider.GetString() : "smtp",
+                verified = root.TryGetProperty("verified", out var verified) && verified.GetBoolean(),
+                sender.CreatedAtUtc
+            };
+        }
+        catch (JsonException)
+        {
+            return new { sender.Id, sender.Name, sender.Status, email = sender.Name, displayName = "", provider = "unknown", verified = false, sender.CreatedAtUtc };
+        }
+    }
 }
 
 public sealed record SenderInput(string Email, string Name, string Provider);
-public sealed record VerifySenderInput(string Token);
+public sealed record VerifySenderInput(string? Token);
 public sealed record SuppressionInput(string Email, string Reason);

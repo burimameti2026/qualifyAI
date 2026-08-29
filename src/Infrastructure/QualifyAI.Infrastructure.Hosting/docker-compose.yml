@@ -134,6 +134,8 @@ services:
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
+      Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
 
   identity-api:
     <<: *api-common

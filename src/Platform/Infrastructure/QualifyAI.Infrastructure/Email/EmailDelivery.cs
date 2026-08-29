@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using QualifyAI.Domain;
+using QualifyAI.Infrastructure.Acquisition;
 using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Infrastructure.Email;
@@ -60,7 +61,11 @@ public sealed class SendGridEmailProvider(HttpClient http, IConfiguration config
     }
 }
 
-public sealed class EmailDeliveryService(AppDbContext db, IEnumerable<IEmailDeliveryProvider> providers, IConfiguration configuration)
+public sealed class EmailDeliveryService(
+    AppDbContext db,
+    IEnumerable<IEmailDeliveryProvider> providers,
+    IConfiguration configuration,
+    CampaignExecutionService campaignExecution)
 {
     public async Task<EmailProviderResult> SendApprovedAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
     {
@@ -74,23 +79,55 @@ public sealed class EmailDeliveryService(AppDbContext db, IEnumerable<IEmailDeli
         if (await IsSuppressedAsync(tenantId, prospect, ct)) return new(false, null, "Recipient is suppressed or has withdrawn marketing consent.");
         var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
         if (!await db.CrmTasks.AnyAsync(x => x.TenantId == tenantId && x.Title == approvalTitle && x.Completed, ct)) return new(false, null, "Human approval is required before sending.");
-        var sender = await db.IntegrationConnections.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Provider == "email-sender" && x.Status == IntegrationStatus.Connected, ct);
-        if (sender is null) return new(false, null, "No verified sender identity is configured.");
-        using var settings = JsonDocument.Parse(sender.SettingsJson);
-        var fromEmail = settings.RootElement.GetProperty("email").GetString() ?? "";
-        var fromName = settings.RootElement.TryGetProperty("name", out var name) ? name.GetString() ?? campaign.SenderName : campaign.SenderName;
-        if (!settings.RootElement.TryGetProperty("verified", out var verified) || !verified.GetBoolean()) return new(false, null, "Sender identity is not verified.");
         var providerName = configuration["Email:Provider"] ?? "disabled";
         var provider = providers.FirstOrDefault(x => x.Name.Equals(providerName, StringComparison.OrdinalIgnoreCase));
         if (provider is null) return new(false, null, $"Email provider '{providerName}' is not enabled.");
-        var result = await provider.SendAsync(new EmailEnvelope(fromEmail, fromName, prospect.Email, prospect.ContactName, message.Subject, message.Body.Replace("\n", "<br>"), message.Body), ct);
+
+        var configuredSenders = await db.IntegrationConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Provider == "email-sender" && x.Status == IntegrationStatus.Connected)
+            .ToListAsync(ct);
+        var sender = configuredSenders
+            .Select(x => ReadSender(x.SettingsJson))
+            .FirstOrDefault(x => x is not null &&
+                                 x.Verified &&
+                                 x.Email.Equals(campaign.SenderEmail.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                                 (x.Provider.Equals(providerName, StringComparison.OrdinalIgnoreCase) ||
+                                  (string.IsNullOrWhiteSpace(x.Provider) && providerName.Equals("smtp", StringComparison.OrdinalIgnoreCase))));
+        if (sender is null)
+            return new(false, null, $"Campaign sender '{campaign.SenderEmail}' is not verified for provider '{providerName}'.");
+
+        var fromName = string.IsNullOrWhiteSpace(sender.Name) ? campaign.SenderName : sender.Name;
+        var result = await provider.SendAsync(new EmailEnvelope(sender.Email, fromName, prospect.Email, prospect.ContactName, message.Subject, message.Body.Replace("\n", "<br>"), message.Body), ct);
         if (result.Success)
         {
-            message.Status = OutreachStatus.Sent; message.ProviderMessageId = result.ProviderMessageId ?? ""; message.SentAtUtc = DateTime.UtcNow;
             db.UsageRecords.Add(new UsageRecord { TenantId = tenantId, Meter = "emails_sent", Quantity = 1, ReferenceId = message.Id.ToString() });
-            await db.SaveChangesAsync(ct);
+            var confirmed = await campaignExecution.ConfirmDeliveryAsync(
+                tenantId,
+                message.Id,
+                result.ProviderMessageId ?? $"{providerName}:{Guid.NewGuid():N}",
+                ct);
+            if (!confirmed)
+                return new(false, result.ProviderMessageId, "Email was accepted by the provider, but campaign delivery state could not be updated.");
         }
         return result;
+    }
+
+    private static ConfiguredSender? ReadSender(string settingsJson)
+    {
+        try
+        {
+            using var settings = JsonDocument.Parse(settingsJson);
+            var root = settings.RootElement;
+            var email = root.TryGetProperty("email", out var emailValue) ? emailValue.GetString() ?? "" : "";
+            var name = root.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "" : "";
+            var provider = root.TryGetProperty("provider", out var providerValue) ? providerValue.GetString() ?? "" : "";
+            var verified = root.TryGetProperty("verified", out var verifiedValue) && verifiedValue.GetBoolean();
+            return string.IsNullOrWhiteSpace(email) ? null : new(email, name, provider, verified);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task<bool> IsSuppressedAsync(Guid tenantId, Prospect prospect, CancellationToken ct)
@@ -100,4 +137,6 @@ public sealed class EmailDeliveryService(AppDbContext db, IEnumerable<IEmailDeli
             contactId = await db.Contacts.Where(x => x.TenantId == tenantId && x.Email == prospect.Email).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
         return contactId.HasValue && await db.ConsentRecords.AnyAsync(x => x.TenantId == tenantId && x.ContactId == contactId && x.Type == "marketing" && !x.Granted, ct);
     }
+
+    private sealed record ConfiguredSender(string Email, string Name, string Provider, bool Verified);
 }
