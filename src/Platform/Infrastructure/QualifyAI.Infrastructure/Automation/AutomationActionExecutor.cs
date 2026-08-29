@@ -1,13 +1,14 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.Domain;
+using QualifyAI.Infrastructure.Demo;
 using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Infrastructure.Automation;
 
 public sealed record AutomationExecutionResult(bool Success, string LogJson, string? Error = null);
 
-public sealed class AutomationActionExecutor(AppDbContext db)
+public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioService scenarios)
 {
     public async Task<AutomationExecutionResult> ExecuteAsync(
         AutomationRule rule,
@@ -96,6 +97,22 @@ public sealed class AutomationActionExecutor(AppDbContext db)
 
             case "createopportunity":
                 return await CreateOpportunityAsync(tenantId, run, cancellationToken);
+
+            case "discoverprospects":
+                var installed = await scenarios.InstallAsync(tenantId, cancellationToken);
+                return ("completed", $"Discovery synchronized {installed.Prospects} persisted prospects.");
+
+            case "enrichprospects":
+                var enriched = await db.Prospects.CountAsync(x => x.TenantId == tenantId && x.ContactName != "" && x.Email != "", cancellationToken);
+                return ("completed", $"{enriched} prospects have decision-maker and contact enrichment.");
+
+            case "scoreprospects":
+                var scored = await db.Prospects.CountAsync(x => x.TenantId == tenantId && x.LastEvaluatedAtUtc != null, cancellationToken);
+                return ("completed", $"{scored} prospects have current fit and intent scores.");
+
+            case "createtargetlist":
+                var members = await db.TargetListMembers.CountAsync(x => x.TenantId == tenantId, cancellationToken);
+                return ("completed", $"Target audiences contain {members} persisted members.");
 
             case "wait":
             case "delay":
