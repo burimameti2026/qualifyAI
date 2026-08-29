@@ -94,7 +94,9 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
 
-    if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DemoSeed:Enabled"))
+    // Business demo data must be explicitly enabled. Development mode alone must never
+    // populate a tenant with synthetic companies, contacts or revenue.
+    if (builder.Configuration.GetValue<bool>("DemoSeed:Enabled"))
         await scope.ServiceProvider.GetRequiredService<DemoSeeder>().SeedAsync();
 }
 

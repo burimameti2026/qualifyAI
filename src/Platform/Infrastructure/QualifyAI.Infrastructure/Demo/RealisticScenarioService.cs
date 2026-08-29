@@ -12,18 +12,24 @@ public sealed class RealisticScenarioService(AppDbContext db)
     public async Task<ScenarioInstallResult> InstallAsync(Guid tenantId, CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
-        var icp = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Name == "DACH & Southern Europe logistics growth", ct);
+        const string demoIcpName = "[DEMO] DACH & Southern Europe logistics growth";
+        var icp = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == tenantId &&
+            (x.Name == demoIcpName || x.Name == "DACH & Southern Europe logistics growth"), ct);
         if (icp is null)
         {
             icp = new IcpProfile
             {
-                TenantId = tenantId, Name = "DACH & Southern Europe logistics growth",
+                TenantId = tenantId, Name = demoIcpName,
                 Industry = "Logistics, Distribution, Manufacturing, E-commerce",
                 CountriesCsv = "Germany, France, Italy", MinimumEmployees = 20, MaximumEmployees = 1000,
                 IntentKeywordsCsv = "freight tender, warehouse expansion, fleet growth, delivery delays",
                 CriteriaJson = "{\"requiredSignals\":1,\"minimumFitScore\":70}", Active = true, LastDiscoveryAtUtc = now
             };
             db.IcpProfiles.Add(icp);
+        }
+        else
+        {
+            icp.Name = demoIcpName;
         }
 
         var prospectSeeds = new[]
@@ -45,34 +51,52 @@ public sealed class RealisticScenarioService(AppDbContext db)
                 {
                     TenantId = tenantId, CompanyName = seed.Company, Domain = seed.Domain,
                     ContactName = seed.Contact, JobTitle = seed.JobTitle, Email = seed.Email,
-                    Industry = seed.Industry, Country = seed.Country, Source = "realistic-demo-scenario"
+                    Industry = seed.Industry, Country = seed.Country, Source = "demo-synthetic-scenario"
                 };
                 prospect.Evaluate(seed.Fit, seed.Intent);
                 db.Prospects.Add(prospect);
             }
+            else
+            {
+                prospect.Source = "demo-synthetic-scenario";
+            }
             prospects.Add(prospect);
             if (!await db.ProspectSignals.AnyAsync(x => x.TenantId == tenantId && x.ProspectId == prospect.Id && x.Evidence == seed.Evidence, ct))
-                db.ProspectSignals.Add(new ProspectSignal { TenantId = tenantId, ProspectId = prospect.Id, Type = "public-buying-intent", Source = "scenario-market-feed", Evidence = seed.Evidence, Score = seed.Intent, SourceUrl = $"https://signals.example/{seed.Domain}" });
+                db.ProspectSignals.Add(new ProspectSignal { TenantId = tenantId, ProspectId = prospect.Id, Type = "synthetic-buying-intent", Source = "demo-synthetic-scenario", Evidence = seed.Evidence, Score = seed.Intent, SourceUrl = $"https://signals.example/{seed.Domain}" });
         }
 
-        var targetList = await db.TargetLists.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Name == "European logistics accounts – high intent", ct);
+        const string demoTargetListName = "[DEMO] European logistics accounts – high intent";
+        var targetList = await db.TargetLists.FirstOrDefaultAsync(x => x.TenantId == tenantId &&
+            (x.Name == demoTargetListName || x.Name == "European logistics accounts – high intent"), ct);
         if (targetList is null)
         {
-            targetList = new TargetList { TenantId = tenantId, IcpProfileId = icp.Id, Name = "European logistics accounts – high intent", Description = "Companies matching the logistics ICP with current buying signals." };
+            targetList = new TargetList { TenantId = tenantId, IcpProfileId = icp.Id, Name = demoTargetListName, Description = "Synthetic companies for product demonstration only; never use for outreach." };
             db.TargetLists.Add(targetList);
+        }
+        else
+        {
+            targetList.Name = demoTargetListName;
+            targetList.Description = "Synthetic companies for product demonstration only; never use for outreach.";
         }
         foreach (var prospect in prospects)
             if (!await db.TargetListMembers.AnyAsync(x => x.TenantId == tenantId && x.TargetListId == targetList.Id && x.ProspectId == prospect.Id, ct))
                 db.TargetListMembers.Add(new TargetListMember { TenantId = tenantId, TargetListId = targetList.Id, ProspectId = prospect.Id });
 
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Name == "Logistics growth – book operational demo", ct);
+        const string demoCampaignName = "[DEMO] Logistics growth – book operational demo";
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId &&
+            (x.Name == demoCampaignName || x.Name == "Logistics growth – book operational demo"), ct);
         if (campaign is null)
         {
-            campaign = new Campaign { TenantId = tenantId, TargetListId = targetList.Id, Name = "Logistics growth – book operational demo", Goal = "book-demo", Status = CampaignStatus.Running, SenderName = "Burim – Solutions", SenderEmail = "sales@qualifyai.demo", StartsAtUtc = now.AddDays(-5) };
+            campaign = new Campaign { TenantId = tenantId, TargetListId = targetList.Id, Name = demoCampaignName, Goal = "book-demo", Status = CampaignStatus.Running, SenderName = "Demo Sender", SenderEmail = "sales@qualifyai.demo", StartsAtUtc = now.AddDays(-5) };
             db.Campaigns.Add(campaign);
             db.CampaignSteps.AddRange(
                 new CampaignStep { TenantId = tenantId, CampaignId = campaign.Id, StepNumber = 1, DelayHours = 0, Channel = "email", SubjectTemplate = "{{company}}: reduce dispatch and delivery exceptions", BodyTemplate = "Hi {{contact}}, I noticed current growth signals at {{company}}. We help {{industry}} teams automate dispatch, warehouse and customer operations. Would a 25-minute operational demo be useful?" },
                 new CampaignStep { TenantId = tenantId, CampaignId = campaign.Id, StepNumber = 2, DelayHours = 72, Channel = "email", SubjectTemplate = "Operational benchmark for {{company}}", BodyTemplate = "Hi {{contact}}, I prepared a short benchmark for teams operating across {{country}}. I can tailor the demo to your fleet, warehouse and delivery workflow." });
+        }
+        else
+        {
+            campaign.Name = demoCampaignName;
+            campaign.SenderName = "Demo Sender";
         }
         foreach (var prospect in prospects)
             if (!await db.CampaignRecipients.AnyAsync(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.ProspectId == prospect.Id, ct))

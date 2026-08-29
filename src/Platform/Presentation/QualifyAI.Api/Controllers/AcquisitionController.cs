@@ -51,49 +51,11 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
         var icp = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id && x.Active, ct);
         if (icp is null) return NotFound(new { code = "icp_not_found", detail = "Select an active ideal customer profile." });
 
-        var countries = Split(icp.CountriesCsv);
-        var industries = Split(icp.Industry);
-        var existingDomains = await db.Prospects.Where(x => x.TenantId == TenantId).Select(x => x.Domain).ToListAsync(ct);
-        var candidates = DiscoveryCandidates
-            .Where(x => countries.Length == 0 || countries.Contains(x.Country, StringComparer.OrdinalIgnoreCase))
-            .Where(x => industries.Length == 0 || industries.Any(i => x.Industry.Contains(i, StringComparison.OrdinalIgnoreCase) || i.Contains(x.Industry, StringComparison.OrdinalIgnoreCase)))
-            .Where(x => x.Employees >= (icp.MinimumEmployees ?? 0) && (!icp.MaximumEmployees.HasValue || x.Employees <= icp.MaximumEmployees.Value))
-            .Where(x => !existingDomains.Contains(x.Domain, StringComparer.OrdinalIgnoreCase))
-            .ToArray();
-
-        // A demo source must still return useful candidates when a narrowly worded ICP has no exact catalog match.
-        if (candidates.Length == 0)
-            candidates = DiscoveryCandidates
-                .Where(x => x.Employees >= (icp.MinimumEmployees ?? 0) && (!icp.MaximumEmployees.HasValue || x.Employees <= icp.MaximumEmployees.Value))
-                .Where(x => !existingDomains.Contains(x.Domain, StringComparer.OrdinalIgnoreCase))
-                .Take(5).ToArray();
-
-        var now = DateTime.UtcNow;
-        var prospects = candidates.Select(x =>
+        return Conflict(new
         {
-            var prospect = new Prospect
-            {
-                TenantId = TenantId, CompanyName = x.Company, Domain = x.Domain,
-                ContactName = x.Contact, Email = x.Email, JobTitle = x.JobTitle,
-                Industry = x.Industry, Country = x.Country, Source = "demo-market-discovery",
-                CreatedAtUtc = now, UpdatedAtUtc = now
-            };
-            prospect.Evaluate(x.FitScore, x.IntentScore);
-            return prospect;
-        }).ToArray();
-
-        db.Prospects.AddRange(prospects);
-        icp.LastDiscoveryAtUtc = now;
-        icp.UpdatedAtUtc = now;
-        foreach (var prospect in prospects)
-            db.ProspectSignals.Add(new ProspectSignal
-            {
-                TenantId = TenantId, ProspectId = prospect.Id, Type = "market-intent",
-                Source = "demo-market-discovery", Evidence = "Public growth and operational-change indicators match the selected ICP.",
-                Score = prospect.IntentScore, ObservedAtUtc = now
-            });
-        await db.SaveChangesAsync(ct);
-        return Ok(new { discovered = prospects.Length, prospects });
+            code = "verified_source_required",
+            detail = "Connect a verified company-data provider or import a licensed/public CSV. QualifyAI does not fabricate prospects."
+        });
     }
 
     [HttpGet("prospects")][RequirePermission(QualifyAiPermissions.CrmRead)]
@@ -285,9 +247,6 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
         await db.SaveChangesAsync(ct); return Accepted();
     }
 
-    private static string[] Split(string? value) => (value ?? string.Empty)
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
     private static string NormalizeDomain(string? value)
     {
         var domain = (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -298,17 +257,6 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
 
     private static string NormalizeEmail(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
 
-    private static readonly DiscoveryCandidate[] DiscoveryCandidates =
-    [
-        new("NordCargo Solutions", "nordcargo.example", "Logistics", "Germany", 86, "Lukas Meyer", "Head of Operations", "lukas.meyer@nordcargo.example", 92, 81),
-        new("RheinFulfil GmbH", "rheinfulfil.example", "E-commerce", "Germany", 145, "Anna Fischer", "VP Supply Chain", "anna.fischer@rheinfulfil.example", 89, 74),
-        new("TransAlpine Freight", "transalpine.example", "Logistics", "Germany", 230, "Markus Weber", "Commercial Director", "markus.weber@transalpine.example", 87, 88),
-        new("Atlas Components", "atlascomponents.example", "Manufacturing", "Italy", 240, "Sofia Romano", "Logistics Director", "sofia.romano@atlascomponents.example", 91, 69),
-        new("Milano Distribution", "milanodistribution.example", "Distribution", "Italy", 118, "Marco Bianchi", "COO", "marco.bianchi@milanodistribution.example", 86, 77),
-        new("BlueLine 3PL", "blueline3pl.example", "Logistics", "France", 72, "Marc Dubois", "Managing Director", "marc.dubois@blueline3pl.example", 88, 84),
-        new("Hexa Commerce", "hexacommerce.example", "E-commerce", "France", 310, "Claire Bernard", "Head of Fulfilment", "claire.bernard@hexacommerce.example", 83, 71),
-        new("Adriatic Warehousing", "adriaticwarehousing.example", "Distribution", "Italy", 64, "Giulia Conti", "Warehouse Director", "giulia.conti@adriaticwarehousing.example", 82, 79)
-    ];
 }
 
 public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
@@ -318,4 +266,3 @@ public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Ch
 public sealed record CampaignInput(Guid TargetListId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
 public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
-public sealed record DiscoveryCandidate(string Company, string Domain, string Industry, string Country, int Employees, string Contact, string JobTitle, string Email, int FitScore, int IntentScore);
