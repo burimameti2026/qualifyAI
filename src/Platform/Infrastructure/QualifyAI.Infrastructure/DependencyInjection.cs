@@ -6,6 +6,7 @@ using QualifyAI.Application;
 using QualifyAI.Application.Abstractions.Persistence;
 using QualifyAI.Infrastructure.Messaging.Consumers;
 using QualifyAI.Infrastructure.Acquisition;
+using QualifyAI.Infrastructure.Automation;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Repositories;
 
@@ -51,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<SalesAutomationService>();
         services.AddScoped<DemoSeeder>();
         services.AddScoped<CampaignExecutionService>();
+        services.AddScoped<AutomationActionExecutor>();
 
         return services;
     }

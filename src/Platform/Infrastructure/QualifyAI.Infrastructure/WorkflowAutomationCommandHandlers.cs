@@ -2,6 +2,7 @@ using MediatR;
 using QualifyAI.Application.Abstractions.Persistence;
 using QualifyAI.Application.Commands.Modules;
 using QualifyAI.Domain;
+using QualifyAI.Infrastructure.Automation;
 
 namespace QualifyAI.Infrastructure;
 
@@ -47,7 +48,7 @@ public sealed class UpdateAutomationCommandHandler(IWorkflowAutomationRepository
     }
 }
 
-public sealed class RunAutomationCommandHandler(IWorkflowAutomationRepository repository, IBusinessUnitOfWork unitOfWork)
+public sealed class RunAutomationCommandHandler(IWorkflowAutomationRepository repository, IBusinessUnitOfWork unitOfWork, AutomationActionExecutor executor)
     : IRequestHandler<RunAutomationCommand, AutomationRun?>
 {
     public async Task<AutomationRun?> Handle(RunAutomationCommand command, CancellationToken ct)
@@ -59,7 +60,8 @@ public sealed class RunAutomationCommandHandler(IWorkflowAutomationRepository re
         repository.AddAutomationRun(run);
         run.Start();
         await unitOfWork.SaveChangesAsync(ct);
-        run.Complete("[\"Rule evaluated\",\"Actions dispatched\"]");
+        var result = await executor.ExecuteAsync(rule, run, ct);
+        if (result.Success) run.Complete(result.LogJson); else run.Fail(result.LogJson);
         await unitOfWork.SaveChangesAsync(ct);
         return run;
     }

@@ -7,6 +7,9 @@ using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.BuildingBlocks.Security.Authorization;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure;
+using QualifyAI.Infrastructure.Automation;
+using QualifyAI.Persistence.SqlServer;
+using Microsoft.EntityFrameworkCore;
 
 namespace QualifyAI.Api.Controllers;
 
@@ -34,7 +37,7 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant) :
 [Authorize]
 [RequireModule(QualifyAiModules.Automation)]
 [Route("api/automations")]
-public sealed class AutomationsController(ISender sender, ITenantContext tenant) : ControllerBase
+public sealed class AutomationsController(ISender sender, ITenantContext tenant, AppDbContext db, AutomationActionExecutor executor) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.AutomationRead)]
@@ -53,6 +56,29 @@ public sealed class AutomationsController(ISender sender, ITenantContext tenant)
     [RequirePermission(QualifyAiPermissions.AutomationManage)]
     public async Task<IActionResult> Run(Guid id, CancellationToken ct)
         => (await sender.Send(new RunAutomationCommand(tenant.TenantId(), id), ct)) is { } x ? Ok(x) : NotFound();
+
+    [HttpGet("runs")]
+    [RequirePermission(QualifyAiPermissions.AutomationRead)]
+    public Task<List<AutomationRun>> Runs(CancellationToken ct) => db.AutomationRuns.AsNoTracking()
+        .Where(x => x.TenantId == tenant.TenantId()).OrderByDescending(x => x.CreatedAtUtc).Take(200).ToListAsync(ct);
+
+    [HttpPost("runs/{runId:guid}/retry")]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public async Task<IActionResult> Retry(Guid runId, CancellationToken ct)
+    {
+        var oldRun = await db.AutomationRuns.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenant.TenantId() && x.Id == runId, ct);
+        if (oldRun is null) return NotFound();
+        if (!string.Equals(oldRun.Status, "failed", StringComparison.OrdinalIgnoreCase))
+            return Conflict(new { code = "run_not_failed", detail = "Only failed automation runs can be retried." });
+        var rule = await db.AutomationRules.FirstOrDefaultAsync(x => x.TenantId == tenant.TenantId() && x.Id == oldRun.RuleId, ct);
+        if (rule is null) return NotFound();
+        var retry = AutomationRun.Create(rule.TenantId, rule.Id, oldRun.TriggerDataJson);
+        db.AutomationRuns.Add(retry); retry.Start(); await db.SaveChangesAsync(ct);
+        var result = await executor.ExecuteAsync(rule, retry, ct);
+        if (result.Success) retry.Complete(result.LogJson); else retry.Fail(result.LogJson);
+        await db.SaveChangesAsync(ct);
+        return Ok(retry);
+    }
 }
 
 [ApiController]
