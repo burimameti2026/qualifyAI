@@ -5,7 +5,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenIddict.Abstractions;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.BuildingBlocks.Security.Access;
+using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Domain.Tenants;
 using QualifyAI.Identity.Persistence.SqlServer.Identity;
@@ -32,6 +34,7 @@ public sealed class IdentityBootstrapHostedService(
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
         var applicationManager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+        var outbox = scope.ServiceProvider.GetRequiredService<IOutboxWriter>();
 
         await dbContext.Database.MigrateAsync(cancellationToken);
         await EnsureAdminUiClientAsync(applicationManager, cancellationToken);
@@ -72,6 +75,16 @@ public sealed class IdentityBootstrapHostedService(
             await dbContext.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Provisioned bootstrap license {LicenseId} for tenant {TenantId}.", license.Id, tenant.Id);
         }
+
+        var snapshotAtUtc = DateTime.UtcNow;
+        outbox.Add(new TenantCreatedIntegrationEvent(
+            Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
+        outbox.Add(new TenantLicenseChangedIntegrationEvent(
+            Guid.NewGuid(), snapshotAtUtc, tenant.Id, license.Id, license.Plan,
+            license.Status.ToString().ToLowerInvariant(), license.MaxUsers,
+            license.StartsAtUtc, license.ExpiresAtUtc, license.Version,
+            license.Modules.Select(x => x.Code).ToArray()));
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         var adminEmail = configuration["IdentityBootstrap:Admin:Email"]?.Trim().ToLowerInvariant() ?? contactEmail;
         var adminPassword = configuration["IdentityBootstrap:Admin:Password"] ?? "Admin123!ChangeMe";

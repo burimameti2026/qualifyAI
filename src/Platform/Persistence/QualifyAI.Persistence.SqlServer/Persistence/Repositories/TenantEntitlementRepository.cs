@@ -42,6 +42,40 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<TenantEntitlementSnapshot> ProvisionFromSignedTokenAsync(
+        Guid tenantId,
+        string tenantSlug,
+        string plan,
+        string licenseStatus,
+        long version,
+        IReadOnlyCollection<string> modules,
+        DateTime? tokenExpiresAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await dbContext.TenantEntitlements.FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
+        if (existing is not null) return Map(existing);
+
+        var now = DateTime.UtcNow;
+        var entity = new TenantEntitlementProjection
+        {
+            TenantId = tenantId,
+            TenantSlug = tenantSlug.Trim().ToLowerInvariant(),
+            TenantStatus = "active",
+            LicensePlan = Normalize(plan, "unassigned"),
+            LicenseStatus = Normalize(licenseStatus, "active"),
+            MaxUsers = 0,
+            StartsAtUtc = now.AddMinutes(-5),
+            ExpiresAtUtc = tokenExpiresAtUtc,
+            Version = Math.Max(0, version),
+            ModulesJson = JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase), JsonOptions),
+            LimitsJson = "{}",
+            UpdatedAtUtc = now
+        };
+        dbContext.TenantEntitlements.Add(entity);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Map(entity);
+    }
+
     public async Task UpsertTenantAsync(Guid tenantId, string tenantSlug, string tenantStatus, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
     {
         var entity = await dbContext.TenantEntitlements.FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);

@@ -8,6 +8,16 @@ public interface ITenantEntitlementRepository
     Task<TenantEntitlementSnapshot?> FindActiveBySlugAsync(string slug, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Guid>> ListActiveTenantIdsAsync(CancellationToken cancellationToken = default);
 
+    Task<TenantEntitlementSnapshot> ProvisionFromSignedTokenAsync(
+        Guid tenantId,
+        string tenantSlug,
+        string plan,
+        string licenseStatus,
+        long version,
+        IReadOnlyCollection<string> modules,
+        DateTime? tokenExpiresAtUtc,
+        CancellationToken cancellationToken = default);
+
     Task UpsertTenantAsync(
         Guid tenantId,
         string tenantSlug,

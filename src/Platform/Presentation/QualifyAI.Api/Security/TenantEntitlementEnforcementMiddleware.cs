@@ -30,8 +30,33 @@ public sealed class TenantEntitlementEnforcementMiddleware(RequestDelegate next)
         var entitlement = await entitlements.GetAsync(tenantId, context.RequestAborted);
         if (entitlement is null)
         {
-            await WriteProblemAsync(context, StatusCodes.Status403Forbidden, "tenant_not_provisioned", "The tenant is not provisioned for this service.");
-            return;
+            var slug = context.User.FindFirst(QualifyAiClaimTypes.TenantSlug)?.Value;
+            var plan = context.User.FindFirst(QualifyAiClaimTypes.LicensePlan)?.Value;
+            var status = context.User.FindFirst(QualifyAiClaimTypes.LicenseStatus)?.Value;
+            var modules = context.User.FindAll(QualifyAiClaimTypes.Module).Select(x => x.Value).ToArray();
+            var versionValue = context.User.FindFirst(QualifyAiClaimTypes.LicenseVersion)?.Value;
+            var expiresValue = context.User.FindFirst("exp")?.Value;
+
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(status) || modules.Length == 0)
+            {
+                await WriteProblemAsync(context, StatusCodes.Status403Forbidden, "tenant_not_provisioned", "The tenant is not provisioned for this service.");
+                return;
+            }
+
+            long.TryParse(versionValue, out var version);
+            DateTime? tokenExpiresAtUtc = long.TryParse(expiresValue, out var expiresUnix)
+                ? DateTimeOffset.FromUnixTimeSeconds(expiresUnix).UtcDateTime
+                : null;
+
+            entitlement = await entitlements.ProvisionFromSignedTokenAsync(
+                tenantId,
+                slug,
+                plan ?? "unassigned",
+                status,
+                version,
+                modules,
+                tokenExpiresAtUtc,
+                context.RequestAborted);
         }
 
         if (!entitlement.IsAccessibleAt(DateTime.UtcNow))
