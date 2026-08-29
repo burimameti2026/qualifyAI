@@ -99,11 +99,11 @@ public sealed class LicensesController(ISender sender) : ControllerBase
         return NoContent();
     }
 
-    private bool CanRead(Guid tenantId) => IsOwnTenant(tenantId) &&
-        (HasPermission(QualifyAiPermissions.BillingRead) || HasPermission(QualifyAiPermissions.BillingManage) || HasPermission(QualifyAiPermissions.SystemAdmin));
+    private bool CanRead(Guid tenantId) => HasPermission(QualifyAiPermissions.SystemAdmin) || (IsOwnTenant(tenantId) &&
+        (HasPermission(QualifyAiPermissions.BillingRead) || HasPermission(QualifyAiPermissions.BillingManage)));
 
-    private bool CanManage(Guid tenantId) => IsOwnTenant(tenantId) &&
-        (HasPermission(QualifyAiPermissions.BillingManage) || HasPermission(QualifyAiPermissions.SystemAdmin));
+    private bool CanManage(Guid tenantId) => HasPermission(QualifyAiPermissions.SystemAdmin) ||
+        (IsOwnTenant(tenantId) && HasPermission(QualifyAiPermissions.BillingManage));
 
     private bool IsOwnTenant(Guid tenantId) => Guid.TryParse(User.FindFirst(QualifyAiClaimTypes.TenantId)?.Value, out var current) && current == tenantId;
     private bool HasPermission(string permission) => User.FindAll(QualifyAiClaimTypes.Permission).Any(x => x.Value.Equals(permission, StringComparison.OrdinalIgnoreCase));

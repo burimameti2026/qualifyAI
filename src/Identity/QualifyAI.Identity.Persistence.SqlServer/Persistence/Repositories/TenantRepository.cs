@@ -15,6 +15,9 @@ public sealed class TenantRepository(IdentityDbContext dbContext) : ITenantRepos
         return dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == normalized, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Tenant>> ListAsync(CancellationToken cancellationToken = default)
+        => await dbContext.Tenants.OrderBy(x => x.Name).ToListAsync(cancellationToken);
+
     public Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken = default)
     {
         var normalized = slug.Trim().ToLowerInvariant();

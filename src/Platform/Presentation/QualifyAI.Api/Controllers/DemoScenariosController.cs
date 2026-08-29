@@ -16,4 +16,9 @@ public sealed class DemoScenariosController(ITenantContext tenant, RealisticScen
     [HttpPost("install")]
     [RequirePermission(QualifyAiPermissions.AutomationManage)]
     public Task<ScenarioInstallResult> Install(CancellationToken ct) => scenarios.InstallAsync(tenant.TenantId(), ct);
+
+    [HttpPost("tenant/{tenantId:guid}/install")]
+    [RequirePermission(QualifyAiPermissions.SystemAdmin)]
+    public Task<ScenarioInstallResult> InstallForTenant(Guid tenantId, CancellationToken ct)
+        => scenarios.InstallAsync(tenantId, ct);
 }

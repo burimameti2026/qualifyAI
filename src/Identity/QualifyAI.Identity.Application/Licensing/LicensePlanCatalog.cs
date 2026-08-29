@@ -6,6 +6,7 @@ public static class LicensePlanCatalog
 {
     public static readonly IReadOnlyCollection<LicensePlanDefinition> Plans =
     [
+        new("demo", "Demo", 5, ["crm", "inbox", "ticketing", "automation", "knowledge", "ai", "analytics", "integrations", "settings", "billing"]),
         new("starter", "Starter", 3, ["crm", "inbox", "ticketing", "settings", "billing"]),
         new("growth", "Growth", 10, ["crm", "inbox", "ticketing", "automation", "knowledge", "analytics", "integrations", "settings", "billing"]),
         new("business", "Business", 50, ["crm", "inbox", "ticketing", "automation", "knowledge", "ai", "analytics", "integrations", "settings", "billing"]),
