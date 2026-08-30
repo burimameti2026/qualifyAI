@@ -19,6 +19,7 @@ namespace QualifyAI.Identity.Api.Controllers.Users;
 [ApiController]
 [Authorize]
 [Route("users")]
+[Route("api/identity/users")]
 public sealed class UsersController(ISender sender) : ControllerBase
 {
     [HttpGet]
