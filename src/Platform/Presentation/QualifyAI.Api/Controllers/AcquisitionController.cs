@@ -7,6 +7,7 @@ using QualifyAI.Domain;
 using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.Acquisition;
 using QualifyAI.Persistence.SqlServer;
+using QualifyAI.Api.Importing;
 
 namespace QualifyAI.Api.Controllers;
 
@@ -116,7 +117,7 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
                 JobTitle = row.JobTitle?.Trim() ?? string.Empty,
                 Industry = row.Industry?.Trim() ?? string.Empty,
                 Country = row.Country?.Trim() ?? string.Empty,
-                Source = input.Source.Trim(),
+                Source = string.IsNullOrWhiteSpace(row.Source) ? input.Source.Trim() : row.Source.Trim(),
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             };
@@ -160,6 +161,16 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
             targetListId = targetList?.Id,
             nextStep = targetList is null ? "create-target-list" : "create-campaign"
         });
+    }
+
+    [HttpPost("prospects/import/preview")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    [RequestSizeLimit(15_000_000)]
+    public async Task<IActionResult> PreviewImport([FromForm] IFormFile? file, [FromForm] string? sheetName, [FromForm] int? headerRow, CancellationToken ct)
+    {
+        if (file is null) return BadRequest(new { code = "import_file_required", detail = "Choose a CSV or XLSX file." });
+        try { return Ok(await ProspectDatasetReader.ReadAsync(file, sheetName, headerRow, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { code = "invalid_import_file", detail = ex.Message }); }
+        catch (InvalidDataException) { return BadRequest(new { code = "invalid_xlsx", detail = "The XLSX file is damaged or cannot be read." }); }
     }
 
     [HttpPost("prospects/{id:guid}/signals")][RequirePermission(QualifyAiPermissions.CrmManage)]
@@ -261,7 +272,7 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
 
 public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
 public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
-public sealed record ProspectImportRow(string CompanyName, string Domain, string? ContactName, string? Email, string? JobTitle, string? Industry, string? Country, int FitScore, int IntentScore);
+public sealed record ProspectImportRow(string CompanyName, string Domain, string? ContactName, string? Email, string? JobTitle, string? Industry, string? Country, string? Source, int FitScore, int IntentScore);
 public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
 public sealed record CampaignInput(Guid TargetListId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
