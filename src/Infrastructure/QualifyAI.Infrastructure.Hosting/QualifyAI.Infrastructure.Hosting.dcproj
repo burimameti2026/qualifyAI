@@ -4,15 +4,18 @@
     <ProjectVersion>2.1</ProjectVersion>
     <DockerTargetOS>Linux</DockerTargetOS>
     <DockerLaunchAction>LaunchBrowser</DockerLaunchAction>
-    <DockerServiceName>platform-api</DockerServiceName>
-    <DockerServiceUrl>{Scheme}://localhost:{ServicePort}/swagger</DockerServiceUrl>
-    <DockerComposeProjectName>qualifyai-apps</DockerComposeProjectName>
+    <DockerServiceName>api-gateway</DockerServiceName>
+    <DockerServiceUrl>http://localhost:10000</DockerServiceUrl>
+    <DockerComposeProjectName>qualifyai</DockerComposeProjectName>
+    <DockerComposeBaseFilePath>$(MSBuildProjectDirectory)\..\..\..\docker-compose</DockerComposeBaseFilePath>
     <DockerComposeEnvFilePath>$(MSBuildProjectDirectory)\..\..\..\.env</DockerComposeEnvFilePath>
   </PropertyGroup>
   <ItemGroup>
-    <None Include=".env" />
-    <None Include="docker-compose.yml" />
-    <None Include="docker-compose.override.yml">
+    <None Include="../../../docker-compose.yml">
+      <Link>docker-compose.yml</Link>
+    </None>
+    <None Include="../../../docker-compose.override.yml">
+      <Link>docker-compose.override.yml</Link>
       <DependentUpon>docker-compose.yml</DependentUpon>
     </None>
     <None Include="../../../.dockerignore">

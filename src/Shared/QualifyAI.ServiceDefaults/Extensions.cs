@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
-using QualifyAI.ServiceDefaults.Consul;
 using QualifyAI.ServiceDefaults.Observability;
 using Serilog;
 
@@ -34,11 +33,9 @@ public static class Extensions
             .WriteTo.Console()
             .WriteTo.Seq(seqUrl));
 
-        builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
             http.AddStandardResilienceHandler();
-            http.AddServiceDiscovery();
         });
 
         builder.Services.AddOpenTelemetry()
@@ -48,8 +45,6 @@ public static class Extensions
             .WithMetrics(m => m
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation());
-
-        builder.Services.AddHealthChecks();
 
         var redisConnection = builder.Configuration["Redis:ConnectionString"];
         if (!string.IsNullOrWhiteSpace(redisConnection))
@@ -61,8 +56,6 @@ public static class Extensions
             });
         }
 
-        builder.Services.AddHostedService<ConsulRegistrationHostedService>();
-
         return builder;
     }
 
@@ -70,7 +63,14 @@ public static class Extensions
     {
         app.UseSerilogRequestLogging();
         app.UseMiddleware<CorrelationIdMiddleware>();
-        app.MapHealthChecks("/health");
+        // Liveness must only report whether this process can serve requests.
+        // Dependency failures belong in logs/readiness, not in Docker liveness.
+        app.MapGet("/health", () => Results.Ok(new
+        {
+            status = "healthy",
+            service = Environment.GetEnvironmentVariable("SERVICE_NAME")
+                ?? app.Environment.ApplicationName
+        }));
         app.MapGet("/status", () => Results.Ok(new
         {
             service = Environment.GetEnvironmentVariable("SERVICE_NAME")

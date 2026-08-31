@@ -88,7 +88,7 @@ UI:       http://localhost:8088
 Business: http://localhost:8080/swagger
 Identity: http://localhost:8081/swagger
 Seq:      http://localhost:5341
-Consul:   http://localhost:8500
+Gateway:  http://localhost:10000
 ```
 
 Demo login:

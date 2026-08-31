@@ -103,7 +103,7 @@ their inbox state.
 - MongoDB: knowledge chunk documents.
 - Redis: distributed cache registered through ServiceDefaults.
 - RabbitMQ: integration events and entitlement propagation.
-- Consul: host registration and health discovery.
+- Docker DNS: direct service-to-service addressing inside the single Compose network.
 - Seq: centralized structured logs.
 - Portainer: local container operations.
 
