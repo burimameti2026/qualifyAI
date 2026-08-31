@@ -4,14 +4,14 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Consul__Address: http://consul:8500
       Seq__Url: http://seq:5341
-      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER};Database=QualifyAI_Business;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      ConnectionStrings__AutomationDb: "Server=${DB_SERVER};Database=QualifyAI_AutomationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER};Database=QualifyAI_NotificationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=QualifyAI_Business;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=sqlserver,1433;Database=QualifyAI_AutomationDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=sqlserver,1433;Database=QualifyAI_NotificationsDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=sqlserver,1433;Database=QualifyAI_KnowledgeDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=sqlserver,1433;Database=QualifyAI_AIOrchestrationDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=sqlserver,1433;Database=QualifyAI_IntegrationsDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
       OpenAI__ApiKey: ${OPENAI_API_KEY}
       Email__Provider: ${EMAIL_PROVIDER:-disabled}
       Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
@@ -30,8 +30,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Consul__Address: http://consul:8500
       Seq__Url: http://seq:5341
-      ConnectionStrings__IdentityDb: "Server=${DB_SERVER};Database=QualifyAI_IdentityDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=QualifyAI_IdentityDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Audience: qualifyai-api
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD}
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
+      IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD:-Admin123!ChangeMe}
     ports: ["8081:8080"]
