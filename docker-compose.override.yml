@@ -1,0 +1,15 @@
+services:
+  sqlserver:
+    ports: ["1433:1433"]
+  mongodb:
+    ports: ["27017:27017"]
+  rabbitmq:
+    ports: ["5672:5672", "15672:15672"]
+  redis:
+    ports: ["6379:6379"]
+  consul:
+    ports: ["8500:8500", "8600:8600/udp"]
+  seq:
+    ports: ["5341:80", "5342:5341"]
+  portainer:
+    ports: ["9000:9000", "9443:9443"]

@@ -6,6 +6,8 @@
     <DockerLaunchAction>LaunchBrowser</DockerLaunchAction>
     <DockerServiceName>platform-api</DockerServiceName>
     <DockerServiceUrl>{Scheme}://localhost:{ServicePort}/swagger</DockerServiceUrl>
+    <DockerComposeProjectName>qualifyai-apps</DockerComposeProjectName>
+    <DockerComposeEnvFilePath>$(MSBuildProjectDirectory)\..\..\..\.env</DockerComposeEnvFilePath>
   </PropertyGroup>
   <ItemGroup>
     <None Include="docker-compose.yml" />
@@ -15,6 +17,8 @@
     <None Include="../../../.dockerignore">
       <Link>.dockerignore</Link>
     </None>
-    <None Include=".env.example" />
+    <None Include="../../../.env.example">
+      <Link>.env.example</Link>
+    </None>
   </ItemGroup>
 </Project>

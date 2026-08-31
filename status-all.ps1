@@ -5,7 +5,8 @@ docker ps -a --filter 'name=qualifyai-' --format 'table {{.Names}}\t{{.Status}}\
 
 $containers = @(
     'qualifyai-mongodb', 'qualifyai-rabbitmq', 'qualifyai-redis',
-    'qualifyai-consul', 'qualifyai-identity-api',
+    'qualifyai-consul', 'qualifyai-seq', 'qualifyai-portainer',
+    'qualifyai-identity-api',
     'qualifyai-platform-api', 'qualifyai-api-gateway'
 )
 

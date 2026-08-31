@@ -1,4 +1,4 @@
-name: qualifyai
+name: qualifyai-apps
 
 x-api-common: &api-common
   restart: unless-stopped
@@ -12,104 +12,6 @@ x-api-common: &api-common
     RabbitMq__Password: ${RABBITMQ_PASSWORD:-QualifyAI_Rabbit_ChangeMe!}
 
 services:
-  sqlserver:
-    profiles: [container-sql]
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: qualifyai-sqlserver
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: Developer
-      MSSQL_SA_PASSWORD: ${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!}
-    volumes: [sqlserver-data:/var/opt/mssql]
-    networks: [qualifyai]
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" || exit 1
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 30s
-    restart: unless-stopped
-
-  mongodb:
-    image: mongo:8.0
-    container_name: qualifyai-mongodb
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-qualifyai}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-QualifyAI_Mongo_ChangeMe!}
-    volumes: [mongodb-data:/data/db]
-    networks: [qualifyai]
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - mongosh --quiet --eval "db.adminCommand('ping').ok" -u "$${MONGO_INITDB_ROOT_USERNAME}" -p "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin | grep 1
-      interval: 15s
-      timeout: 10s
-      retries: 20
-    restart: unless-stopped
-
-  rabbitmq:
-    image: rabbitmq:4-management
-    container_name: qualifyai-rabbitmq
-    hostname: rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-qualifyai}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-QualifyAI_Rabbit_ChangeMe!}
-    volumes: [rabbitmq-data:/var/lib/rabbitmq]
-    networks: [qualifyai]
-    healthcheck:
-      test: [CMD, rabbitmq-diagnostics, -q, ping]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  redis:
-    image: redis:7.4-alpine
-    container_name: qualifyai-redis
-    command: [redis-server, --appendonly, "yes", --requirepass, "${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}"]
-    volumes: [redis-data:/data]
-    networks: [qualifyai]
-    healthcheck:
-      test: [CMD-SHELL, "redis-cli -a '${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}' ping | grep PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  consul:
-    image: hashicorp/consul:1.20
-    container_name: qualifyai-consul
-    command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0
-    volumes: [consul-data:/consul/data]
-    networks: [qualifyai]
-    healthcheck:
-      test: [CMD, consul, members]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  seq:
-    image: datalust/seq:2025.2
-    container_name: qualifyai-seq
-    environment:
-      ACCEPT_EULA: "Y"
-      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_ADMIN_PASSWORD:-QualifyAI_Seq_ChangeMe!}
-    volumes: [seq-data:/data]
-    networks: [qualifyai]
-    restart: unless-stopped
-
-  portainer:
-    image: portainer/portainer-ce:2.27.9
-    container_name: qualifyai-portainer
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer-data:/data
-    networks: [qualifyai]
-    restart: unless-stopped
-
   platform-api:
     <<: *api-common
     container_name: qualifyai-platform-api
@@ -121,14 +23,8 @@ services:
       SERVICE_NAME: platform-api
       SERVICE_ADDRESS: platform-api
       SERVICE_PORT: "8080"
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=QualifyAI_Business;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
-      ConnectionStrings__AutomationDb: "Server=sqlserver,1433;Database=QualifyAI_AutomationDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
-      ConnectionStrings__NotificationsDb: "Server=sqlserver,1433;Database=QualifyAI_NotificationsDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
-      ConnectionStrings__KnowledgeDb: "Server=sqlserver,1433;Database=QualifyAI_KnowledgeDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
-      ConnectionStrings__AIOrchestrationDb: "Server=sqlserver,1433;Database=QualifyAI_AIOrchestrationDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
-      ConnectionStrings__IntegrationsDb: "Server=sqlserver,1433;Database=QualifyAI_IntegrationsDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
       Identity__Authority: http://identity-api:8080
-      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}"
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
       Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-qualifyai}:${MONGO_ROOT_PASSWORD:-QualifyAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
       Mongo__Database: QualifyAI_Knowledge
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
@@ -151,7 +47,6 @@ services:
       SERVICE_ADDRESS: identity-api
       SERVICE_PORT: "8080"
       IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD:-Admin123!ChangeMe}
-      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=QualifyAI_IdentityDb;User Id=sa;Password=${SQL_SA_PASSWORD:-QualifyAI_SQL_ChangeMe123!};TrustServerCertificate=True;Encrypt=False"
       Services__TenantManagement: http://platform-api:8080/internal
       Identity__Issuer: http://identity-api:8080
 
@@ -173,12 +68,4 @@ services:
 networks:
   qualifyai:
     name: qualifyai-network
-
-volumes:
-  sqlserver-data:
-  mongodb-data:
-  rabbitmq-data:
-  redis-data:
-  consul-data:
-  seq-data:
-  portainer-data:
+    external: true

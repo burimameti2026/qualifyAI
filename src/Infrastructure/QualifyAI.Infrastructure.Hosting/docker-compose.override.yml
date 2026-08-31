@@ -1,48 +1,8 @@
 services:
-  sqlserver:
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: Developer
-      MSSQL_SA_PASSWORD: ${SQL_SA_PASSWORD}
-    ports: ["1433:1433"]
-
-  mongodb:
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-    ports: ["27017:27017"]
-
-  rabbitmq:
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-    ports: ["5672:5672", "15672:15672"]
-
-  redis:
-    ports: ["6379:6379"]
-
-  consul:
-    ports: ["8500:8500", "8600:8600/udp"]
-
-  seq:
-    environment:
-      ACCEPT_EULA: "Y"
-      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_ADMIN_PASSWORD}
-    ports: ["5341:80", "5342:5341"]
-
-  portainer:
-    ports: ["9000:9000", "9443:9443"]
-
   platform-api:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: platform-api
-      SERVICE_ADDRESS: platform-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
       Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
       ConnectionStrings__DefaultConnection: "Server=${DB_SERVER};Database=QualifyAI_Business;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__AutomationDb: "Server=${DB_SERVER};Database=QualifyAI_AutomationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
@@ -50,17 +10,9 @@ services:
       ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin"
-      Mongo__Database: QualifyAI_Knowledge
       OpenAI__ApiKey: ${OPENAI_API_KEY}
-      RevenueAutomation__Enabled: "true"
-      RevenueAutomation__IntervalSeconds: "300"
       Email__Provider: ${EMAIL_PROVIDER:-disabled}
       Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
       Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
@@ -76,22 +28,11 @@ services:
   identity-api:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: identity-api
-      SERVICE_ADDRESS: identity-api
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
       Consul__Address: http://consul:8500
-      SEQ_URL: http://seq:5341
       Seq__Url: http://seq:5341
       ConnectionStrings__IdentityDb: "Server=${DB_SERVER};Database=QualifyAI_IdentityDb;User Id=${DB_USER};Password=${DB_PASSWORD};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
-      Identity__Issuer: http://identity-api:8080
       Identity__Audience: qualifyai-api
-      Services__TenantManagement: http://platform-api:8080/internal
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
       IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD}
     ports: ["8081:8080"]
 
