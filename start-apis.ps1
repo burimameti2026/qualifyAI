@@ -8,11 +8,11 @@ if (-not (Test-Path $envFile)) {
 
 Push-Location $hostingRoot
 try {
-    docker compose --env-file $envFile up -d --build identity-api platform-api api-gateway
+    docker compose --env-file $envFile up -d --build identity-api platform-api
     if ($LASTEXITCODE -ne 0) { throw 'API startup failed.' }
 
     Start-Sleep -Seconds 5
-    docker compose ps -a identity-api platform-api api-gateway
+    docker compose ps -a identity-api platform-api
 }
 finally {
     Pop-Location

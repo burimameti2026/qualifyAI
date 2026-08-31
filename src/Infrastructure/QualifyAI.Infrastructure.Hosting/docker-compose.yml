@@ -50,21 +50,6 @@ services:
       Services__TenantManagement: http://platform-api:8080/internal
       Identity__Issuer: http://identity-api:8080
 
-  api-gateway:
-    container_name: qualifyai-api-gateway
-    build:
-      context: ../../..
-      dockerfile: src/ApiGateway/QualifyAI.ApiGateway/Dockerfile
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      SERVICE_NAME: api-gateway
-      SERVICE_ADDRESS: api-gateway
-      SERVICE_PORT: "8080"
-      CONSUL_HTTP_ADDR: http://consul:8500
-      SEQ_URL: http://seq:5341
-    networks: [qualifyai]
-    restart: unless-stopped
-
 networks:
   qualifyai:
     name: qualifyai-network

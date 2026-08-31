@@ -13,3 +13,6 @@ services:
     ports: ["5341:80", "5342:5341"]
   portainer:
     ports: ["9000:9000", "9443:9443"]
+
+  api-gateway:
+    ports: ["10000:8080"]

@@ -35,8 +35,3 @@ services:
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
       IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD}
     ports: ["8081:8080"]
-
-  api-gateway:
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-    ports: ["10000:8080"]

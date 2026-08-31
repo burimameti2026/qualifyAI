@@ -39,7 +39,7 @@ internal static class ProspectDatasetReader
             ? candidates.OrderByDescending(x => x.RecognitionScore).ThenByDescending(x => x.DataRows.Count).First()
             : candidates.FirstOrDefault(x => string.Equals(x.Name, requestedSheet, StringComparison.OrdinalIgnoreCase))
               ?? throw new InvalidOperationException("The selected worksheet was not found.");
-        if (selected.Headers.Length == 0) throw new InvalidOperationException("A header row could not be detected.");
+        if (selected.Headers.Count == 0) throw new InvalidOperationException("A header row could not be detected.");
 
         return new ProspectDatasetPreview(
             file.FileName,
