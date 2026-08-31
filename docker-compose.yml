@@ -2,6 +2,9 @@ name: qualifyai
 
 services:
   sqlserver:
+    # Optional container database. The default development setup uses the
+    # Windows SQL Express instance configured through DB_SERVER in .env.
+    profiles: [container-sql]
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: qualifyai-sqlserver
     environment:
