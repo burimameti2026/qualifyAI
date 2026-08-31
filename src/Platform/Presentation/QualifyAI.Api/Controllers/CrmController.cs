@@ -57,7 +57,7 @@ public sealed class DashboardController(ISender sender, ITenantContext tenant, A
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
 [Route("api/crm")]
-public sealed class CrmController(ISender sender, ITenantContext tenant) : ControllerBase
+public sealed class CrmController(ISender sender, ITenantContext tenant, AppDbContext db) : ControllerBase
 {
     [HttpGet("contacts")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Contact>> Contacts(CancellationToken ct) => sender.Send(new ListContactsQuery(tenant.TenantId()), ct);
@@ -80,6 +80,20 @@ public sealed class CrmController(ISender sender, ITenantContext tenant) : Contr
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpDelete("contacts/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> DeleteContact(Guid id, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var contact = await db.Contacts.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (contact is null) return NotFound();
+        if (await db.Leads.AnyAsync(x => x.TenantId == tenantId && x.ContactId == id, ct) ||
+            await db.Opportunitys.AnyAsync(x => x.TenantId == tenantId && x.ContactId == id, ct))
+            return Conflict(new { detail = "This contact is used by a lead or opportunity and cannot be deleted." });
+        db.Contacts.Remove(contact);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
     [HttpGet("companies")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Company>> Companies(CancellationToken ct) => sender.Send(new ListCompaniesQuery(tenant.TenantId()), ct);
 
@@ -90,11 +104,90 @@ public sealed class CrmController(ISender sender, ITenantContext tenant) : Contr
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpPut("companies/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateCompany(Guid id, Company input, CancellationToken ct)
+    {
+        var company = await db.Companys.FirstOrDefaultAsync(x => x.TenantId == tenant.TenantId() && x.Id == id, ct);
+        if (company is null) return NotFound();
+        try { company.UpdateProfile(input.Name, input.Domain, input.Industry, input.Employees, input.Country, input.AnnualRevenue); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+        await db.SaveChangesAsync(ct);
+        return Ok(company);
+    }
+
+    [HttpDelete("companies/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> DeleteCompany(Guid id, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var company = await db.Companys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (company is null) return NotFound();
+        if (await db.Contacts.AnyAsync(x => x.TenantId == tenantId && x.CompanyId == id, ct) ||
+            await db.Leads.AnyAsync(x => x.TenantId == tenantId && x.CompanyId == id, ct) ||
+            await db.Opportunitys.AnyAsync(x => x.TenantId == tenantId && x.CompanyId == id, ct))
+            return Conflict(new { detail = "This company has related contacts, leads or opportunities and cannot be deleted." });
+        db.Companys.Remove(company);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
     [HttpGet("leads")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Lead>> Leads(CancellationToken ct) => sender.Send(new ListLeadsQuery(tenant.TenantId()), ct);
 
+    [HttpPost("leads")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> CreateLead(Lead input, CancellationToken ct)
+    {
+        try
+        {
+            var lead = await sender.Send(new CreateLeadCommand(tenant.TenantId(), input.ContactId, input.CompanyId, input.Source, input.Score, input.EstimatedValue, input.IntentSummary), ct);
+            return Created($"/api/crm/leads/{lead.Id}", lead);
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPut("leads/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateLead(Guid id, Lead input, CancellationToken ct)
+    {
+        var lead = await db.Leads.FirstOrDefaultAsync(x => x.TenantId == tenant.TenantId() && x.Id == id, ct);
+        if (lead is null) return NotFound();
+        if (!await db.Contacts.AnyAsync(x => x.TenantId == tenant.TenantId() && x.Id == input.ContactId, ct))
+            return BadRequest(new { error = "Lead contact does not exist in this tenant." });
+        lead.ContactId = input.ContactId;
+        lead.CompanyId = input.CompanyId;
+        lead.Source = string.IsNullOrWhiteSpace(input.Source) ? "manual" : input.Source.Trim().ToLowerInvariant();
+        lead.SetEstimatedValue(input.EstimatedValue);
+        lead.SetScore(input.Score, input.IntentSummary);
+        await db.SaveChangesAsync(ct);
+        return Ok(lead);
+    }
+
     [HttpGet("opportunities")][RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<Opportunity>> Opportunities(CancellationToken ct) => sender.Send(new ListOpportunitiesQuery(tenant.TenantId()), ct);
+
+    [HttpPost("opportunities")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> CreateOpportunity(Opportunity input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name)) return BadRequest(new { error = "Opportunity name is required." });
+        if (input.Amount < 0) return BadRequest(new { error = "Opportunity amount cannot be negative." });
+        var tenantId = tenant.TenantId();
+        if (input.PipelineStageId.HasValue && !await db.PipelineStages.AnyAsync(x => x.TenantId == tenantId && x.Id == input.PipelineStageId, ct))
+            return BadRequest(new { error = "Invalid pipeline stage." });
+        var opportunity = new Opportunity
+        {
+            TenantId = tenantId,
+            LeadId = input.LeadId,
+            CompanyId = input.CompanyId,
+            ContactId = input.ContactId,
+            PipelineStageId = input.PipelineStageId,
+            Name = input.Name.Trim(),
+            Amount = input.Amount,
+            ExpectedCloseUtc = input.ExpectedCloseUtc
+        };
+        db.Opportunitys.Add(opportunity);
+        db.RevenueAttributions.Add(new RevenueAttribution { TenantId = tenantId, LeadId = input.LeadId, OpportunityId = opportunity.Id, InfluencedRevenue = input.Amount, Model = "manual" });
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "crm.opportunity.created", EntityType = nameof(Opportunity), EntityId = opportunity.Id.ToString(), DataJson = "{}" });
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/crm/opportunities/{opportunity.Id}", opportunity);
+    }
 
     [HttpPut("opportunities/{id:guid}")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> UpdateOpportunity(Guid id, Opportunity input, CancellationToken ct)

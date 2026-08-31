@@ -133,17 +133,40 @@ public sealed class IntegrationsController(ISender sender, ITenantContext tenant
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
 [Route("api/meetings")]
-public sealed class MeetingsController(ISender sender, ITenantContext tenant) : ControllerBase
+public sealed class MeetingsController(ISender sender, ITenantContext tenant, AppDbContext db) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<IReadOnlyList<MeetingBooking>> List(CancellationToken ct) => sender.Send(new ListMeetingsQuery(tenant.TenantId()), ct);
 
+    [HttpGet("types")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public Task<List<MeetingType>> Types(CancellationToken ct) => db.MeetingTypes.AsNoTracking().Where(x => x.TenantId == tenant.TenantId()).OrderBy(x => x.Name).ToListAsync(ct);
+
     [HttpPost]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Create(MeetingBooking input, CancellationToken ct)
     {
+        var tenantId = tenant.TenantId();
+        if (input.ContactId.HasValue && !await db.Contacts.AnyAsync(x => x.TenantId == tenantId && x.Id == input.ContactId, ct))
+            return BadRequest(new { detail = "The selected contact does not belong to this tenant." });
+        if (input.LeadId.HasValue && !await db.Leads.AnyAsync(x => x.TenantId == tenantId && x.Id == input.LeadId, ct))
+            return BadRequest(new { detail = "The selected lead does not belong to this tenant." });
+        if (input.MeetingTypeId == Guid.Empty)
+        {
+            var defaultType = await db.MeetingTypes.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Name == "Discovery call", ct);
+            if (defaultType is null)
+            {
+                defaultType = new MeetingType { TenantId = tenantId, Name = "Discovery call", DurationMinutes = 30, LocationType = "video" };
+                db.MeetingTypes.Add(defaultType);
+            }
+            input.MeetingTypeId = defaultType.Id;
+        }
+        else if (!await db.MeetingTypes.AnyAsync(x => x.TenantId == tenantId && x.Id == input.MeetingTypeId, ct))
+            return BadRequest(new { detail = "The selected meeting type does not belong to this tenant." });
         var x = await sender.Send(new CreateMeetingCommand(tenant.TenantId(), input), ct);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "sales.meeting.booked", EntityType = nameof(MeetingBooking), EntityId = x.Id.ToString(), DataJson = "{}" });
+        await db.SaveChangesAsync(ct);
         return Created($"/api/meetings/{x.Id}", x);
     }
 }

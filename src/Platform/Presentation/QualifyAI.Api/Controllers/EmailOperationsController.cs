@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,7 +19,8 @@ public sealed class EmailOperationsController(
     AppDbContext db,
     ITenantContext tenant,
     EmailDeliveryService delivery,
-    BrevoEmailProvider brevo) : ControllerBase
+    BrevoEmailProvider brevo,
+    IConfiguration configuration) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -127,6 +130,65 @@ public sealed class EmailOperationsController(
         await db.SaveChangesAsync(ct); return Ok(new { email, suppressed = true });
     }
 
+    [AllowAnonymous]
+    [HttpPost("webhooks/brevo")]
+    public async Task<IActionResult> BrevoWebhook([FromBody] JsonElement payload, [FromHeader(Name = "X-QualifyAI-Webhook-Token")] string? token, [FromQuery] string? accessToken, CancellationToken ct)
+    {
+        var expectedToken = configuration["Email:Brevo:WebhookToken"];
+        if (string.IsNullOrWhiteSpace(expectedToken))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { detail = "Brevo webhook token is not configured." });
+        var suppliedToken = string.IsNullOrWhiteSpace(token) ? accessToken : token;
+        if (string.IsNullOrWhiteSpace(suppliedToken) || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(suppliedToken), Encoding.UTF8.GetBytes(expectedToken)))
+            return Unauthorized();
+
+        var events = payload.ValueKind == JsonValueKind.Array ? payload.EnumerateArray().ToArray() : [payload];
+        var processed = 0;
+        foreach (var item in events)
+        {
+            var eventName = ReadString(item, "event").ToLowerInvariant();
+            var providerMessageId = ReadString(item, "message-id");
+            if (string.IsNullOrWhiteSpace(providerMessageId)) providerMessageId = ReadString(item, "messageId");
+            var email = ReadString(item, "email").Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(providerMessageId)) continue;
+
+            var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.ProviderMessageId == providerMessageId, ct);
+            if (message is null) continue;
+            var recipient = await db.CampaignRecipients.FirstOrDefaultAsync(x => x.TenantId == message.TenantId && x.CampaignId == message.CampaignId && x.ProspectId == message.ProspectId, ct);
+            var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId == message.TenantId && x.Id == message.ProspectId, ct);
+
+            switch (eventName)
+            {
+                case "delivered":
+                    message.Status = OutreachStatus.Delivered;
+                    break;
+                case "hard_bounce":
+                case "soft_bounce":
+                case "blocked":
+                case "error":
+                    message.Status = OutreachStatus.Failed;
+                    if (recipient is not null) { recipient.Status = "failed"; recipient.NextRunAtUtc = null; }
+                    break;
+                case "unsubscribed":
+                case "spam":
+                    message.Status = OutreachStatus.Suppressed;
+                    if (recipient is not null) { recipient.Status = "suppressed"; recipient.NextRunAtUtc = null; }
+                    if (prospect is not null) prospect.Status = ProspectStatus.Suppressed;
+                    if (!string.IsNullOrWhiteSpace(email)) await SuppressEmailAsync(message.TenantId, email, $"brevo-{eventName}", ct);
+                    break;
+                default:
+                    continue;
+            }
+
+            var eventId = ReadString(item, "ts_event");
+            var dedupeKey = $"{providerMessageId}:{eventName}:{eventId}";
+            if (!await db.AuditLogs.AnyAsync(x => x.TenantId == message.TenantId && x.Action == "email.provider.event" && x.EntityId == dedupeKey, ct))
+                db.AuditLogs.Add(new AuditLog { TenantId = message.TenantId, Action = "email.provider.event", EntityType = nameof(OutreachMessage), EntityId = dedupeKey, DataJson = item.GetRawText() });
+            processed++;
+        }
+        await db.SaveChangesAsync(ct);
+        return Ok(new { processed });
+    }
+
     [HttpPost("messages/{id:guid}/request-approval"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
     public async Task<IActionResult> RequestApproval(Guid id, CancellationToken ct)
     {
@@ -143,6 +205,19 @@ public sealed class EmailOperationsController(
         var task = await db.CrmTasks.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}", ct);
         if (task is null) return BadRequest(new { detail = "Request approval before sending this message." });
         task.Completed = true; await db.SaveChangesAsync(ct);
+        var result = await delivery.SendApprovedAsync(TenantId, id, ct);
+        return result.Success ? Ok(result) : Conflict(new { detail = result.Error });
+    }
+
+    [HttpPost("messages/{id:guid}/retry"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
+    public async Task<IActionResult> RetrySend(Guid id, CancellationToken ct)
+    {
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+        if (message.Status != OutreachStatus.Failed)
+            return Conflict(new { detail = "Only failed outreach messages can be retried." });
+        message.Status = OutreachStatus.Queued;
+        await db.SaveChangesAsync(ct);
         var result = await delivery.SendApprovedAsync(TenantId, id, ct);
         return result.Success ? Ok(result) : Conflict(new { detail = result.Error });
     }
@@ -169,6 +244,28 @@ public sealed class EmailOperationsController(
         {
             return new { sender.Id, sender.Name, sender.Status, email = sender.Name, displayName = "", provider = "unknown", verified = false, sender.CreatedAtUtc };
         }
+    }
+
+    private static string ReadString(JsonElement item, string property) =>
+        item.TryGetProperty(property, out var value) ? value.ToString() : string.Empty;
+
+    private async Task SuppressEmailAsync(Guid tenantId, string email, string reason, CancellationToken ct)
+    {
+        var contact = await db.Contacts.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Email == email, ct);
+        if (contact is null)
+        {
+            contact = Contact.Create(tenantId, null, "Suppressed", "Recipient", email, string.Empty, "subscriber");
+            db.Contacts.Add(contact);
+        }
+        var consent = await db.ConsentRecords.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ContactId == contact.Id && x.Type == "marketing", ct);
+        if (consent is null)
+        {
+            consent = new ConsentRecord { TenantId = tenantId, ContactId = contact.Id, Type = "marketing" };
+            db.ConsentRecords.Add(consent);
+        }
+        consent.Granted = false;
+        consent.RecordedAtUtc = DateTime.UtcNow;
+        consent.Source = reason;
     }
 }
 

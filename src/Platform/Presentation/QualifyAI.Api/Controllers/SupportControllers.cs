@@ -8,6 +8,8 @@ using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.BuildingBlocks.Security.Authorization;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure;
+using QualifyAI.Persistence.SqlServer;
+using Microsoft.EntityFrameworkCore;
 
 namespace QualifyAI.Api.Controllers;
 
@@ -15,11 +17,59 @@ namespace QualifyAI.Api.Controllers;
 [Authorize]
 [RequireModule(QualifyAiModules.Inbox)]
 [Route("api/inbox")]
-public sealed class InboxController(ISender sender, ITenantContext tenant) : ControllerBase
+public sealed class InboxController(ISender sender, ITenantContext tenant, AppDbContext db) : ControllerBase
 {
     [HttpGet("conversations")]
     [RequirePermission(QualifyAiPermissions.ConversationsRead)]
-    public Task<IReadOnlyList<Conversation>> Conversations(CancellationToken ct) => sender.Send(new ListConversationsQuery(tenant.TenantId()), ct);
+    public async Task<IActionResult> Conversations(CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var rows = await (from conversation in db.Conversations.AsNoTracking()
+                          join contact in db.Contacts.AsNoTracking() on conversation.ContactId equals (Guid?)contact.Id into contacts
+                          from contact in contacts.DefaultIfEmpty()
+                          join lead in db.Leads.AsNoTracking() on conversation.LeadId equals (Guid?)lead.Id into leads
+                          from lead in leads.DefaultIfEmpty()
+                          where conversation.TenantId == tenantId
+                          orderby conversation.LastMessageAtUtc descending
+                          select new
+                          {
+                              conversation.Id, conversation.ContactId, conversation.LeadId, conversation.ChannelId,
+                              conversation.Status, conversation.AssignedUserId, conversation.AiEnabled, conversation.LastMessageAtUtc,
+                              contactName = contact == null ? "" : (contact.FirstName + " " + contact.LastName).Trim(),
+                              email = contact == null ? "" : contact.Email,
+                              lifecycleStage = contact == null ? "" : contact.LifecycleStage,
+                              leadScore = lead == null ? (int?)null : lead.Score,
+                              leadStatus = lead == null ? "" : lead.Status,
+                              intent = lead == null ? "" : lead.IntentSummary,
+                              estimatedValue = lead == null ? null : lead.EstimatedValue,
+                              lastMessage = db.Messages.Where(x => x.TenantId == tenantId && x.ConversationId == conversation.Id).OrderByDescending(x => x.CreatedAtUtc).Select(x => x.Text).FirstOrDefault()
+                          }).Take(200).ToListAsync(ct);
+        return Ok(rows);
+    }
+
+    [HttpPost("conversations")]
+    [RequirePermission(QualifyAiPermissions.ConversationsManage)]
+    public async Task<IActionResult> CreateConversation(ConversationInput input, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        if (input.ContactId.HasValue && !await db.Contacts.AnyAsync(x => x.TenantId == tenantId && x.Id == input.ContactId, ct))
+            return BadRequest(new { detail = "The selected contact does not belong to this tenant." });
+        if (input.LeadId.HasValue && !await db.Leads.AnyAsync(x => x.TenantId == tenantId && x.Id == input.LeadId, ct))
+            return BadRequest(new { detail = "The selected lead does not belong to this tenant." });
+        if (!input.ContactId.HasValue && !input.LeadId.HasValue)
+            return BadRequest(new { detail = "Select a contact or lead before opening a conversation." });
+        var conversation = new Conversation { TenantId = tenantId, ContactId = input.ContactId, LeadId = input.LeadId, ChannelId = input.ChannelId, AiEnabled = input.AiEnabled, Status = ConversationStatus.Open };
+        db.Conversations.Add(conversation);
+        if (!string.IsNullOrWhiteSpace(input.InitialMessage))
+        {
+            var message = Message.Create(tenantId, conversation.Id, null, input.InitialMessage, "agent");
+            db.Messages.Add(message);
+            conversation.RegisterMessage(message.CreatedAtUtc);
+        }
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "inbox.conversation.created", EntityType = nameof(Conversation), EntityId = conversation.Id.ToString(), DataJson = "{}" });
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/inbox/conversations/{conversation.Id}", conversation);
+    }
 
     [HttpGet("conversations/{id:guid}/messages")]
     [RequirePermission(QualifyAiPermissions.ConversationsRead)]
@@ -82,3 +132,4 @@ public sealed class TicketsController(ISender sender, ITenantContext tenant) : C
 public sealed record MessageInput(string Text, string SenderType = "agent");
 public sealed record NoteInput(string Text);
 public sealed record ConversationUpdate(string Status, bool? AiEnabled = null);
+public sealed record ConversationInput(Guid? ContactId, Guid? LeadId, Guid? ChannelId, bool AiEnabled = true, string? InitialMessage = null);

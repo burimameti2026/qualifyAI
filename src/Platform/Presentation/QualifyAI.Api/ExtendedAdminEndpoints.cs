@@ -15,29 +15,6 @@ public static class ExtendedAdminEndpoints
     {
         var api = app.MapGroup("/api").RequireAuthorization();
 
-        api.MapPost("/crm/leads", async (Lead x, ISender sender, ITenantContext tc, CancellationToken ct) =>
-        {
-            var created = await sender.Send(new CreateLeadCommand(tc.TenantId(),x.ContactId,x.CompanyId,x.Source,x.Score,x.EstimatedValue,x.IntentSummary),ct);
-            return Results.Created($"/api/crm/leads/{created.Id}", created);
-        });
-        api.MapPut("/crm/leads/{id:guid}", async (Guid id, Lead input, AppDbContext db, ITenantContext tc) =>
-        {
-            var x = await db.Leads.FirstOrDefaultAsync(v => v.Id == id && v.TenantId == tc.TenantId()); if (x is null) return Results.NotFound();
-            x.Source=input.Source; x.Score=input.Score; x.Status=input.Status; x.EstimatedValue=input.EstimatedValue; x.IntentSummary=input.IntentSummary; x.CompanyId=input.CompanyId; x.ContactId=input.ContactId;
-            x.Temperature=x.Score>=80?LeadTemperature.Hot:x.Score>=50?LeadTemperature.Warm:LeadTemperature.Cold; await db.SaveChangesAsync(); return Results.Ok(x);
-        });
-        api.MapPost("/crm/opportunities", async (Opportunity x, AppDbContext db, ITenantContext tc) =>
-        {
-            x.Id=Guid.NewGuid(); x.TenantId=tc.TenantId(); db.Opportunitys.Add(x); await db.SaveChangesAsync(); return Results.Created($"/api/crm/opportunities/{x.Id}",x);
-        });
-        api.MapPut("/crm/companies/{id:guid}", async (Guid id, Company input, AppDbContext db, ITenantContext tc) =>
-        {
-            var x=await db.Companys.FirstOrDefaultAsync(v=>v.Id==id&&v.TenantId==tc.TenantId()); if(x is null)return Results.NotFound();
-            x.Name=input.Name;x.Domain=input.Domain;x.Industry=input.Industry;x.Employees=input.Employees;x.Country=input.Country;x.AnnualRevenue=input.AnnualRevenue;await db.SaveChangesAsync();return Results.Ok(x);
-        });
-        api.MapDelete("/crm/contacts/{id:guid}", async (Guid id, AppDbContext db, ITenantContext tc) => { var x=await db.Contacts.FirstOrDefaultAsync(v=>v.Id==id&&v.TenantId==tc.TenantId());if(x is null)return Results.NotFound();db.Contacts.Remove(x);await db.SaveChangesAsync();return Results.NoContent(); });
-        api.MapDelete("/crm/companies/{id:guid}", async (Guid id, AppDbContext db, ITenantContext tc) => { var x=await db.Companys.FirstOrDefaultAsync(v=>v.Id==id&&v.TenantId==tc.TenantId());if(x is null)return Results.NotFound();db.Companys.Remove(x);await db.SaveChangesAsync();return Results.NoContent(); });
-
         api.MapGet("/tickets/sla", (AppDbContext db, ITenantContext tc) => db.SlaPolicys.Where(x=>x.TenantId==tc.TenantId()).ToListAsync());
         api.MapPost("/tickets/sla", async (SlaPolicy x, AppDbContext db, ITenantContext tc) => { x.Id=Guid.NewGuid();x.TenantId=tc.TenantId();db.SlaPolicys.Add(x);await db.SaveChangesAsync();return Results.Ok(x); });
 

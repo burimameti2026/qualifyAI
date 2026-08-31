@@ -135,7 +135,9 @@ services:
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
       Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
       Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
+      Email__Brevo__WebhookToken: ${BREVO_WEBHOOK_TOKEN:-}
 
   identity-api:
     <<: *api-common

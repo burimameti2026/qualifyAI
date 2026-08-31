@@ -79,6 +79,10 @@ public sealed class EmailDeliveryService(
         if (await IsSuppressedAsync(tenantId, prospect, ct)) return new(false, null, "Recipient is suppressed or has withdrawn marketing consent.");
         var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
         if (!await db.CrmTasks.AnyAsync(x => x.TenantId == tenantId && x.Title == approvalTitle && x.Completed, ct)) return new(false, null, "Human approval is required before sending.");
+        var dailyLimit = Math.Max(1, configuration.GetValue("Email:DailySendLimit", 10));
+        var startOfDay = DateTime.UtcNow.Date;
+        var sentToday = await db.UsageRecords.CountAsync(x => x.TenantId == tenantId && x.Meter == "emails_sent" && x.CreatedAtUtc >= startOfDay, ct);
+        if (sentToday >= dailyLimit) return new(false, null, $"Daily outreach limit of {dailyLimit} messages has been reached.");
         var providerName = configuration["Email:Provider"] ?? "disabled";
         var provider = providers.FirstOrDefault(x => x.Name.Equals(providerName, StringComparison.OrdinalIgnoreCase));
         if (provider is null) return new(false, null, $"Email provider '{providerName}' is not enabled.");
@@ -108,6 +112,19 @@ public sealed class EmailDeliveryService(
                 ct);
             if (!confirmed)
                 return new(false, result.ProviderMessageId, "Email was accepted by the provider, but campaign delivery state could not be updated.");
+        }
+        else
+        {
+            message.Status = OutreachStatus.Failed;
+            db.AuditLogs.Add(new AuditLog
+            {
+                TenantId = tenantId,
+                Action = "email.send.failed",
+                EntityType = nameof(OutreachMessage),
+                EntityId = message.Id.ToString(),
+                DataJson = JsonSerializer.Serialize(new { provider = providerName, error = result.Error })
+            });
+            await db.SaveChangesAsync(ct);
         }
         return result;
     }
