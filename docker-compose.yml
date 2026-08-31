@@ -2,7 +2,6 @@ name: qualifyai
 
 services:
   sqlserver:
-    profiles: [container-sql]
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: qualifyai-sqlserver
     environment:
@@ -97,6 +96,9 @@ services:
 
   api-gateway:
     container_name: qualifyai-api-gateway
+    depends_on:
+      consul:
+        condition: service_healthy
     build:
       context: .
       dockerfile: src/ApiGateway/QualifyAI.ApiGateway/Dockerfile
