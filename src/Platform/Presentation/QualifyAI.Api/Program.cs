@@ -11,13 +11,15 @@ using QualifyAI.BuildingBlocks.Application.Security;
 using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Infrastructure;
 using QualifyAI.Persistence.SqlServer;
+using QualifyAI.Persistence.SqlServer.Queries;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-builder.Services.AddMediatR(cfg =>
-    cfg.RegisterServicesFromAssemblyContaining<DashboardOverviewQueryHandler>());
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(
+    typeof(DashboardOverviewQueryHandler).Assembly,
+    typeof(ListCompaniesQueryHandler).Assembly));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(TenantValidationBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(PermissionAuthorizationBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LicenseEntitlementBehavior<,>));
