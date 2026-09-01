@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/fixes
+      - feature/golden-pipeline
       - dev
       - master
   pull_request:
