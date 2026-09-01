@@ -36,9 +36,11 @@ jobs:
         run: ./scripts/check-architecture.ps1
 
       - name: Restore
+        if: always()
         run: dotnet restore QualifyAI.sln --disable-parallel
 
       - name: Build
+        if: always()
         run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
 
   admin-ui:
