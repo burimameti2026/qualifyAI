@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Authentication;
+using QualifyAI.Identity.Application;
 using QualifyAI.Identity.Persistence.SqlServer.Identity;
 using QualifyAI.Identity.Persistence.SqlServer;
 
@@ -24,7 +25,7 @@ public sealed class AccountService(
             cancellationToken);
 
         if (existing is not null)
-            throw new InvalidOperationException("User already exists in this tenant.");
+            throw new IdentityConflictException("User already exists in this tenant.");
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -355,6 +356,8 @@ public sealed class AccountService(
     private static void EnsureSucceeded(IdentityResult result)
     {
         if (result.Succeeded) return;
-        throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
+        throw new IdentityValidationException(result.Errors
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Code) ? "identity" : x.Code)
+            .ToDictionary(x => x.Key, x => x.Select(y => y.Description).Distinct().ToArray()));
     }
 }

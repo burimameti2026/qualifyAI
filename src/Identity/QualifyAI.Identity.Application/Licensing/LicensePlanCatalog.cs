@@ -14,16 +14,16 @@ public static class LicensePlanCatalog
     ];
 
     public static LicensePlanDefinition Get(string plan) => Plans.FirstOrDefault(x => x.Code.Equals(plan?.Trim(), StringComparison.OrdinalIgnoreCase))
-        ?? throw new InvalidOperationException($"Unknown license plan '{plan}'.");
+        ?? throw new IdentityValidationException("plan", $"Unknown license plan '{plan}'.");
 
     public static IReadOnlyCollection<string> ValidateModules(string plan, IEnumerable<string> requested)
     {
         var definition = Get(plan);
         var modules = requested.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToLowerInvariant()).Distinct().ToArray();
         var invalid = modules.Except(definition.Modules, StringComparer.OrdinalIgnoreCase).ToArray();
-        if (invalid.Length > 0) throw new InvalidOperationException($"Plan '{definition.Code}' does not include: {string.Join(", ", invalid)}.");
+        if (invalid.Length > 0) throw new IdentityValidationException("modules", $"Plan '{definition.Code}' does not include: {string.Join(", ", invalid)}.");
         if (!modules.Contains("settings") || !modules.Contains("billing"))
-            throw new InvalidOperationException("Administration and billing modules are required so the tenant cannot lock itself out.");
+            throw new IdentityValidationException("modules", "Administration and billing modules are required so the tenant cannot lock itself out.");
         return modules;
     }
 }

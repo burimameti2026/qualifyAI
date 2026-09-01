@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.Identity.Application.AccessControl;
+using QualifyAI.Identity.Application;
 using QualifyAI.Identity.Domain.AccessControl;
 using QualifyAI.Identity.Persistence.SqlServer.Identity;
 
@@ -39,12 +40,12 @@ public sealed class AccessControlRepository(IdentityDbContext db) : IAccessContr
 
     public async Task<AccessRoleDto> CreateRoleAsync(Guid? tenantId, string name, string description, AccessRoleScope scope, bool isSystem, Guid? actorUserId, CancellationToken ct = default)
     {
-        if (scope == AccessRoleScope.Tenant && !tenantId.HasValue) throw new InvalidOperationException("Tenant roles require TenantId.");
-        if (scope == AccessRoleScope.Platform && tenantId.HasValue) throw new InvalidOperationException("Platform roles cannot belong to a tenant.");
+        if (scope == AccessRoleScope.Tenant && !tenantId.HasValue) throw new IdentityValidationException("tenantId", "Tenant roles require TenantId.");
+        if (scope == AccessRoleScope.Platform && tenantId.HasValue) throw new IdentityValidationException("tenantId", "Platform roles cannot belong to a tenant.");
 
         var normalized = name.Trim().ToUpperInvariant();
         if (await db.AccessRoles.AnyAsync(x => x.TenantId == tenantId && x.NormalizedName == normalized, ct))
-            throw new InvalidOperationException("Role already exists.");
+            throw new IdentityConflictException("Role already exists.");
 
         var role = scope == AccessRoleScope.Platform
             ? AccessRole.CreatePlatform(name, description, isSystem)
@@ -74,7 +75,7 @@ public sealed class AccessControlRepository(IdentityDbContext db) : IAccessContr
         var role = await db.AccessRoles.FirstOrDefaultAsync(x => x.Id == roleId, ct) ?? throw new KeyNotFoundException("Role not found.");
         var normalized = ValidatePermissions(permissions);
         if (role.Scope == AccessRoleScope.Tenant && normalized.Contains(QualifyAiPermissions.SystemAdmin, StringComparer.OrdinalIgnoreCase))
-            throw new InvalidOperationException("system.admin is platform-only.");
+            throw new IdentityValidationException("permissions", "system.admin is platform-only.");
 
         var existing = await db.RolePermissionGrants.Where(x => x.RoleId == roleId).ToListAsync(ct);
         db.RolePermissionGrants.RemoveRange(existing);
@@ -89,7 +90,7 @@ public sealed class AccessControlRepository(IdentityDbContext db) : IAccessContr
             ?? throw new KeyNotFoundException("Client application not found.");
         var normalized = ValidatePermissions(permissions);
         if (client.TenantId.HasValue && normalized.Contains(QualifyAiPermissions.SystemAdmin, StringComparer.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Tenant clients cannot receive system.admin.");
+            throw new IdentityValidationException("permissions", "Tenant clients cannot receive system.admin.");
 
         var existing = await db.ClientPermissionGrants.Where(x => x.ClientApplicationId == clientApplicationId).ToListAsync(ct);
         db.ClientPermissionGrants.RemoveRange(existing);
@@ -146,7 +147,7 @@ public sealed class AccessControlRepository(IdentityDbContext db) : IAccessContr
         var normalized = permissions.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToLowerInvariant()).Distinct().ToArray();
         var valid = QualifyAiPermissions.All.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var invalid = normalized.Where(x => !valid.Contains(x)).ToArray();
-        if (invalid.Length > 0) throw new InvalidOperationException($"Unknown permissions: {string.Join(", ", invalid)}");
+        if (invalid.Length > 0) throw new IdentityValidationException("permissions", $"Unknown permissions: {string.Join(", ", invalid)}");
         return normalized;
     }
 

@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using OpenIddict.Abstractions;
 using QualifyAI.Identity.Application.Clients;
+using QualifyAI.Identity.Application;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace QualifyAI.Identity.Infrastructure.Clients;
@@ -16,7 +17,7 @@ public sealed class OpenIddictClientCredentialStore(IOpenIddictApplicationManage
         CancellationToken cancellationToken = default)
     {
         if (await applications.FindByClientIdAsync(clientId, cancellationToken) is not null)
-            throw new InvalidOperationException($"OpenIddict client '{clientId}' already exists.");
+            throw new IdentityConflictException($"OpenIddict client '{clientId}' already exists.");
 
         var descriptor = BuildDescriptor(clientId, displayName, clientSecret, scopes);
         await applications.CreateAsync(descriptor, cancellationToken);

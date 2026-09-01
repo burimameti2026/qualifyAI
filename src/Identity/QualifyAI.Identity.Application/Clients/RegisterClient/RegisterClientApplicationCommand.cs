@@ -3,6 +3,7 @@ using FluentValidation;
 using MediatR;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Domain.Clients;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Clients.RegisterClient;
 
@@ -46,7 +47,7 @@ public sealed class RegisterClientApplicationCommandHandler(
     {
         var clientId = request.ClientId.Trim().ToLowerInvariant();
         if (await clients.ClientIdExistsAsync(clientId, cancellationToken))
-            throw new InvalidOperationException($"Client '{clientId}' already exists.");
+            throw new IdentityConflictException($"Client '{clientId}' already exists.");
 
         var client = ClientApplication.Create(
             request.TenantId,

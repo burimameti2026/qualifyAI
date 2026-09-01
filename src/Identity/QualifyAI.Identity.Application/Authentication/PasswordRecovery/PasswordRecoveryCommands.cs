@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Authentication.PasswordRecovery;
 
@@ -24,7 +25,7 @@ public sealed class ResetPasswordCommandValidator : AbstractValidator<ResetPassw
         RuleFor(x => x.TenantSlug).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(320);
         RuleFor(x => x.Token).NotEmpty();
-        RuleFor(x => x.NewPassword).NotEmpty().MinimumLength(10);
+        RuleFor(x => x.NewPassword).StrongIdentityPassword();
     }
 }
 

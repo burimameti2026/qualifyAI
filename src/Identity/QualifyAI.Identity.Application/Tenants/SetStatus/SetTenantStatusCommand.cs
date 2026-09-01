@@ -3,6 +3,7 @@ using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Domain.Tenants;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Tenants.SetStatus;
 
@@ -30,7 +31,7 @@ public sealed class SetTenantStatusCommandHandler(
                 tenant.Suspend();
                 break;
             default:
-                throw new InvalidOperationException($"Tenant status transition to '{request.Status}' is not supported by this command.");
+                throw new IdentityConflictException($"Tenant status transition to '{request.Status}' is not supported by this command.");
         }
 
         outbox.Add(new TenantStatusChangedIntegrationEvent(

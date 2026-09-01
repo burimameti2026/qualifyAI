@@ -3,6 +3,7 @@ using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Application.Licensing.UpdateLicense;
 using QualifyAI.Identity.Domain.Licensing;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Licensing.SetLicenseStatus;
 
@@ -33,7 +34,7 @@ public sealed class SetLicenseStatusCommandHandler(
                 license.Cancel();
                 break;
             default:
-                throw new InvalidOperationException($"License status transition to '{request.Status}' is not supported by this command.");
+                throw new IdentityConflictException($"License status transition to '{request.Status}' is not supported by this command.");
         }
 
         UpdateLicenseCommandHandler.QueueLicenseChanged(outbox, license);

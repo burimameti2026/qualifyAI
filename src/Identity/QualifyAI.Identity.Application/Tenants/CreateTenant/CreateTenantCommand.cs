@@ -4,6 +4,7 @@ using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Domain.Tenants;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Tenants.CreateTenant;
 
@@ -45,7 +46,7 @@ public sealed class CreateTenantCommandHandler(
         var slug = request.Slug.Trim().ToLowerInvariant();
 
         if (await tenants.SlugExistsAsync(slug, cancellationToken))
-            throw new InvalidOperationException($"Tenant slug '{slug}' already exists.");
+            throw new IdentityConflictException($"Tenant slug '{slug}' already exists.");
 
         var tenant = Tenant.Create(request.Name, slug, request.ContactEmail);
         await tenants.AddAsync(tenant, cancellationToken);

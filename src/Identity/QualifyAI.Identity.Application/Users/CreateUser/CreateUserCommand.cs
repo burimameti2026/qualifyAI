@@ -1,5 +1,6 @@
 using FluentValidation;
 using MediatR;
+using QualifyAI.Identity.Application;
 using QualifyAI.Identity.Application.Authentication;
 
 namespace QualifyAI.Identity.Application.Users.CreateUser;
@@ -20,7 +21,7 @@ public sealed class CreateUserCommandValidator : AbstractValidator<CreateUserCom
         RuleFor(x => x.TenantId).NotEmpty();
         RuleFor(x => x.TenantSlug).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(320);
-        RuleFor(x => x.Password).NotEmpty().MinimumLength(10);
+        RuleFor(x => x.Password).StrongIdentityPassword();
         RuleFor(x => x.FirstName).NotEmpty().MaximumLength(100);
         RuleFor(x => x.LastName).NotEmpty().MaximumLength(100);
     }

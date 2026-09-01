@@ -5,6 +5,7 @@ using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Application.Licensing;
 using QualifyAI.Identity.Domain.Licensing;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Licensing.AssignLicense;
 
@@ -54,7 +55,7 @@ public sealed class AssignLicenseCommandHandler(
 
         var existing = await licenses.GetByTenantIdAsync(request.TenantId, cancellationToken);
         if (existing is not null)
-            throw new InvalidOperationException("Tenant already has a license. Use the license update flow.");
+            throw new IdentityConflictException("Tenant already has a license. Use the license update flow.");
 
         var modules = LicensePlanCatalog.ValidateModules(request.Plan, request.Modules);
         var license = License.Create(

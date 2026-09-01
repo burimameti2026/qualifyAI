@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using QualifyAI.Identity.Application.Authentication;
+using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Users.ChangePassword;
 
@@ -17,7 +18,7 @@ public sealed class ChangePasswordCommandValidator : AbstractValidator<ChangePas
         RuleFor(x => x.TenantId).NotEmpty();
         RuleFor(x => x.UserId).NotEmpty();
         RuleFor(x => x.CurrentPassword).NotEmpty();
-        RuleFor(x => x.NewPassword).NotEmpty().MinimumLength(10);
+        RuleFor(x => x.NewPassword).StrongIdentityPassword();
     }
 }
 
