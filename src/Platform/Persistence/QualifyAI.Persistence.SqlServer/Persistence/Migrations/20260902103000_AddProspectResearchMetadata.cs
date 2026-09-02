@@ -1,10 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace QualifyAI.Persistence.SqlServer.Migrations;
 
-public partial class AddProspectResearchMetadata : Migration
+[DbContext(typeof(AppDbContext))]
+[Migration("20260902103000_AddProspectResearchMetadata")]
+public sealed class AddProspectResearchMetadata : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
