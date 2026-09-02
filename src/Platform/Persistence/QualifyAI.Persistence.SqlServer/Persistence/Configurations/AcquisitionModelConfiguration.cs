@@ -24,6 +24,15 @@ internal static class AcquisitionModelConfiguration
             b.Property(x => x.Industry).HasMaxLength(120);
             b.Property(x => x.Country).HasMaxLength(100);
             b.Property(x => x.Source).HasMaxLength(80);
+            b.Property(x => x.Priority).HasMaxLength(20);
+            b.Property(x => x.ContactReadiness).HasMaxLength(80);
+            b.Property(x => x.SuggestedBuyer).HasMaxLength(200);
+            b.Property(x => x.SizeBand).HasMaxLength(80);
+            b.Property(x => x.Offer).HasMaxLength(500);
+            b.Property(x => x.SourceUrl).HasMaxLength(2000);
+            b.Property(x => x.VerificationStatus).HasMaxLength(500);
+            b.Property(x => x.OutreachStatus).HasMaxLength(80);
+            b.Property(x => x.DatasetOrigin).HasMaxLength(200);
             b.Ignore(x => x.PriorityScore);
             b.HasIndex(x => new { x.TenantId, x.Domain }).IsUnique().HasFilter("[Domain] <> N''");
             b.HasIndex(x => new { x.TenantId, x.Email }).IsUnique().HasFilter("[Email] <> N''");

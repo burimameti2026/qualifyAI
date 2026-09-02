@@ -16,6 +16,16 @@ public sealed class Prospect : TenantEntity
     public string Industry { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
     public string Source { get; set; } = "manual";
+    public string Priority { get; set; } = string.Empty;
+    public string ContactReadiness { get; set; } = string.Empty;
+    public string SuggestedBuyer { get; set; } = string.Empty;
+    public string SizeBand { get; set; } = string.Empty;
+    public string PainHypothesis { get; set; } = string.Empty;
+    public string Offer { get; set; } = string.Empty;
+    public string SourceUrl { get; set; } = string.Empty;
+    public string VerificationStatus { get; set; } = string.Empty;
+    public string OutreachStatus { get; set; } = string.Empty;
+    public string DatasetOrigin { get; set; } = string.Empty;
     public int FitScore { get; set; }
     public int IntentScore { get; set; }
     public ProspectStatus Status { get; set; } = ProspectStatus.Discovered;

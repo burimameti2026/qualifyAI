@@ -17,6 +17,15 @@ public sealed class DemoScenariosController(ITenantContext tenant, RealisticScen
     [RequirePermission(QualifyAiPermissions.AutomationManage)]
     public Task<ScenarioInstallResult> Install(CancellationToken ct) => scenarios.InstallAsync(tenant.TenantId(), ct);
 
+    [HttpPost("reset")]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public Task<ScenarioResetResult> Reset(CancellationToken ct) => scenarios.ResetBusinessDataAsync(tenant.TenantId(), ct);
+
+    [HttpPost("reset-and-install")]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public Task<ResetAndInstallResult> ResetAndInstall(CancellationToken ct)
+        => scenarios.ResetAndInstallAsync(tenant.TenantId(), ct);
+
     [HttpPost("tenant/{tenantId:guid}/install")]
     [RequirePermission(QualifyAiPermissions.SystemAdmin)]
     public Task<ScenarioInstallResult> InstallForTenant(Guid tenantId, CancellationToken ct)

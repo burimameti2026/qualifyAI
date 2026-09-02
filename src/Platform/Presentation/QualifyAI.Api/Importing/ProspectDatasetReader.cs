@@ -17,7 +17,17 @@ internal static class ProspectDatasetReader
         ["jobTitle"] = ["jobtitle", "title", "role", "position", "suggestedbuyer", "buyerrole"],
         ["industry"] = ["industry", "segment", "sector", "vertical"],
         ["country"] = ["country", "market", "location", "hqcountry"],
-        ["source"] = ["source", "datasource", "sourceurl", "provider"],
+        ["source"] = ["source", "datasource", "provider"],
+        ["priority"] = ["priority", "prioritytier", "accountpriority"],
+        ["contactReadiness"] = ["contactreadiness", "readiness", "contactstatus"],
+        ["suggestedBuyer"] = ["suggestedbuyer", "buyerpersona", "decisionmakerrole"],
+        ["sizeBand"] = ["sizeband", "companysize", "employeesband"],
+        ["painHypothesis"] = ["painhypothesis", "painpoint", "hypothesis"],
+        ["offer"] = ["offer", "recommendedoffer", "campaignoffer"],
+        ["sourceUrl"] = ["sourceurl", "evidencesourceurl", "researchurl"],
+        ["verificationStatus"] = ["verificationstatus", "verification", "verificationnote"],
+        ["outreachStatus"] = ["outreachstatus", "outreachreadiness"],
+        ["datasetOrigin"] = ["datasetorigin", "origin", "dataset", "listorigin"],
         ["fitScore"] = ["fitscore", "fit", "accountscore", "score"],
         ["intentScore"] = ["intentscore", "intent", "buyingintent", "signalscore"]
     };
