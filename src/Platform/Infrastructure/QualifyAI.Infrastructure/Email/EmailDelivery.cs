@@ -11,7 +11,15 @@ using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Infrastructure.Email;
 
-public sealed record EmailEnvelope(string FromEmail, string FromName, string ToEmail, string ToName, string Subject, string HtmlBody, string TextBody);
+public sealed record EmailEnvelope(
+    string FromEmail,
+    string FromName,
+    string ToEmail,
+    string ToName,
+    string Subject,
+    string HtmlBody,
+    string TextBody,
+    string? CorrelationId = null);
 public sealed record EmailProviderResult(bool Success, string? ProviderMessageId, string? Error = null);
 public interface IEmailDeliveryProvider { string Name { get; } Task<EmailProviderResult> SendAsync(EmailEnvelope message, CancellationToken ct = default); }
 
@@ -47,8 +55,12 @@ public sealed class SendGridEmailProvider(HttpClient http, IConfiguration config
         {
             personalizations = new[] { new { to = new[] { new { email = message.ToEmail, name = message.ToName } } } },
             from = new { email = message.FromEmail, name = message.FromName },
+            reply_to = new { email = message.FromEmail, name = message.FromName },
             subject = message.Subject,
-            content = new[] { new { type = "text/plain", value = message.TextBody }, new { type = "text/html", value = message.HtmlBody } }
+            content = new[] { new { type = "text/plain", value = message.TextBody }, new { type = "text/html", value = message.HtmlBody } },
+            custom_args = string.IsNullOrWhiteSpace(message.CorrelationId)
+                ? null
+                : new { qualifyai_message_id = message.CorrelationId }
         }), Encoding.UTF8, "application/json");
         try
         {
@@ -72,6 +84,8 @@ public sealed class EmailDeliveryService(
         var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == messageId, ct);
         if (message is null) return new(false, null, "Outreach message was not found.");
         if (message.Status is OutreachStatus.Sent or OutreachStatus.Delivered or OutreachStatus.Replied) return new(true, message.ProviderMessageId);
+        if (message.Status == OutreachStatus.Suppressed) return new(false, null, "This outreach message was stopped by a reply, opt-out, or suppression rule.");
+        if (message.Status != OutreachStatus.Queued) return new(false, null, "Only queued outreach messages can be sent.");
         var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == message.ProspectId, ct);
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == message.CampaignId, ct);
         if (prospect is null || campaign is null) return new(false, null, "Campaign recipient data is incomplete.");
@@ -101,7 +115,9 @@ public sealed class EmailDeliveryService(
             return new(false, null, $"Campaign sender '{campaign.SenderEmail}' is not verified for provider '{providerName}'.");
 
         var fromName = string.IsNullOrWhiteSpace(sender.Name) ? campaign.SenderName : sender.Name;
-        var result = await provider.SendAsync(new EmailEnvelope(sender.Email, fromName, prospect.Email, prospect.ContactName, message.Subject, message.Body.Replace("\n", "<br>"), message.Body), ct);
+        var result = await provider.SendAsync(new EmailEnvelope(
+            sender.Email, fromName, prospect.Email, prospect.ContactName, message.Subject,
+            message.Body.Replace("\n", "<br>"), message.Body, message.Id.ToString("N")), ct);
         if (result.Success)
         {
             db.UsageRecords.Add(new UsageRecord { TenantId = tenantId, Meter = "emails_sent", Quantity = 1, ReferenceId = message.Id.ToString() });

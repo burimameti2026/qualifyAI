@@ -16,7 +16,11 @@ namespace QualifyAI.Api.Controllers;
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
 [Route("api/acquisition")]
-public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant, CampaignExecutionService executor) : ControllerBase
+public sealed class AcquisitionController(
+    AppDbContext db,
+    ITenantContext tenant,
+    CampaignExecutionService executor,
+    ProspectReplyProcessingService replyProcessor) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -321,87 +325,17 @@ public sealed class AcquisitionController(AppDbContext db, ITenantContext tenant
     [HttpPost("replies")][RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Reply(ReplyInput input, CancellationToken ct)
     {
-        var tenantId = TenantId;
-        var recipient = await db.CampaignRecipients.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CampaignId == input.CampaignId && x.ProspectId == input.ProspectId, ct);
-        var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == input.ProspectId, ct);
-        if (recipient is null || prospect is null) return NotFound();
-        if (input.OutreachMessageId.HasValue && !await db.OutreachMessages.AnyAsync(x => x.TenantId == tenantId && x.Id == input.OutreachMessageId && x.CampaignId == input.CampaignId && x.ProspectId == input.ProspectId, ct))
-            return BadRequest(new { detail = "The reply does not match the selected outreach message." });
-
-        var classification = string.IsNullOrWhiteSpace(input.Classification) ? "unclassified" : input.Classification.Trim().ToLowerInvariant();
-        var interested = classification is "interested" or "positive" or "demo-request" or "meeting-request";
-        recipient.Status = "replied"; recipient.RepliedAtUtc = DateTime.UtcNow; recipient.NextRunAtUtc = null;
-        prospect.Status = interested ? ProspectStatus.DemoReady : ProspectStatus.Replied;
-        var reply = new ProspectReply { TenantId = tenantId, CampaignId = input.CampaignId, ProspectId = input.ProspectId, OutreachMessageId = input.OutreachMessageId, Body = input.Body?.Trim() ?? string.Empty, Classification = classification, SentimentScore = Math.Clamp(input.SentimentScore, -100, 100), RequiresHuman = input.RequiresHuman || interested };
-        db.ProspectReplies.Add(reply);
-        if (input.OutreachMessageId.HasValue)
+        try
         {
-            var message = await db.OutreachMessages.FirstAsync(x => x.TenantId == tenantId && x.Id == input.OutreachMessageId, ct);
-            message.Status = OutreachStatus.Replied;
+            var result = await replyProcessor.ProcessAsync(TenantId, new ProcessProspectReplyRequest(
+                input.CampaignId, input.ProspectId, input.OutreachMessageId, input.Body,
+                input.Classification, input.SentimentScore, input.RequiresHuman), ct);
+            return result is null ? NotFound() : Ok(result);
         }
-
-        Company? company = null;
-        Contact? contact = null;
-        Lead? lead = null;
-        Opportunity? opportunity = null;
-        if (interested)
+        catch (InvalidOperationException exception)
         {
-            company = prospect.CompanyId.HasValue
-                ? await db.Companys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == prospect.CompanyId, ct)
-                : await db.Companys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Domain == prospect.Domain, ct);
-            if (company is null)
-            {
-                company = Company.Create(tenantId, prospect.CompanyName, prospect.Domain, prospect.Industry, null, prospect.Country, null);
-                db.Companys.Add(company);
-            }
-
-            contact = prospect.ContactId.HasValue
-                ? await db.Contacts.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == prospect.ContactId, ct)
-                : await db.Contacts.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Email == prospect.Email, ct);
-            if (contact is null)
-            {
-                var names = SplitName(prospect.ContactName);
-                contact = Contact.Create(tenantId, company.Id, names.FirstName, names.LastName, prospect.Email, string.Empty, "sql");
-                db.Contacts.Add(contact);
-            }
-            else
-            {
-                contact.UpdateProfile(company.Id, contact.FirstName, contact.LastName, contact.Email, contact.Phone, "sql");
-            }
-            prospect.CompanyId = company.Id;
-            prospect.ContactId = contact.Id;
-
-            lead = await db.Leads.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ContactId == contact.Id && x.Source == "outreach", ct);
-            if (lead is null)
-            {
-                lead = Lead.Create(tenantId, contact.Id, company.Id, "outreach", Math.Max(80, prospect.PriorityScore), null, $"Interested reply to campaign: {input.Body}".Trim());
-                lead.Qualify();
-                db.Leads.Add(lead);
-            }
-
-            opportunity = await db.Opportunitys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.LeadId == lead.Id && x.Status == OpportunityStatus.Open, ct);
-            if (opportunity is null)
-            {
-                var stage = await db.PipelineStages.Where(x => x.TenantId == tenantId).OrderBy(x => x.SortOrder).FirstOrDefaultAsync(ct);
-                opportunity = new Opportunity { TenantId = tenantId, LeadId = lead.Id, CompanyId = company.Id, ContactId = contact.Id, PipelineStageId = stage?.Id, Name = $"{company.Name} - discovery call", Amount = 500m, ExpectedCloseUtc = DateTime.UtcNow.AddDays(21) };
-                db.Opportunitys.Add(opportunity);
-                db.RevenueAttributions.Add(new RevenueAttribution { TenantId = tenantId, LeadId = lead.Id, OpportunityId = opportunity.Id, InfluencedRevenue = opportunity.Amount, Model = "campaign-reply" });
-            }
-
-            if (!await db.CrmTasks.AnyAsync(x => x.TenantId == tenantId && x.LeadId == lead.Id && !x.Completed && x.Title == "Book discovery call", ct))
-                db.CrmTasks.Add(new CrmTask { TenantId = tenantId, LeadId = lead.Id, ContactId = contact.Id, Title = "Book discovery call", DueAtUtc = DateTime.UtcNow.AddHours(2) });
-            db.CrmActivitys.Add(new CrmActivity { TenantId = tenantId, CompanyId = company.Id, ContactId = contact.Id, LeadId = lead.Id, Type = "campaign-reply", Subject = $"Interested reply: {classification}", Body = reply.Body });
+            return BadRequest(new { detail = exception.Message });
         }
-
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = interested ? "acquisition.reply.converted" : "acquisition.reply.received", EntityType = nameof(Prospect), EntityId = prospect.Id.ToString(), DataJson = JsonSerializer.Serialize(new { reply.Id, classification, opportunityId = opportunity?.Id }) });
-        await db.SaveChangesAsync(ct);
-        return Ok(new { reply.Id, classification, interested, prospectId = prospect.Id, companyId = company?.Id, contactId = contact?.Id, leadId = lead?.Id, opportunityId = opportunity?.Id, nextAction = interested ? "book-discovery-call" : "review-reply" });
-    }
-
-    private static (string FirstName, string LastName) SplitName(string? fullName)
-    {
-        var parts = (fullName ?? string.Empty).Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length switch { 0 => ("Prospect", string.Empty), 1 => (parts[0], string.Empty), _ => (parts[0], parts[1]) };
     }
 
     private static void MergeImportedProspect(Prospect prospect, ProspectImportRow row, string domain, string email, string batchSource, DateTime now)

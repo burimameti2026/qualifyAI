@@ -24,11 +24,15 @@ public sealed class BrevoEmailProvider(HttpClient http, IConfiguration configura
         request.Content = JsonContent.Create(new
         {
             sender = new { email = message.FromEmail, name = message.FromName },
+            replyTo = new { email = message.FromEmail, name = message.FromName },
             to = new[] { new { email = message.ToEmail, name = message.ToName } },
             subject = message.Subject,
             htmlContent = message.HtmlBody,
             textContent = message.TextBody,
-            tags = new[] { "qualifyai-outreach" }
+            tags = new[] { "qualifyai-outreach" },
+            headers = string.IsNullOrWhiteSpace(message.CorrelationId)
+                ? null
+                : new Dictionary<string, string> { ["X-QualifyAI-Message-Id"] = message.CorrelationId }
         });
 
         try

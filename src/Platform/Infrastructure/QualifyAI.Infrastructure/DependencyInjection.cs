@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<SalesAutomationService>();
         services.AddScoped<DemoSeeder>();
         services.AddScoped<CampaignExecutionService>();
+        services.AddScoped<ProspectReplyProcessingService>();
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
