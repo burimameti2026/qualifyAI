@@ -16,6 +16,7 @@ using QualifyAI.Persistence.SqlServer.Queries;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(
     typeof(DashboardOverviewQueryHandler).Assembly,
