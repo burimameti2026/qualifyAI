@@ -13,11 +13,16 @@ public sealed class RealisticScenarioService(AppDbContext db)
 {
     public async Task<ResetAndInstallResult> ResetAndInstallAsync(Guid tenantId, CancellationToken ct = default)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var reset = await ResetBusinessDataAsync(tenantId, ct);
-        await transaction.CommitAsync(ct);
-        db.ChangeTracker.Clear();
-        return new ResetAndInstallResult(reset, await InstallAsync(tenantId, ct));
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var reset = await ResetBusinessDataAsync(tenantId, ct);
+            var scenario = await InstallAsync(tenantId, ct);
+            await transaction.CommitAsync(ct);
+            return new ResetAndInstallResult(reset, scenario);
+        });
     }
 
     public async Task<ScenarioResetResult> ResetBusinessDataAsync(Guid tenantId, CancellationToken ct = default)
