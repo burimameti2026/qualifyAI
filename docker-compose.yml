@@ -121,6 +121,7 @@ services:
       Email__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
       Email__SendGrid__WebhookToken: ${SENDGRID_WEBHOOK_TOKEN:-}
       Email__SendGrid__InboundWebhookToken: ${SENDGRID_INBOUND_WEBHOOK_TOKEN:-}
+      Landing__DemoRequestRecipients: ${DEMO_REQUEST_RECIPIENTS:-}
       Landing__DemoRequestRecipient: ${DEMO_REQUEST_RECIPIENT:-}
       Landing__DemoRequestFromEmail: ${DEMO_REQUEST_FROM_EMAIL:-}
       Landing__DemoRequestFromName: ${DEMO_REQUEST_FROM_NAME:-QualifyAI Product Team}
