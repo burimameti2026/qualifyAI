@@ -77,6 +77,21 @@ public sealed class RealisticScenarioService(AppDbContext db)
 
     public async Task<ScenarioInstallResult> InstallAsync(Guid tenantId, CancellationToken ct = default)
     {
+        // A presentation scenario must never attach campaigns or CRM records to real
+        // imported prospects. Use ResetAndInstallAsync when replacing a workspace.
+        var hasPresentationProspects = await db.Prospects.AnyAsync(x => x.TenantId == tenantId && x.Source == "presentation-scenario", ct);
+        var hasRealProspects = await db.Prospects.AnyAsync(x => x.TenantId == tenantId && x.Source != "presentation-scenario", ct);
+        var hasOtherBusinessData = !hasPresentationProspects &&
+            (await db.Companys.AnyAsync(x => x.TenantId == tenantId, ct) ||
+             await db.Contacts.AnyAsync(x => x.TenantId == tenantId, ct) ||
+             await db.Leads.AnyAsync(x => x.TenantId == tenantId, ct) ||
+             await db.Opportunitys.AnyAsync(x => x.TenantId == tenantId, ct) ||
+             await db.Campaigns.AnyAsync(x => x.TenantId == tenantId, ct) ||
+             await db.MeetingBookings.AnyAsync(x => x.TenantId == tenantId, ct) ||
+             await db.Tickets.AnyAsync(x => x.TenantId == tenantId, ct));
+        if (hasRealProspects || hasOtherBusinessData)
+            throw new InvalidOperationException("This workspace contains business data. Use Prepare real workspace for imports, or explicitly reset business data before loading a presentation demo.");
+
         var now = DateTime.UtcNow;
         const string demoIcpName = "[PRESENTATION] FusionFleet — EU logistics growth";
         var icp = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == tenantId &&
@@ -107,11 +122,8 @@ public sealed class RealisticScenarioService(AppDbContext db)
             new ProspectSeed("Milano Distribution", "milanodistribution.example", "Giulia Conti", "Warehouse Director", "giulia.conti@milanodistribution.example", "Distribution", "Italy", 86, 77, "Opened a second warehouse and increased transport coordinator hiring.")
         };
 
-        var prospects = await db.Prospects.Where(x => x.TenantId == tenantId)
+        var prospects = await db.Prospects.Where(x => x.TenantId == tenantId && x.Source == "presentation-scenario")
             .OrderByDescending(x => x.FitScore).ThenByDescending(x => x.IntentScore).Take(5).ToListAsync(ct);
-        foreach (var prospect in prospects.Where(x => !string.IsNullOrWhiteSpace(x.PainHypothesis) || !string.IsNullOrWhiteSpace(x.SourceUrl)))
-            if (!await db.ProspectSignals.AnyAsync(x => x.TenantId == tenantId && x.ProspectId == prospect.Id, ct))
-                db.ProspectSignals.Add(new ProspectSignal { TenantId = tenantId, ProspectId = prospect.Id, Type = "imported-research", Source = prospect.DatasetOrigin.Length > 0 ? prospect.DatasetOrigin : "verified-import", Evidence = prospect.PainHypothesis.Length > 0 ? prospect.PainHypothesis : "Verified imported research record.", Score = prospect.IntentScore, SourceUrl = prospect.SourceUrl });
 
         if (prospects.Count == 0)
         {

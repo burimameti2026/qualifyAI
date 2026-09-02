@@ -15,7 +15,11 @@ public sealed class DemoScenariosController(ITenantContext tenant, RealisticScen
 {
     [HttpPost("install")]
     [RequirePermission(QualifyAiPermissions.AutomationManage)]
-    public Task<ScenarioInstallResult> Install(CancellationToken ct) => scenarios.InstallAsync(tenant.TenantId(), ct);
+    public async Task<IActionResult> Install(CancellationToken ct)
+    {
+        try { return Ok(await scenarios.InstallAsync(tenant.TenantId(), ct)); }
+        catch (InvalidOperationException exception) { return Conflict(new { detail = exception.Message }); }
+    }
 
     [HttpPost("reset")]
     [RequirePermission(QualifyAiPermissions.AutomationManage)]
@@ -28,6 +32,14 @@ public sealed class DemoScenariosController(ITenantContext tenant, RealisticScen
 
     [HttpPost("tenant/{tenantId:guid}/install")]
     [RequirePermission(QualifyAiPermissions.SystemAdmin)]
-    public Task<ScenarioInstallResult> InstallForTenant(Guid tenantId, CancellationToken ct)
-        => scenarios.InstallAsync(tenantId, ct);
+    public async Task<IActionResult> InstallForTenant(Guid tenantId, CancellationToken ct)
+    {
+        try { return Ok(await scenarios.InstallAsync(tenantId, ct)); }
+        catch (InvalidOperationException exception) { return Conflict(new { detail = exception.Message }); }
+    }
+
+    [HttpPost("tenant/{tenantId:guid}/reset-and-install")]
+    [RequirePermission(QualifyAiPermissions.SystemAdmin)]
+    public Task<ResetAndInstallResult> ResetAndInstallForTenant(Guid tenantId, CancellationToken ct)
+        => scenarios.ResetAndInstallAsync(tenantId, ct);
 }
