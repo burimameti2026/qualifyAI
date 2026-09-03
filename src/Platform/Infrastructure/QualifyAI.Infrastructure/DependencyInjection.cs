@@ -55,6 +55,13 @@ public static class DependencyInjection
         services.AddScoped<DemoSeeder>();
         services.AddScoped<CampaignExecutionService>();
         services.AddScoped<ProspectReplyProcessingService>();
+        services.AddScoped<ProspectDiscoveryService>();
+        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(client =>
+        {
+            client.BaseAddress = new Uri("https://serpapi.com/");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();

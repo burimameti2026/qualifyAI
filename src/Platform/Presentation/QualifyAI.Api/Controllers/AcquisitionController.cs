@@ -20,7 +20,8 @@ public sealed class AcquisitionController(
     AppDbContext db,
     ITenantContext tenant,
     CampaignExecutionService executor,
-    ProspectReplyProcessingService replyProcessor) : ControllerBase
+    ProspectReplyProcessingService replyProcessor,
+    ProspectDiscoveryService discovery) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -51,17 +52,24 @@ public sealed class AcquisitionController(
         return Created($"/api/acquisition/icp/{input.Id}", input);
     }
 
-    [HttpPost("icp/{id:guid}/discover")][RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> Discover(Guid id, CancellationToken ct)
-    {
-        var icp = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id && x.Active, ct);
-        if (icp is null) return NotFound(new { code = "icp_not_found", detail = "Select an active ideal customer profile." });
+    [HttpGet("discovery/providers")][RequirePermission(QualifyAiPermissions.CrmRead)]
+    public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
 
-        return Conflict(new
+    [HttpPost("icp/{id:guid}/discover")][RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Discover(Guid id, [FromBody] DiscoveryRequest? input, CancellationToken ct)
+    {
+        try
         {
-            code = "verified_source_required",
-            detail = "Connect a verified company-data provider or import a licensed/public CSV. QualifyAI does not fabricate prospects."
-        });
+            var request = input ?? new DiscoveryRequest();
+            var result = await discovery.DiscoverAsync(TenantId, id, new DiscoveryRunOptions(
+                request.Source, request.Region, request.MaximumResults, request.MinimumScore,
+                request.TargetListName, request.CreateTargetList), ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(new { code = "discovery_not_ready", detail = exception.Message });
+        }
     }
 
     [HttpGet("prospects")][RequirePermission(QualifyAiPermissions.CrmRead)]
@@ -378,6 +386,13 @@ public sealed class AcquisitionController(
 }
 
 public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
+public sealed record DiscoveryRequest(
+    string? Source = null,
+    string? Region = null,
+    int MaximumResults = 50,
+    int MinimumScore = 70,
+    string? TargetListName = null,
+    bool CreateTargetList = true);
 public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
 public sealed record ProspectImportRow(
     string CompanyName,

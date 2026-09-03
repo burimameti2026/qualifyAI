@@ -205,7 +205,7 @@ public sealed class RealisticScenarioService(AppDbContext db)
         await EnsureConvertedJourneyAsync(tenantId, contactReadyProspect, campaign, fusionFleetPipeline, now, ct);
         await EnsureQualifyAiScenarioAsync(tenantId, qualifyAiPipeline, now, ct);
         await EnsureSupportScenarioAsync(tenantId, now, ct);
-        await EnsureAutomationsAsync(tenantId, now, ct);
+        await EnsureAutomationsAsync(tenantId, icp.Id, now, ct);
         await EnsureAgentsAsync(tenantId, ct);
         await db.SaveChangesAsync(ct);
 
@@ -341,7 +341,7 @@ public sealed class RealisticScenarioService(AppDbContext db)
         }
     }
 
-    private async Task EnsureAutomationsAsync(Guid tenantId, DateTime now, CancellationToken ct)
+    private async Task EnsureAutomationsAsync(Guid tenantId, Guid discoveryIcpId, DateTime now, CancellationToken ct)
     {
         var flow = await db.QualificationFlows.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Name == "Find FusionFleet Customers & Book Demos", ct);
         if (flow is null)
@@ -350,7 +350,7 @@ public sealed class RealisticScenarioService(AppDbContext db)
             db.QualificationFlows.Add(flow);
             db.WorkflowNodes.AddRange(
                 WorkflowNode.Create(tenantId, flow.Id, "schedule", "start", "{\"trigger\":\"weekday 08:00\"}", 60, 160),
-                WorkflowNode.Create(tenantId, flow.Id, "discover", "discoverProspects", "{\"source\":\"configured-provider\"}", 300, 160),
+                WorkflowNode.Create(tenantId, flow.Id, "discover", "discoverProspects", $"{{\"source\":\"serpapi\",\"icpId\":\"{discoveryIcpId}\"}}", 300, 160),
                 WorkflowNode.Create(tenantId, flow.Id, "score", "score", "{\"points\":75}", 540, 160),
                 WorkflowNode.Create(tenantId, flow.Id, "campaign", "email", "{\"template\":\"logistics-growth\"}", 780, 160),
                 WorkflowNode.Create(tenantId, flow.Id, "reply", "bookMeeting", "{\"classification\":\"interested\"}", 1020, 160));
@@ -377,9 +377,16 @@ public sealed class RealisticScenarioService(AppDbContext db)
                 WorkflowEdge.Create(tenantId, qualifyFlow.Id, "approve", "demo", "{\"decision\":\"approved\"}"),
                 WorkflowEdge.Create(tenantId, qualifyFlow.Id, "demo", "opportunity", "{}"));
         }
+        var discoveryActions = JsonSerializer.Serialize(new[]
+        {
+            new { type = "discoverProspects", icpId = discoveryIcpId, source = "serpapi", maximumResults = 50, minimumScore = 70, createTargetList = true },
+            new { type = "enrichProspects" },
+            new { type = "scoreProspects" },
+            new { type = "createTargetList" }
+        });
         var definitions = new[]
         {
-            new { Name = "FusionFleet ICP discovery → qualified target list", Trigger = "schedule.weekday", Conditions = "[{\"field\":\"icp.active\",\"operator\":\"equals\",\"value\":true}]", Actions = "[{\"type\":\"discoverProspects\"},{\"type\":\"enrichProspects\"},{\"type\":\"scoreProspects\"},{\"type\":\"createTargetList\"}]" },
+            new { Name = "FusionFleet ICP discovery → qualified target list", Trigger = "schedule.weekday", Conditions = "[{\"field\":\"icp.active\",\"operator\":\"equals\",\"value\":true}]", Actions = discoveryActions },
             new { Name = "Interested reply → demo and opportunity", Trigger = "campaign.reply.interested", Conditions = "[{\"field\":\"sentimentScore\",\"operator\":\">=\",\"value\":70}]", Actions = "[{\"type\":\"createOpportunity\"},{\"type\":\"bookMeeting\"},{\"type\":\"notifySales\"}]" },
             new { Name = "Qualified buyer signal → controlled QualifyAI demo", Trigger = "buyer.signal.qualified", Conditions = "[{\"field\":\"priority\",\"operator\":\"equals\",\"value\":\"A\"}]", Actions = "[{\"type\":\"requestApproval\"},{\"type\":\"createCampaignDraft\"},{\"type\":\"bookMeeting\"},{\"type\":\"createOpportunity\"}]" },
             new { Name = "Payment dispute → finance approval", Trigger = "ticket.payment.dispute", Conditions = "[{\"field\":\"priority\",\"operator\":\"equals\",\"value\":\"Urgent\"}]", Actions = "[{\"type\":\"requestApproval\",\"title\":\"Approve duplicate-payment refund\",\"dueInHours\":2},{\"type\":\"notify\"}]" }
@@ -394,6 +401,12 @@ public sealed class RealisticScenarioService(AppDbContext db)
                 var run = AutomationRun.Create(tenantId, rule.Id, "{\"source\":\"scenario-installer\"}"); run.Start();
                 run.Complete(JsonSerializer.Serialize(new[] { new { status = "completed", message = "Scenario workflow persisted and validated.", atUtc = now } }));
                 db.AutomationRuns.Add(run);
+            }
+            else if (definition.Name == "FusionFleet ICP discovery → qualified target list")
+            {
+                // Upgrade the presentation workflow from synthetic discovery to the
+                // same configured live-source action used by real workspaces.
+                rule.UpdateConfiguration(definition.Name, definition.Trigger, definition.Conditions, definition.Actions, rule.Active);
             }
         }
         if (!await db.UsageRecords.AnyAsync(x => x.TenantId == tenantId && x.Meter == "automation_actions" && x.ReferenceId == "realistic-scenario", ct))

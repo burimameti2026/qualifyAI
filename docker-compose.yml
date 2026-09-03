@@ -107,6 +107,7 @@ services:
       Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-qualifyai}:${MONGO_ROOT_PASSWORD:-QualifyAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
       Mongo__Database: QualifyAI_Knowledge
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
       Email__Provider: ${EMAIL_PROVIDER:-disabled}

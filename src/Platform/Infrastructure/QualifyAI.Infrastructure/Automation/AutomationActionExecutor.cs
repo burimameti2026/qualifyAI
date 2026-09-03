@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.Domain;
-using QualifyAI.Infrastructure.Demo;
+using QualifyAI.Infrastructure.Acquisition;
 using QualifyAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;
 
@@ -9,7 +9,7 @@ namespace QualifyAI.Infrastructure.Automation;
 
 public sealed record AutomationExecutionResult(bool Success, string LogJson, string? Error = null);
 
-public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioService scenarios, EmailDeliveryService emailDelivery)
+public sealed class AutomationActionExecutor(AppDbContext db, ProspectDiscoveryService discovery, EmailDeliveryService emailDelivery)
 {
     public async Task<AutomationExecutionResult> ExecuteAsync(
         AutomationRule rule,
@@ -100,8 +100,16 @@ public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioS
                 return await CreateOpportunityAsync(tenantId, run, cancellationToken);
 
             case "discoverprospects":
-                var installed = await scenarios.InstallAsync(tenantId, cancellationToken);
-                return ("completed", $"Discovery synchronized {installed.Prospects} persisted prospects.");
+                var icpId = ReadGuid(action, "icpId");
+                if (!icpId.HasValue) return ("blocked", "Online discovery requires an icpId in the automation action.");
+                var result = await discovery.DiscoverAsync(tenantId, icpId.Value, new DiscoveryRunOptions(
+                    Read(action, "source", "serpapi"),
+                    Read(action, "region", string.Empty),
+                    ReadInt(action, "maximumResults", 50),
+                    ReadInt(action, "minimumScore", 70),
+                    Read(action, "targetListName", string.Empty),
+                    ReadBool(action, "createTargetList", true)), cancellationToken);
+                return ("completed", $"Online discovery found {result.Received} companies; {result.Qualified} qualified, {result.Created} new, {result.Updated} refreshed. Review list: {result.TargetListName ?? "not created"}.");
 
             case "enrichprospects":
                 var enriched = await db.Prospects.CountAsync(x => x.TenantId == tenantId && x.ContactName != "" && x.Email != "", cancellationToken);
@@ -183,4 +191,7 @@ public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioS
         try { using var document = JsonDocument.Parse(json); return ReadGuid(document.RootElement, name); }
         catch { return null; }
     }
+
+    private static bool ReadBool(JsonElement element, string name, bool fallback) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : fallback;
 }
