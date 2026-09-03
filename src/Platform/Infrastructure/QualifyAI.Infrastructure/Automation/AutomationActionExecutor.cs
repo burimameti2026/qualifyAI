@@ -147,6 +147,12 @@ public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioS
         if (await db.Opportunitys.AnyAsync(x => x.TenantId == tenantId && x.LeadId == leadId, ct))
             return ("idempotent", "Opportunity already exists for this lead.");
 
+        var defaultPipelineId = await db.Pipelines.Where(x => x.TenantId == tenantId && x.IsDefault)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        var firstStage = defaultPipelineId.HasValue
+            ? await db.PipelineStages.Where(x => x.TenantId == tenantId && x.PipelineId == defaultPipelineId.Value).OrderBy(x => x.SortOrder).FirstOrDefaultAsync(ct)
+            : null;
+
         db.Opportunitys.Add(new Opportunity
         {
             TenantId = tenantId,
@@ -155,6 +161,7 @@ public sealed class AutomationActionExecutor(AppDbContext db, RealisticScenarioS
             ContactId = lead.ContactId,
             Name = $"Qualified opportunity {lead.Id.ToString()[..8]}",
             Amount = lead.EstimatedValue ?? 0m,
+            PipelineStageId = firstStage?.Id,
             ExpectedCloseUtc = DateTime.UtcNow.AddDays(30)
         });
         return ("completed", "Opportunity created.");

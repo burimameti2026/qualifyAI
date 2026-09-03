@@ -29,10 +29,13 @@ public sealed class SalesController(ISender sender, ITenantContext tenant, Sales
     {
         if (string.IsNullOrWhiteSpace(input.Name)) return BadRequest(new { detail = "Pipeline name is required." });
         var tenantId = tenant.TenantId();
-        if (input.IsDefault)
+        // A tenant must always have one deterministic route for automated opportunities.
+        // The first pipeline becomes that route; later pipelines are opt-in defaults.
+        var isDefault = input.IsDefault || !await db.Pipelines.AnyAsync(x => x.TenantId == tenantId, ct);
+        if (isDefault)
             await db.Pipelines.Where(x => x.TenantId == tenantId).ExecuteUpdateAsync(x => x.SetProperty(p => p.IsDefault, false), ct);
 
-        var pipeline = new Pipeline { TenantId = tenantId, Name = input.Name.Trim(), IsDefault = input.IsDefault };
+        var pipeline = new Pipeline { TenantId = tenantId, Name = input.Name.Trim(), IsDefault = isDefault };
         db.Pipelines.Add(pipeline);
         await db.SaveChangesAsync(ct);
         return Created($"/api/sales/pipelines/{pipeline.Id}", pipeline);

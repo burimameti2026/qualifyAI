@@ -10,8 +10,16 @@ public sealed class SalesAutomationService(AppDbContext db)
     public async Task<SalesAutomationResult> RunAsync(Guid tenantId, CancellationToken ct = default)
     {
         var leads = await db.Leads.Where(x => x.TenantId == tenantId && x.Status != "won" && x.Status != "lost").ToListAsync(ct);
-        var stages = await db.PipelineStages.Where(x => x.TenantId == tenantId).OrderBy(x => x.SortOrder).ToListAsync(ct);
-        var qualifiedStage = stages.FirstOrDefault(x => x.Name.Contains("Qualified")) ?? stages.Skip(1).FirstOrDefault() ?? stages.FirstOrDefault();
+        // Automation may only place a deal in the explicit default pipeline.  Picking the
+        // first stage across every pipeline made new boards look empty and unpredictable.
+        var defaultPipelineId = await db.Pipelines.Where(x => x.TenantId == tenantId && x.IsDefault)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        List<PipelineStage> stages = defaultPipelineId.HasValue
+            ? await db.PipelineStages.Where(x => x.TenantId == tenantId && x.PipelineId == defaultPipelineId.Value).OrderBy(x => x.SortOrder).ToListAsync(ct)
+            : new List<PipelineStage>();
+        // Stage order is the contract shown in the Pipeline UI: every new automated
+        // opportunity enters at stage 1 and sales explicitly advances it from there.
+        var qualifiedStage = stages.FirstOrDefault();
         var createdOpps = 0; var createdTasks = 0; var audits = 0; decimal pipelineCreated = 0;
 
         foreach (var lead in leads)
@@ -88,7 +96,11 @@ public sealed class SalesAutomationService(AppDbContext db)
         if (lead is null) return null;
         var existing = await db.Opportunitys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.LeadId == leadId && x.Status == OpportunityStatus.Open, ct);
         if (existing is not null) return existing;
-        var stage = await db.PipelineStages.Where(x => x.TenantId == tenantId).OrderBy(x => x.SortOrder).FirstOrDefaultAsync(ct);
+        var defaultPipelineId = await db.Pipelines.Where(x => x.TenantId == tenantId && x.IsDefault)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        var stage = defaultPipelineId.HasValue
+            ? await db.PipelineStages.Where(x => x.TenantId == tenantId && x.PipelineId == defaultPipelineId.Value).OrderBy(x => x.SortOrder).FirstOrDefaultAsync(ct)
+            : null;
         var opp = new Opportunity
         {
             TenantId = tenantId,

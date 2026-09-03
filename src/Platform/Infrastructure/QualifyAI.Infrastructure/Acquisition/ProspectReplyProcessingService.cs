@@ -121,7 +121,13 @@ public sealed class ProspectReplyProcessingService(AppDbContext db)
             opportunity = await db.Opportunitys.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.LeadId == lead.Id && x.Status == OpportunityStatus.Open, ct);
             if (opportunity is null)
             {
-                var stage = await db.PipelineStages.Where(x => x.TenantId == tenantId).OrderBy(x => x.SortOrder).FirstOrDefaultAsync(ct);
+                // An interested reply belongs in the tenant's declared default sales
+                // process, never in an arbitrary stage from a different pipeline.
+                var defaultPipelineId = await db.Pipelines.Where(x => x.TenantId == tenantId && x.IsDefault)
+                    .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+                var stage = defaultPipelineId.HasValue
+                    ? await db.PipelineStages.Where(x => x.TenantId == tenantId && x.PipelineId == defaultPipelineId.Value).OrderBy(x => x.SortOrder).FirstOrDefaultAsync(ct)
+                    : null;
                 opportunity = new Opportunity
                 {
                     TenantId = tenantId,
