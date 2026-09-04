@@ -23,15 +23,9 @@ public static class DependencyInjection
     {
         services.AddDbContext<AppDbContext>(options =>
         {
-            options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection"),
-                sql => sql.EnableRetryOnFailure());
-
-            // Local development must remain startable while model changes are being
-            // captured in explicit migrations. Production keeps EF's strict guard.
+            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"), sql => sql.EnableRetryOnFailure());
             if (allowDevelopmentModelDrift)
-                options.ConfigureWarnings(warnings =>
-                    warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+                options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
         services.AddScoped<IBusinessUnitOfWork, BusinessUnitOfWork>();
@@ -41,7 +35,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowAutomationRepository, WorkflowAutomationRepository>();
         services.AddScoped<ITenantEntitlementRepository, TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
-
+        services.AddScoped<IGoldenPipelineProvisioner, GoldenPipelineProvisioner>();
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
@@ -56,25 +50,16 @@ public static class DependencyInjection
         services.AddScoped<CampaignExecutionService>();
         services.AddScoped<ProspectReplyProcessingService>();
         services.AddScoped<ProspectDiscoveryService>();
-        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(client =>
-        {
-            client.BaseAddress = new Uri("https://serpapi.com/");
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
+        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(client => { client.BaseAddress = new Uri("https://serpapi.com/"); client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
-        services.AddHttpClient<BrevoEmailProvider>(client =>
-        {
-            client.BaseAddress = new Uri("https://api.brevo.com/v3/");
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
+        services.AddHttpClient<BrevoEmailProvider>(client => { client.BaseAddress = new Uri("https://api.brevo.com/v3/"); client.Timeout = TimeSpan.FromSeconds(30); });
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<BrevoEmailProvider>());
         services.AddHttpClient<SendGridEmailProvider>();
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
         services.AddScoped<EmailDeliveryService>();
-
         return services;
     }
 }
