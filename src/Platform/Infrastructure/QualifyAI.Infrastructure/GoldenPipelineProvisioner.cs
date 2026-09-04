@@ -16,8 +16,20 @@ public sealed class GoldenPipelineProvisioner(AppDbContext db) : IGoldenPipeline
         var pipeline = await db.Pipelines.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Name == GoldenPipeline.Name, cancellationToken);
         if (pipeline is null)
         {
-            pipeline = new Pipeline { Id = Guid.NewGuid(), TenantId = tenantId, Name = GoldenPipeline.Name, IsDefault = true };
+            pipeline = new Pipeline
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                Name = GoldenPipeline.Name,
+                IsDefault = true
+            };
             db.Pipelines.Add(pipeline);
+        }
+        else if (!pipeline.IsDefault)
+        {
+            var hasDefault = await db.Pipelines.AnyAsync(x => x.TenantId == tenantId && x.IsDefault && x.Id != pipeline.Id, cancellationToken);
+            if (!hasDefault)
+                pipeline.IsDefault = true;
         }
 
         var existingNames = await db.PipelineStages
