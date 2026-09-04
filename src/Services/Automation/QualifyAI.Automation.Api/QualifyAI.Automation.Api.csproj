@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
-  <ItemGroup>
-    <ProjectReference Include="../QualifyAI.Automation.Application/QualifyAI.Automation.Application.csproj" />
-<ProjectReference Include="../QualifyAI.Automation.Infrastructure/QualifyAI.Automation.Infrastructure.csproj" />
-<ProjectReference Include="../../../QualifyAI.ServiceDefaults/QualifyAI.ServiceDefaults.csproj" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" /><PackageReference Include="Swashbuckle.AspNetCore" />
-      <ProjectReference Include="../../../BuildingBlocks/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
-  </ItemGroup>
-</Project>

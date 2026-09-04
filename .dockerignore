@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/TestResults/
+**/node_modules/
+.git/
+.github/
+.vs/
+.vscode/
+.env
+*.user
+*.suo
+*.binlog

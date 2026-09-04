@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="../QualifyAI.Application/QualifyAI.Application.csproj" />
-    <ProjectReference Include="../QualifyAI.Domain.Core/QualifyAI.Domain.Core.csproj" />
-    <PackageReference Include="MediatR" />
-    <PackageReference Include="FluentValidation" />
-  </ItemGroup>
-</Project>

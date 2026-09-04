@@ -1,0 +1,179 @@
+name: qualifyai
+
+x-api-environment: &api-environment
+  ASPNETCORE_URLS: http://+:8080
+  ASPNETCORE_ENVIRONMENT: Development
+  SEQ_URL: http://seq:5341
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Username: ${RABBITMQ_USER:-qualifyai}
+  RabbitMq__Password: ${RABBITMQ_PASSWORD:-QualifyAI_Rabbit_ChangeMe!}
+
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: qualifyai-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-qualifyai}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-QualifyAI_Mongo_ChangeMe!}
+    volumes: [mongodb-data:/data/db]
+    networks: [qualifyai]
+    healthcheck:
+      test: [CMD-SHELL, "mongosh --quiet --eval \"db.adminCommand('ping').ok\" -u \"$${MONGO_INITDB_ROOT_USERNAME}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: qualifyai-rabbitmq
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-qualifyai}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-QualifyAI_Rabbit_ChangeMe!}
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    networks: [qualifyai]
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: qualifyai-redis
+    command: [redis-server, --appendonly, "yes", --requirepass, "${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}"]
+    volumes: [redis-data:/data]
+    networks: [qualifyai]
+    healthcheck:
+      test: [CMD-SHELL, "redis-cli -a '${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}' ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  seq:
+    image: datalust/seq:2025.2
+    container_name: qualifyai-seq
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_ADMIN_PASSWORD:-QualifyAI_Seq_ChangeMe!}
+    volumes: [seq-data:/data]
+    networks: [qualifyai]
+    restart: unless-stopped
+
+  identity-api:
+    container_name: qualifyai-identity-api
+    build:
+      context: .
+      dockerfile: src/Identity/QualifyAI.Identity.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: identity-api
+      ConnectionStrings__IdentityDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_IdentityDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      Identity__Issuer: http://identity-api:8080
+      Identity__Audience: qualifyai-api
+      IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      Services__TenantManagement: http://platform-api:8080/internal
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [qualifyai]
+    restart: unless-stopped
+
+  platform-api:
+    container_name: qualifyai-platform-api
+    build:
+      context: .
+      dockerfile: src/Platform/Presentation/QualifyAI.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: platform-api
+      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_Business;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_AutomationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_NotificationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      Identity__Authority: http://identity-api:8080
+      Identity__Audience: qualifyai-api
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
+      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-qualifyai}:${MONGO_ROOT_PASSWORD:-QualifyAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
+      Mongo__Database: QualifyAI_Knowledge
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
+      ProspectDiscovery__SerpApi__MonthlyLimitPath: ${SERPAPI_LIMIT:-}
+      RevenueAutomation__Enabled: "true"
+      RevenueAutomation__IntervalSeconds: "300"
+      Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
+      Email__Brevo__WebhookToken: ${BREVO_WEBHOOK_TOKEN:-}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
+      Email__SendGrid__WebhookToken: ${SENDGRID_WEBHOOK_TOKEN:-}
+      Email__SendGrid__InboundWebhookToken: ${SENDGRID_INBOUND_WEBHOOK_TOKEN:-}
+      Landing__DemoRequestRecipients: ${DEMO_REQUEST_RECIPIENTS:-}
+      Landing__DemoRequestRecipient: ${DEMO_REQUEST_RECIPIENT:-}
+      Landing__DemoRequestFromEmail: ${DEMO_REQUEST_FROM_EMAIL:-}
+      Landing__DemoRequestFromName: ${DEMO_REQUEST_FROM_NAME:-QualifyAI Product Team}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [qualifyai]
+    restart: unless-stopped
+
+  api-gateway:
+    container_name: qualifyai-api-gateway
+    build:
+      context: .
+      dockerfile: src/ApiGateway/QualifyAI.ApiGateway/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      SERVICE_NAME: api-gateway
+      SEQ_URL: http://seq:5341
+    depends_on:
+      identity-api:
+        condition: service_started
+      platform-api:
+        condition: service_started
+    networks: [qualifyai]
+    restart: unless-stopped
+
+  portainer:
+    profiles: [tools]
+    image: portainer/portainer-ce:2.27.9
+    container_name: qualifyai-portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks: [qualifyai]
+    restart: unless-stopped
+
+networks:
+  qualifyai:
+    name: qualifyai-network
+
+volumes:
+  mongodb-data:
+  rabbitmq-data:
+  redis-data:
+  seq-data:
+  portainer-data:

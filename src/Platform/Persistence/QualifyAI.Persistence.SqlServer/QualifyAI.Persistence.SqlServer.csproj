@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../../Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../Core/QualifyAI.Domain.Core/QualifyAI.Domain.Core.csproj" />
+    <ProjectReference Include="../../Application/QualifyAI.Application/QualifyAI.Application.csproj" />
+    <ProjectReference Include="../../Application/QualifyAI.Application.Commands/QualifyAI.Application.Commands.csproj" />
+    <ProjectReference Include="../../Application/QualifyAI.Application.Queries/QualifyAI.Application.Queries.csproj" />
+    <ProjectReference Include="../../Application/QualifyAI.Contracts/QualifyAI.Contracts.csproj" />
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+services:
+  mongodb:
+    ports: ["27017:27017"]
+  rabbitmq:
+    ports: ["5672:5672", "15672:15672"]
+  redis:
+    ports: ["6379:6379"]
+  seq:
+    ports: ["5341:80", "5342:5341"]
+  identity-api:
+    ports: ["8081:8080"]
+  platform-api:
+    ports: ["8080:8080"]
+  api-gateway:
+    ports: ["10000:8080"]
+  portainer:
+    ports: ["9000:9000", "9443:9443"]
