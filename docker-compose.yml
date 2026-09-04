@@ -108,6 +108,7 @@ services:
       Mongo__Database: QualifyAI_Knowledge
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
       ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
+      ProspectDiscovery__SerpApi__MonthlyLimitPath: ${SERPAPI_LIMIT:-}
       RevenueAutomation__Enabled: "true"
       RevenueAutomation__IntervalSeconds: "300"
       Email__Provider: ${EMAIL_PROVIDER:-disabled}
