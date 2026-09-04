@@ -24,5 +24,6 @@
     <None Include="../../../.env.example">
       <Link>.env.example</Link>
     </None>
+    <None Include=".env" />
   </ItemGroup>
 </Project>

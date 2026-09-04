@@ -29,7 +29,7 @@ public static class DependencyInjection
 
             // Local development must remain startable while model changes are being
             // captured in explicit migrations. Production keeps EF's strict guard.
-            if (allowDevelopmentModelDrift)
+            if(allowDevelopmentModelDrift)
                 options.ConfigureWarnings(warnings =>
                     warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
@@ -58,8 +58,8 @@ public static class DependencyInjection
         services.AddScoped<ProspectDiscoveryService>();
         services.AddHttpClient<SerpApiProspectDiscoveryProvider>(client =>
         {
-            client.BaseAddress = new Uri("https://serpapi.com/");
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.BaseAddress=new Uri("https://serpapi.com/");
+            client.Timeout=TimeSpan.FromSeconds(60);
         });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
@@ -67,8 +67,8 @@ public static class DependencyInjection
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
         services.AddHttpClient<BrevoEmailProvider>(client =>
         {
-            client.BaseAddress = new Uri("https://api.brevo.com/v3/");
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.BaseAddress=new Uri("https://api.brevo.com/v3/");
+            client.Timeout=TimeSpan.FromSeconds(60);
         });
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<BrevoEmailProvider>());
         services.AddHttpClient<SendGridEmailProvider>();
