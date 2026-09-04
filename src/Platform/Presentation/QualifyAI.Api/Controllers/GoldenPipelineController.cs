@@ -13,10 +13,7 @@ namespace QualifyAI.Api.Controllers;
 [Authorize]
 [RequireModule("golden_pipeline")]
 [Route("api/golden-pipeline")]
-public sealed class GoldenPipelineController(
-    ITenantContext tenant,
-    AppDbContext db,
-    IGoldenPipelineProvisioner provisioner) : ControllerBase
+public sealed class GoldenPipelineController(ITenantContext tenant, AppDbContext db, IGoldenPipelineProvisioner provisioner) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
@@ -26,11 +23,16 @@ public sealed class GoldenPipelineController(
         var pipeline = await provisioner.EnsureProvisionedAsync(tenantId, ct);
         var stages = await db.PipelineStages.Where(x => x.TenantId == tenantId && x.PipelineId == pipeline.Id).OrderBy(x => x.SortOrder).ToListAsync(ct);
         var opportunities = await db.Opportunitys.Where(x => x.TenantId == tenantId).OrderByDescending(x => x.Amount).ToListAsync(ct);
-        return Ok(new
-        {
-            pipeline = new { pipeline.Id, pipeline.Name, pipeline.IsDefault },
-            stages = stages.Select(stage => new { stage.Id, stage.Name, stage.SortOrder, stage.Probability, opportunities = opportunities.Where(o => o.PipelineStageId == stage.Id).Select(o => new { o.Id, o.Name, o.Amount, o.Status, o.ExpectedCloseUtc, o.CompanyId, o.ContactId }).ToArray() })
-        });
+        return Ok(new { pipeline = new { pipeline.Id, pipeline.Name, pipeline.IsDefault }, stages = stages.Select(stage => new { stage.Id, stage.Name, stage.SortOrder, stage.Probability, opportunities = opportunities.Where(o => o.PipelineStageId == stage.Id).Select(o => new { o.Id, o.Name, o.Amount, o.Status, o.ExpectedCloseUtc, o.CompanyId, o.ContactId }).ToArray() }) });
+    }
+
+    [HttpGet("stages")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> Stages(CancellationToken ct)
+    {
+        var pipeline = await provisioner.EnsureProvisionedAsync(tenant.TenantId(), ct);
+        var stages = await db.PipelineStages.Where(x => x.TenantId == tenant.TenantId() && x.PipelineId == pipeline.Id).OrderBy(x => x.SortOrder).ToListAsync(ct);
+        return Ok(stages);
     }
 
     [HttpPost("provision")]
