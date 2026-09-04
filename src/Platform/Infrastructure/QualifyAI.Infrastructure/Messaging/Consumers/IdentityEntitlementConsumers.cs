@@ -26,70 +26,41 @@ public sealed class TenantLicenseChangedConsumer(IdentityEntitlementInboxProcess
 
 public sealed class IdentityEntitlementInboxProcessor(
     AppDbContext dbContext,
-    ITenantEntitlementRepository entitlements)
+    ITenantEntitlementRepository entitlements,
+    IGoldenPipelineProvisioner goldenPipelineProvisioner)
 {
     public Task ProcessTenantCreatedAsync(TenantCreatedIntegrationEvent message, CancellationToken ct)
         => ProcessOnceAsync(
             message.EventId,
             nameof(TenantCreatedConsumer),
-            () => entitlements.UpsertTenantAsync(
-                message.TenantId,
-                message.TenantSlug,
-                "active",
-                message.OccurredAtUtc,
-                ct),
+            () => entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct),
             ct);
 
     public Task ProcessTenantStatusChangedAsync(TenantStatusChangedIntegrationEvent message, CancellationToken ct)
         => ProcessOnceAsync(
             message.EventId,
             nameof(TenantStatusChangedConsumer),
-            () => entitlements.UpsertTenantAsync(
-                message.TenantId,
-                message.TenantSlug,
-                message.Status,
-                message.OccurredAtUtc,
-                ct),
+            () => entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, message.Status, message.OccurredAtUtc, ct),
             ct);
 
     public Task ProcessLicenseChangedAsync(TenantLicenseChangedIntegrationEvent message, CancellationToken ct)
         => ProcessOnceAsync(
             message.EventId,
             nameof(TenantLicenseChangedConsumer),
-            () => entitlements.UpsertLicenseAsync(
-                message.TenantId,
-                message.Plan,
-                message.Status,
-                message.MaxUsers,
-                message.StartsAtUtc,
-                message.ExpiresAtUtc,
-                message.Version,
-                message.Modules,
-                new Dictionary<string, int> { ["users"] = Math.Max(0, message.MaxUsers) },
-                message.OccurredAtUtc,
-                ct),
+            async () =>
+            {
+                await entitlements.UpsertLicenseAsync(message.TenantId, message.Plan, message.Status, message.MaxUsers, message.StartsAtUtc, message.ExpiresAtUtc, message.Version, message.Modules, new Dictionary<string, int> { ["users"] = Math.Max(0, message.MaxUsers) }, message.OccurredAtUtc, ct);
+                if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase) && message.Modules.Any(x => x.Equals("golden_pipeline", StringComparison.OrdinalIgnoreCase)))
+                    await goldenPipelineProvisioner.EnsureProvisionedAsync(message.TenantId, ct);
+            },
             ct);
 
-    private async Task ProcessOnceAsync(
-        Guid eventId,
-        string consumer,
-        Func<Task> apply,
-        CancellationToken ct)
+    private async Task ProcessOnceAsync(Guid eventId, string consumer, Func<Task> apply, CancellationToken ct)
     {
         var inbox = dbContext.Set<InboxMessage>();
-        if (await inbox.AsNoTracking().AnyAsync(x => x.Id == eventId && x.Consumer == consumer, ct))
-            return;
-
+        if (await inbox.AsNoTracking().AnyAsync(x => x.Id == eventId && x.Consumer == consumer, ct)) return;
         await apply();
-
-        inbox.Add(new InboxMessage
-        {
-            Id = eventId,
-            Consumer = consumer,
-            ReceivedAtUtc = DateTime.UtcNow,
-            ProcessedAtUtc = DateTime.UtcNow
-        });
-
+        inbox.Add(new InboxMessage { Id = eventId, Consumer = consumer, ReceivedAtUtc = DateTime.UtcNow, ProcessedAtUtc = DateTime.UtcNow });
         await dbContext.SaveChangesAsync(ct);
     }
 }
