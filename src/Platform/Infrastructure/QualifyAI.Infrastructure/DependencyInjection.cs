@@ -23,6 +23,9 @@ public static class DependencyInjection
     {
         services.AddDbContext<AppDbContext>(options =>
         {
+            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"), sql => sql.EnableRetryOnFailure());
+            if (allowDevelopmentModelDrift)
+                options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
                 sql => sql.EnableRetryOnFailure());
@@ -41,7 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowAutomationRepository, WorkflowAutomationRepository>();
         services.AddScoped<ITenantEntitlementRepository, TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
-
+        services.AddScoped<IGoldenPipelineProvisioner, GoldenPipelineProvisioner>();
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
@@ -74,7 +77,6 @@ public static class DependencyInjection
         services.AddHttpClient<SendGridEmailProvider>();
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
         services.AddScoped<EmailDeliveryService>();
-
         return services;
     }
 }
