@@ -8,5 +8,10 @@
       <ProjectReference Include="../../Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
       <ProjectReference Include="../../Shared/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
       <PackageReference Include="OpenIddict.AspNetCore" />
+       <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 </Project>
