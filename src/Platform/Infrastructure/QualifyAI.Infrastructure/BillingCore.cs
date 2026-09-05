@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using QualifyAI.Persistence.SqlServer;
@@ -26,18 +27,20 @@ public sealed class BillingEventProcessor(AppDbContext db, ITenantLifecycleEvent
             var subscription = await db.TenantBillingSubscriptions.SingleOrDefaultAsync(x => x.Provider == provider && x.ExternalSubscriptionId == externalSubscriptionId, ct)
                 ?? await db.TenantBillingSubscriptions.SingleOrDefaultAsync(x => x.TenantId == item.TenantId, ct);
             var now = DateTime.UtcNow;
-            if (subscription is null)
-            {
-                subscription = new TenantBillingSubscriptionRecord { TenantId=item.TenantId, Provider=provider, ExternalSubscriptionId=externalSubscriptionId, Plan=Get(item.Data,"plan") ?? "unknown", Status=item.Status, StartedAtUtc=ParseDate(Get(item.Data,"startedAtUtc")) ?? item.OccurredAtUtc };
-                db.TenantBillingSubscriptions.Add(subscription);
-            }
-            else
-            {
-                subscription.TenantId=item.TenantId; subscription.Provider=provider; subscription.ExternalSubscriptionId=externalSubscriptionId; subscription.Plan=Get(item.Data,"plan") ?? subscription.Plan; subscription.Status=item.Status;
-            }
+            if (subscription is null) { subscription = new TenantBillingSubscriptionRecord { TenantId=item.TenantId, Provider=provider, ExternalSubscriptionId=externalSubscriptionId, Plan=Get(item.Data,"plan") ?? "unknown", Status=item.Status, StartedAtUtc=ParseDate(Get(item.Data,"startedAtUtc")) ?? item.OccurredAtUtc }; db.TenantBillingSubscriptions.Add(subscription); }
+            else { subscription.TenantId=item.TenantId; subscription.Provider=provider; subscription.ExternalSubscriptionId=externalSubscriptionId; subscription.Plan=Get(item.Data,"plan") ?? subscription.Plan; subscription.Status=item.Status; }
             subscription.CurrentPeriodEndsAtUtc=ParseDate(Get(item.Data,"currentPeriodEndsAtUtc")) ?? subscription.CurrentPeriodEndsAtUtc;
             if (item.Status is "cancelled" or "expired") subscription.CancelledAtUtc=item.OccurredAtUtc;
             subscription.UpdatedAtUtc=now;
+            await db.SaveChangesAsync(ct);
+        }
+
+        var externalInvoiceId = Get(item.Data,"invoiceId") ?? Get(item.Data,"externalInvoiceId");
+        if (!string.IsNullOrWhiteSpace(externalInvoiceId))
+        {
+            var invoice = await db.TenantBillingInvoices.SingleOrDefaultAsync(x => x.Provider == provider && x.ExternalInvoiceId == externalInvoiceId, ct);
+            if (invoice is null) { invoice = new TenantBillingInvoiceRecord { TenantId=item.TenantId, Provider=provider, ExternalInvoiceId=externalInvoiceId, Status=item.Status }; db.TenantBillingInvoices.Add(invoice); }
+            invoice.TenantId=item.TenantId; invoice.Status=item.Status; invoice.Currency=Get(item.Data,"currency") ?? invoice.Currency; invoice.AmountDue=ParseDecimal(Get(item.Data,"amountDue")) ?? invoice.AmountDue; invoice.AmountPaid=ParseDecimal(Get(item.Data,"amountPaid")) ?? invoice.AmountPaid; invoice.DueAtUtc=ParseDate(Get(item.Data,"dueAtUtc")) ?? invoice.DueAtUtc; invoice.PaidAtUtc=ParseDate(Get(item.Data,"paidAtUtc")) ?? invoice.PaidAtUtc; if (item.Status is "paid" && invoice.PaidAtUtc is null) invoice.PaidAtUtc=item.OccurredAtUtc; invoice.UpdatedAtUtc=DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
         }
 
@@ -47,6 +50,7 @@ public sealed class BillingEventProcessor(AppDbContext db, ITenantLifecycleEvent
     }
     private static string? Get(IReadOnlyDictionary<string,string>? data,string key) => data is not null && data.TryGetValue(key,out var value) ? value : null;
     private static DateTime? ParseDate(string? value) => DateTime.TryParse(value,out var parsed) ? parsed.ToUniversalTime() : null;
+    private static decimal? ParseDecimal(string? value) => decimal.TryParse(value,NumberStyles.Number,CultureInfo.InvariantCulture,out var parsed) ? parsed : null;
 }
 
 public sealed class BillingProviderRegistry(IEnumerable<IBillingProvider> providers)
