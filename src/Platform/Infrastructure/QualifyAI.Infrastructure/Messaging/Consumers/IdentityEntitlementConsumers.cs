@@ -19,7 +19,7 @@ public sealed class TenantLicenseChangedConsumer(IdentityEntitlementInboxProcess
     public Task Consume(ConsumeContext<TenantLicenseChangedIntegrationEvent> context) => processor.ProcessLicenseChangedAsync(context.Message, context.CancellationToken);
 }
 
-public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, ITenantEntitlementRepository entitlements, IModuleProvisioningOrchestrator provisioning)
+public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, ITenantEntitlementRepository entitlements, ILicenseChangeOrchestrator licenseChanges)
 {
     public Task ProcessTenantCreatedAsync(TenantCreatedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantCreatedConsumer), () => entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct), ct);
     public Task ProcessTenantStatusChangedAsync(TenantStatusChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantStatusChangedConsumer), () => entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, message.Status, message.OccurredAtUtc, ct), ct);
@@ -27,7 +27,7 @@ public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, IT
     public Task ProcessLicenseChangedAsync(TenantLicenseChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantLicenseChangedConsumer), async () =>
     {
         await entitlements.UpsertLicenseAsync(message.TenantId, message.Plan, message.Status, message.MaxUsers, message.StartsAtUtc, message.ExpiresAtUtc, message.Version, message.Modules, new Dictionary<string, int> { ["users"] = Math.Max(0, message.MaxUsers) }, message.OccurredAtUtc, ct);
-        if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)) await provisioning.ProvisionAsync(message.TenantId, message.Modules, ct);
+        if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)) await licenseChanges.ReconcileAsync(message.TenantId, ct);
     }, ct);
 
     private async Task ProcessOnceAsync(Guid eventId, string consumer, Func<Task> apply, CancellationToken ct)
