@@ -16,25 +16,17 @@ public sealed class LicenseExpirationWorker(IServiceScopeFactory scopeFactory, I
             {
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var events = scope.ServiceProvider.GetRequiredService<ITenantLifecycleEventStore>();
                 var now = DateTime.UtcNow;
-                var expired = await db.TenantEntitlements
-                    .Where(x => x.ExpiresAtUtc != null && x.ExpiresAtUtc <= now && !x.LicenseStatus.Equals("expired"))
-                    .ToListAsync(stoppingToken);
-
+                var expired = await db.TenantEntitlements.Where(x => x.ExpiresAtUtc != null && x.ExpiresAtUtc <= now && !x.LicenseStatus.Equals("expired")).ToListAsync(stoppingToken);
                 foreach (var entitlement in expired)
                 {
-                    entitlement.LicenseStatus = "expired";
-                    entitlement.TenantStatus = "suspended";
-                    entitlement.UpdatedAtUtc = now;
+                    entitlement.LicenseStatus = "expired"; entitlement.TenantStatus = "suspended"; entitlement.UpdatedAtUtc = now;
+                    events.Record(new(entitlement.TenantId, "license", "expired", "License expired and tenant suspended", now));
                 }
-
                 if (expired.Count > 0) await db.SaveChangesAsync(stoppingToken);
             }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "License expiration worker iteration failed");
-            }
-
+            catch (Exception ex) { logger.LogError(ex, "License expiration worker iteration failed"); }
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
     }
