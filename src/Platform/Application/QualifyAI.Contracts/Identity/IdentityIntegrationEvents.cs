@@ -23,6 +23,7 @@ public sealed record TenantLicenseChangedIntegrationEvent(
     Guid EventId,
     DateTime OccurredAtUtc,
     Guid TenantId,
+    string TenantSlug,
     Guid LicenseId,
     string Plan,
     string Status,
@@ -31,14 +32,7 @@ public sealed record TenantLicenseChangedIntegrationEvent(
     DateTime? ExpiresAtUtc,
     long Version,
     IReadOnlyCollection<string> Modules)
-    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId)
-{
-    public string TenantSlug
-    {
-        get;
-        set;
-    }
-}
+    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId);
 
 public sealed record UserAccessChangedIntegrationEvent(
     Guid EventId,
