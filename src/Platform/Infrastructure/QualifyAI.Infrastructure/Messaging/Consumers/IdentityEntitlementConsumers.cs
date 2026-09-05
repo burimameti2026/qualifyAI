@@ -92,10 +92,7 @@ public sealed class IdentityEntitlementInboxProcessor(
             async () =>
             {
                 var existing = await entitlements.GetAsync(message.TenantId, ct);
-                var tenantSlug = await ResolveSlugAsync(
-                    message.TenantId,
-                    message.TenantSlug,
-                    ct);
+                var tenantSlug = await ResolveSlugAsync(message.TenantId, message.TenantSlug, ct);
 
                 var tenantStatus =
                     message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)
@@ -185,8 +182,8 @@ public sealed class IdentityEntitlementInboxProcessor(
             return messageSlug.Trim().ToLowerInvariant();
 
         // Legacy/in-flight license events may predate TenantSlug and the Platform tenant projection.
-        // Prefer any already-projected slug, then the platform tenant record, and finally keep a
-        // deterministic valid identifier until a TenantCreated event supplies the real slug.
+        // Prefer an existing entitlement projection, then the platform tenant record, and finally
+        // use a deterministic internal slug until a TenantCreated event supplies the real slug.
         var projectionSlug = await dbContext.TenantEntitlements
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.TenantSlug != "")
