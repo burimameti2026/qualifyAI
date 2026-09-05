@@ -3,13 +3,13 @@ using QualifyAI.BuildingBlocks.Messaging.Outbox;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Application.Licensing.UpdateLicense;
 using QualifyAI.Identity.Domain.Licensing;
-using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Licensing.SetLicenseStatus;
 
 public sealed record SetLicenseStatusCommand(Guid TenantId, LicenseStatus Status) : IRequest;
 
 public sealed class SetLicenseStatusCommandHandler(
+    ITenantRepository tenants,
     ILicenseRepository licenses,
     IOutboxWriter outbox,
     IIdentityUnitOfWork unitOfWork)
@@ -19,6 +19,9 @@ public sealed class SetLicenseStatusCommandHandler(
         SetLicenseStatusCommand request,
         CancellationToken cancellationToken)
     {
+        var tenant = await tenants.GetByIdAsync(request.TenantId, cancellationToken)
+            ?? throw new KeyNotFoundException("Tenant not found.");
+
         var license = await licenses.GetByTenantIdAsync(request.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("License not found.");
 
@@ -37,7 +40,7 @@ public sealed class SetLicenseStatusCommandHandler(
                 throw new IdentityConflictException($"License status transition to '{request.Status}' is not supported by this command.");
         }
 
-        UpdateLicenseCommandHandler.QueueLicenseChanged(outbox, license);
+        UpdateLicenseCommandHandler.QueueLicenseChanged(outbox, tenant.Slug, license);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }
