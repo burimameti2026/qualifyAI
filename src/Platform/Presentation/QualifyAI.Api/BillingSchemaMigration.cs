@@ -17,7 +17,7 @@ public static class BillingSchemaMigration
                 Type nvarchar(128) NOT NULL,
                 TenantId uniqueidentifier NOT NULL,
                 Status nvarchar(64) NOT NULL,
-                DataJson nvarchar(8000) NULL,
+                DataJson nvarchar(max) NULL,
                 OccurredAtUtc datetime2 NOT NULL,
                 RecordedAtUtc datetime2 NOT NULL
             );
