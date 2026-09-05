@@ -18,14 +18,17 @@ public sealed class TenantRuntimeController(ITenantContext tenant, ITenantEntitl
         return Ok(new
         {
             tenantId,
+            tenantSlug = snapshot?.TenantSlug,
             status = snapshot?.TenantStatus ?? "unknown",
-            plan = snapshot?.Plan,
+            plan = snapshot?.LicensePlan,
             licenseStatus = snapshot?.LicenseStatus,
             maxUsers = snapshot?.MaxUsers ?? 0,
             startsAtUtc = snapshot?.StartsAtUtc,
             expiresAtUtc = snapshot?.ExpiresAtUtc,
-            modules = snapshot?.Modules ?? Array.Empty<string>(),
-            limits = snapshot?.Limits ?? new Dictionary<string, int>()
+            version = snapshot?.Version ?? 0,
+            modules = snapshot?.EnabledModules ?? Array.Empty<string>(),
+            limits = snapshot?.Limits ?? new Dictionary<string, int>(),
+            updatedAtUtc = snapshot?.UpdatedAtUtc
         });
     }
 }
