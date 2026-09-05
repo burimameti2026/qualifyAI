@@ -6,37 +6,224 @@ using QualifyAI.Contracts.Identity;
 
 namespace QualifyAI.Infrastructure.Messaging.Consumers;
 
-public sealed class TenantCreatedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantCreatedIntegrationEvent> { public Task Consume(ConsumeContext<TenantCreatedIntegrationEvent> context) => processor.ProcessTenantCreatedAsync(context.Message, context.CancellationToken); }
-public sealed class TenantStatusChangedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantStatusChangedIntegrationEvent> { public Task Consume(ConsumeContext<TenantStatusChangedIntegrationEvent> context) => processor.ProcessTenantStatusChangedAsync(context.Message, context.CancellationToken); }
-public sealed class TenantLicenseChangedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantLicenseChangedIntegrationEvent> { public Task Consume(ConsumeContext<TenantLicenseChangedIntegrationEvent> context) => processor.ProcessLicenseChangedAsync(context.Message, context.CancellationToken); }
-
-public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, ITenantEntitlementRepository entitlements, ILicenseChangeOrchestrator licenseChanges, ITenantLifecycleEventStore events)
+public sealed class TenantCreatedConsumer(IdentityEntitlementInboxProcessor processor)
+    : IConsumer<TenantCreatedIntegrationEvent>
 {
-    public Task ProcessTenantCreatedAsync(TenantCreatedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantCreatedConsumer), async () => { await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct); events.Record(new(message.TenantId, "tenant", "created", "Tenant created", message.OccurredAtUtc)); }, ct);
-    public Task ProcessTenantStatusChangedAsync(TenantStatusChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantStatusChangedConsumer), async () => { await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, message.Status, message.OccurredAtUtc, ct); events.Record(new(message.TenantId, "tenant", message.Status, $"Tenant status changed to {message.Status}", message.OccurredAtUtc)); }, ct);
+    public Task Consume(ConsumeContext<TenantCreatedIntegrationEvent> context)
+        => processor.ProcessTenantCreatedAsync(context.Message, context.CancellationToken);
+}
 
-    public Task ProcessLicenseChangedAsync(TenantLicenseChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantLicenseChangedConsumer), async () =>
-    {
-        await entitlements.UpsertLicenseAsync(message.TenantId, message.Plan, message.Status, message.MaxUsers, message.StartsAtUtc, message.ExpiresAtUtc, message.Version, message.Modules, new Dictionary<string, int> { ["users"] = Math.Max(0, message.MaxUsers) }, message.OccurredAtUtc, ct);
-        if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
-        {
-            await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct);
-            var result = await licenseChanges.ReconcileAsync(message.TenantId, ct);
-            var status = result.AddedModules.Count > 0 || result.RemovedModules.Count > 0 ? "changed" : "renewed";
-            events.Record(new(message.TenantId, "license", status, status == "renewed" ? "License renewed and tenant reactivated" : "License entitlements changed", message.OccurredAtUtc, new Dictionary<string,string>{{"plan",message.Plan},{"version",message.Version.ToString()}}));
-            events.Record(new(message.TenantId, "tenant", "active", "Tenant access active", message.OccurredAtUtc));
-        }
-        else if (message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase) || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
-        {
-            await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "suspended", message.OccurredAtUtc, ct);
-            events.Record(new(message.TenantId, "license", message.Status, $"License status changed to {message.Status}", message.OccurredAtUtc));
-            events.Record(new(message.TenantId, "tenant", "suspended", "Tenant suspended", message.OccurredAtUtc));
-        }
-    }, ct);
+public sealed class TenantStatusChangedConsumer(IdentityEntitlementInboxProcessor processor)
+    : IConsumer<TenantStatusChangedIntegrationEvent>
+{
+    public Task Consume(ConsumeContext<TenantStatusChangedIntegrationEvent> context)
+        => processor.ProcessTenantStatusChangedAsync(context.Message, context.CancellationToken);
+}
 
-    private async Task ProcessOnceAsync(Guid eventId, string consumer, Func<Task> apply, CancellationToken ct)
+public sealed class TenantLicenseChangedConsumer(IdentityEntitlementInboxProcessor processor)
+    : IConsumer<TenantLicenseChangedIntegrationEvent>
+{
+    public Task Consume(ConsumeContext<TenantLicenseChangedIntegrationEvent> context)
+        => processor.ProcessLicenseChangedAsync(context.Message, context.CancellationToken);
+}
+
+public sealed class IdentityEntitlementInboxProcessor(
+    AppDbContext dbContext,
+    ITenantEntitlementRepository entitlements,
+    ILicenseChangeOrchestrator licenseChanges,
+    ITenantLifecycleEventStore events)
+{
+    public Task ProcessTenantCreatedAsync(
+        TenantCreatedIntegrationEvent message,
+        CancellationToken ct)
+        => ProcessOnceAsync(
+            message.EventId,
+            nameof(TenantCreatedConsumer),
+            async () =>
+            {
+                var tenantSlug = RequireSlug(message.TenantSlug, message.TenantId, message.EventId);
+                await entitlements.UpsertTenantAsync(
+                    message.TenantId,
+                    tenantSlug,
+                    "active",
+                    message.OccurredAtUtc,
+                    ct);
+
+                events.Record(new(
+                    message.TenantId,
+                    "tenant",
+                    "created",
+                    "Tenant created",
+                    message.OccurredAtUtc));
+            },
+            ct);
+
+    public Task ProcessTenantStatusChangedAsync(
+        TenantStatusChangedIntegrationEvent message,
+        CancellationToken ct)
+        => ProcessOnceAsync(
+            message.EventId,
+            nameof(TenantStatusChangedConsumer),
+            async () =>
+            {
+                var tenantSlug = RequireSlug(message.TenantSlug, message.TenantId, message.EventId);
+                await entitlements.UpsertTenantAsync(
+                    message.TenantId,
+                    tenantSlug,
+                    message.Status,
+                    message.OccurredAtUtc,
+                    ct);
+
+                events.Record(new(
+                    message.TenantId,
+                    "tenant",
+                    message.Status,
+                    $"Tenant status changed to {message.Status}",
+                    message.OccurredAtUtc));
+            },
+            ct);
+
+    public Task ProcessLicenseChangedAsync(
+        TenantLicenseChangedIntegrationEvent message,
+        CancellationToken ct)
+        => ProcessOnceAsync(
+            message.EventId,
+            nameof(TenantLicenseChangedConsumer),
+            async () =>
+            {
+                await entitlements.UpsertLicenseAsync(
+                    message.TenantId,
+                    message.Plan,
+                    message.Status,
+                    message.MaxUsers,
+                    message.StartsAtUtc,
+                    message.ExpiresAtUtc,
+                    message.Version,
+                    message.Modules,
+                    new Dictionary<string, int>
+                    {
+                        ["users"] = Math.Max(0, message.MaxUsers)
+                    },
+                    message.OccurredAtUtc,
+                    ct);
+
+                if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
+                {
+                    var tenantSlug = await ResolveSlugAsync(message.TenantId, message.TenantSlug, message.EventId, ct);
+                    await entitlements.UpsertTenantAsync(
+                        message.TenantId,
+                        tenantSlug,
+                        "active",
+                        message.OccurredAtUtc,
+                        ct);
+
+                    var result = await licenseChanges.ReconcileAsync(message.TenantId, ct);
+                    var status = result.AddedModules.Count > 0 || result.RemovedModules.Count > 0
+                        ? "changed"
+                        : "renewed";
+
+                    events.Record(new(
+                        message.TenantId,
+                        "license",
+                        status,
+                        status == "renewed"
+                            ? "License renewed and tenant reactivated"
+                            : "License entitlements changed",
+                        message.OccurredAtUtc,
+                        new Dictionary<string, string>
+                        {
+                            ["plan"] = message.Plan,
+                            ["version"] = message.Version.ToString()
+                        }));
+
+                    events.Record(new(
+                        message.TenantId,
+                        "tenant",
+                        "active",
+                        "Tenant access active",
+                        message.OccurredAtUtc));
+                }
+                else if (message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
+                      || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
+                {
+                    var tenantSlug = await ResolveSlugAsync(message.TenantId, message.TenantSlug, message.EventId, ct);
+                    await entitlements.UpsertTenantAsync(
+                        message.TenantId,
+                        tenantSlug,
+                        "suspended",
+                        message.OccurredAtUtc,
+                        ct);
+
+                    events.Record(new(
+                        message.TenantId,
+                        "license",
+                        message.Status,
+                        $"License status changed to {message.Status}",
+                        message.OccurredAtUtc));
+
+                    events.Record(new(
+                        message.TenantId,
+                        "tenant",
+                        "suspended",
+                        "Tenant suspended",
+                        message.OccurredAtUtc));
+                }
+            },
+            ct);
+
+    private async Task<string> ResolveSlugAsync(
+        Guid tenantId,
+        string? messageSlug,
+        Guid eventId,
+        CancellationToken ct)
     {
-        var inbox = dbContext.Set<InboxMessage>(); if (await inbox.AsNoTracking().AnyAsync(x => x.Id == eventId && x.Consumer == consumer, ct)) return;
-        await apply(); inbox.Add(new InboxMessage { Id = eventId, Consumer = consumer, ReceivedAtUtc = DateTime.UtcNow, ProcessedAtUtc = DateTime.UtcNow }); await dbContext.SaveChangesAsync(ct);
+        if (!string.IsNullOrWhiteSpace(messageSlug))
+            return messageSlug.Trim().ToLowerInvariant();
+
+        // Backward-compatible recovery for license events already persisted before TenantSlug
+        // became a required field. The authoritative tenant projection is used when available.
+        var persistedSlug = await dbContext.Tenants
+            .AsNoTracking()
+            .Where(x => x.Id == tenantId)
+            .Select(x => x.Slug)
+            .FirstOrDefaultAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(persistedSlug))
+            return persistedSlug.Trim().ToLowerInvariant();
+
+        throw new InvalidOperationException(
+            $"TenantLicenseChangedIntegrationEvent {eventId} for tenant {tenantId} has no TenantSlug and no persisted tenant slug is available.");
+    }
+
+    private static string RequireSlug(string? slug, Guid tenantId, Guid eventId)
+    {
+        if (!string.IsNullOrWhiteSpace(slug))
+            return slug.Trim().ToLowerInvariant();
+
+        throw new InvalidOperationException(
+            $"Tenant event {eventId} for tenant {tenantId} has no TenantSlug.");
+    }
+
+    private async Task ProcessOnceAsync(
+        Guid eventId,
+        string consumer,
+        Func<Task> apply,
+        CancellationToken ct)
+    {
+        var inbox = dbContext.Set<InboxMessage>();
+        if (await inbox.AsNoTracking().AnyAsync(
+                x => x.Id == eventId && x.Consumer == consumer,
+                ct))
+            return;
+
+        await apply();
+        inbox.Add(new InboxMessage
+        {
+            Id = eventId,
+            Consumer = consumer,
+            ReceivedAtUtc = DateTime.UtcNow,
+            ProcessedAtUtc = DateTime.UtcNow
+        });
+        await dbContext.SaveChangesAsync(ct);
     }
 }
