@@ -5,7 +5,6 @@ using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Application.Licensing;
 using QualifyAI.Identity.Domain.Licensing;
-using QualifyAI.Identity.Application;
 
 namespace QualifyAI.Identity.Application.Licensing.AssignLicense;
 
@@ -50,7 +49,7 @@ public sealed class AssignLicenseCommandHandler(
         AssignLicenseCommand request,
         CancellationToken cancellationToken)
     {
-        _ = await tenants.GetByIdAsync(request.TenantId, cancellationToken)
+        var tenant = await tenants.GetByIdAsync(request.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("Tenant not found.");
 
         var existing = await licenses.GetByTenantIdAsync(request.TenantId, cancellationToken);
@@ -72,6 +71,7 @@ public sealed class AssignLicenseCommandHandler(
             Guid.NewGuid(),
             DateTime.UtcNow,
             license.TenantId,
+            tenant.Slug,
             license.Id,
             license.Plan,
             license.Status.ToString(),
