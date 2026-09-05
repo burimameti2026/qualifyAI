@@ -31,11 +31,12 @@ public sealed class TenantLifecycleReconciliationWorker(IServiceScopeFactory sco
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var orchestrator = scope.ServiceProvider.GetRequiredService<ILicenseChangeOrchestrator>();
                 var events = scope.ServiceProvider.GetRequiredService<ITenantLifecycleEventStore>();
+                var alerts = scope.ServiceProvider.GetRequiredService<ITenantAlertService>();
                 var tenantIds = await db.TenantEntitlements.Where(x => x.LicenseStatus == "active" && x.TenantStatus == "active").Select(x => x.TenantId).ToListAsync(stoppingToken);
                 foreach (var tenantId in tenantIds)
                 {
                     try { await orchestrator.ReconcileAsync(tenantId, stoppingToken); events.Record(new(tenantId, "reconciliation", "completed", "Tenant lifecycle reconciliation completed", DateTime.UtcNow)); }
-                    catch (Exception ex) { logger.LogError(ex, "Tenant lifecycle reconciliation failed for {TenantId}", tenantId); events.Record(new(tenantId, "reconciliation", "failed", "Tenant lifecycle reconciliation failed", DateTime.UtcNow)); }
+                    catch (Exception ex) { logger.LogError(ex, "Tenant lifecycle reconciliation failed for {TenantId}", tenantId); events.Record(new(tenantId, "reconciliation", "failed", "Tenant lifecycle reconciliation failed", DateTime.UtcNow)); alerts.Raise(tenantId, "critical", "reconciliation_failed", "Tenant lifecycle reconciliation failed"); }
                 }
             }
             catch (Exception ex) { logger.LogError(ex, "Tenant lifecycle reconciliation worker iteration failed"); }
