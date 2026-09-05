@@ -80,9 +80,17 @@ public sealed class IdentityBootstrapHostedService(
         outbox.Add(new TenantCreatedIntegrationEvent(
             Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
         outbox.Add(new TenantLicenseChangedIntegrationEvent(
-            Guid.NewGuid(), snapshotAtUtc, tenant.Id, license.Id, license.Plan,
-            license.Status.ToString().ToLowerInvariant(), license.MaxUsers,
-            license.StartsAtUtc, license.ExpiresAtUtc, license.Version,
+            Guid.NewGuid(),
+            snapshotAtUtc,
+            tenant.Id,
+            tenant.Slug,
+            license.Id,
+            license.Plan,
+            license.Status.ToString().ToLowerInvariant(),
+            license.MaxUsers,
+            license.StartsAtUtc,
+            license.ExpiresAtUtc,
+            license.Version,
             license.Modules.Select(x => x.Code).ToArray()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
