@@ -2,15 +2,9 @@ name: QualifyAI CI
 
 on:
   push:
-    branches:
-      - feature/fixes
-      - feature/golden-pipeline
-      - dev
-      - master
+    branches: [feature/fixes, feature/golden-pipeline, dev, master]
   pull_request:
-    branches:
-      - dev
-      - master
+    branches: [dev, master]
 
 concurrency:
   group: qualifyai-ci-${{ github.ref }}
@@ -18,66 +12,39 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend build
+    name: Backend build and tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 9.0.x
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 9.0.x }
       - name: Architecture guard (advisory)
         continue-on-error: true
         shell: pwsh
         run: ./scripts/check-architecture.ps1
-
       - name: Restore
-        if: always()
         run: dotnet restore QualifyAI.sln --disable-parallel
-
       - name: Build
-        if: always()
         run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
-
+      - name: Billing hardening tests
+        run: dotnet test tests/QualifyAI.BillingHardening.Tests/QualifyAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
   admin-ui:
     name: Admin UI build
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Detect admin UI source
-        id: admin-ui
+      - uses: actions/checkout@v4
+      - id: admin-ui
         shell: bash
         run: |
-          if [ -f "admin/qualifyai-admin/package-lock.json" ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Admin UI source is not present on this branch; skipping UI build."
-          fi
-
-      - name: Setup Node
+          if [ -f "admin/qualifyai-admin/package-lock.json" ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
         if: steps.admin-ui.outputs.exists == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: admin/qualifyai-admin/package-lock.json
-
-      - name: Install dependencies
-        if: steps.admin-ui.outputs.exists == 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: admin/qualifyai-admin/package-lock.json }
+      - if: steps.admin-ui.outputs.exists == 'true'
         working-directory: admin/qualifyai-admin
         run: npm ci --no-audit --no-fund
-
-      - name: Build
-        if: steps.admin-ui.outputs.exists == 'true'
+      - if: steps.admin-ui.outputs.exists == 'true'
         working-directory: admin/qualifyai-admin
         run: npm run build
