@@ -6,9 +6,10 @@ namespace QualifyAI.Infrastructure;
 
 public sealed record ModuleDefinition(string Code, IReadOnlyCollection<string> Dependencies);
 public interface IModuleProvisioner { string ModuleCode { get; } Task ProvisionAsync(Guid tenantId, CancellationToken cancellationToken = default); }
+public interface IModuleLifecycleHandler { string ModuleCode { get; } Task DeactivateAsync(Guid tenantId, CancellationToken cancellationToken = default); }
 public interface IModuleRegistry { IReadOnlyCollection<ModuleDefinition> Modules { get; } IReadOnlyCollection<string> Resolve(IReadOnlyCollection<string> requestedModules); }
 
-public sealed class ModuleRegistry(IEnumerable<IModuleProvisioner> provisioners) : IModuleRegistry
+public sealed class ModuleRegistry : IModuleRegistry
 {
     private readonly Dictionary<string, ModuleDefinition> _modules = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -25,6 +26,7 @@ public sealed class ModuleRegistry(IEnumerable<IModuleProvisioner> provisioners)
 }
 
 public interface IModuleProvisioningOrchestrator { Task ProvisionAsync(Guid tenantId, IReadOnlyCollection<string> modules, CancellationToken cancellationToken = default); }
+public interface IModuleDeactivationOrchestrator { Task DeactivateAsync(Guid tenantId, IReadOnlyCollection<string> modules, CancellationToken cancellationToken = default); }
 
 public sealed class ModuleProvisioningOrchestrator(IEnumerable<IModuleProvisioner> provisioners, IModuleRegistry registry, AppDbContext dbContext) : IModuleProvisioningOrchestrator
 {
@@ -41,14 +43,30 @@ public sealed class ModuleProvisioningOrchestrator(IEnumerable<IModuleProvisione
             if (dbContext.Entry(row).State == EntityState.Detached) dbContext.TenantModuleProvisionings.Add(row);
             row.Status = "provisioning"; row.AttemptCount++; row.LastAttemptAtUtc = DateTime.UtcNow; row.LastError = null; row.NextRetryAtUtc = null; row.UpdatedAtUtc = DateTime.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
+            try { await provisioner.ProvisionAsync(tenantId, cancellationToken); row.Status = "completed"; row.CompletedAtUtc = DateTime.UtcNow; row.UpdatedAtUtc = DateTime.UtcNow; }
+            catch (Exception ex) { row.Status = "failed"; row.LastError = ex.ToString(); row.NextRetryAtUtc = DateTime.UtcNow.AddMinutes(Math.Min(60, Math.Pow(2, Math.Min(row.AttemptCount, 6)))); row.UpdatedAtUtc = DateTime.UtcNow; }
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+}
+
+public sealed class ModuleDeactivationOrchestrator(IEnumerable<IModuleLifecycleHandler> handlers, AppDbContext dbContext) : IModuleDeactivationOrchestrator
+{
+    public async Task DeactivateAsync(Guid tenantId, IReadOnlyCollection<string> modules, CancellationToken cancellationToken = default)
+    {
+        var byCode = handlers.ToDictionary(x => x.ModuleCode, StringComparer.OrdinalIgnoreCase);
+        foreach (var module in modules.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var row = await dbContext.TenantModuleProvisionings.FindAsync(new object[] { tenantId, module }, cancellationToken);
+            if (row is null || row.Status.Equals("deactivated", StringComparison.OrdinalIgnoreCase)) continue;
             try
             {
-                await provisioner.ProvisionAsync(tenantId, cancellationToken);
-                row.Status = "completed"; row.CompletedAtUtc = DateTime.UtcNow; row.UpdatedAtUtc = DateTime.UtcNow;
+                if (byCode.TryGetValue(module, out var handler)) await handler.DeactivateAsync(tenantId, cancellationToken);
+                row.Status = "deactivated"; row.NextRetryAtUtc = null; row.LastError = null; row.UpdatedAtUtc = DateTime.UtcNow;
             }
             catch (Exception ex)
             {
-                row.Status = "failed"; row.LastError = ex.ToString(); row.NextRetryAtUtc = DateTime.UtcNow.AddMinutes(Math.Min(60, Math.Pow(2, Math.Min(row.AttemptCount, 6)))); row.UpdatedAtUtc = DateTime.UtcNow;
+                row.Status = "deactivation_failed"; row.LastError = ex.ToString(); row.UpdatedAtUtc = DateTime.UtcNow;
             }
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -59,4 +77,10 @@ public sealed class GoldenPipelineModuleProvisioner(IGoldenPipelineProvisioner g
 {
     public string ModuleCode => "golden_pipeline";
     public Task ProvisionAsync(Guid tenantId, CancellationToken cancellationToken = default) => goldenPipeline.EnsureProvisionedAsync(tenantId, cancellationToken);
+}
+
+public sealed class GoldenPipelineModuleLifecycleHandler : IModuleLifecycleHandler
+{
+    public string ModuleCode => "golden_pipeline";
+    public Task DeactivateAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
