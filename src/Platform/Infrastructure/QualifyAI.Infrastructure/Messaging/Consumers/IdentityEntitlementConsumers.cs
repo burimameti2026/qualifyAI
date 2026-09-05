@@ -27,7 +27,15 @@ public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, IT
     public Task ProcessLicenseChangedAsync(TenantLicenseChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantLicenseChangedConsumer), async () =>
     {
         await entitlements.UpsertLicenseAsync(message.TenantId, message.Plan, message.Status, message.MaxUsers, message.StartsAtUtc, message.ExpiresAtUtc, message.Version, message.Modules, new Dictionary<string, int> { ["users"] = Math.Max(0, message.MaxUsers) }, message.OccurredAtUtc, ct);
-        if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)) await licenseChanges.ReconcileAsync(message.TenantId, ct);
+        if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
+        {
+            await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct);
+            await licenseChanges.ReconcileAsync(message.TenantId, ct);
+        }
+        else if (message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase) || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
+        {
+            await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "suspended", message.OccurredAtUtc, ct);
+        }
     }, ct);
 
     private async Task ProcessOnceAsync(Guid eventId, string consumer, Func<Task> apply, CancellationToken ct)
