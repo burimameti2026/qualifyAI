@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using QualifyAI.Contracts.Identity;
 using QualifyAI.Identity.Persistence.SqlServer;
 
 namespace QualifyAI.Identity.Infrastructure.Messaging;
@@ -64,6 +65,12 @@ public sealed class IdentityOutboxPublisherHostedService(
                 var integrationEvent = JsonSerializer.Deserialize(message.Payload, eventType)
                     ?? throw new InvalidOperationException($"Unable to deserialize outbox message '{message.Id}'.");
 
+                integrationEvent = await RepairLegacyLicenseEventAsync(
+                    integrationEvent,
+                    eventType,
+                    dbContext,
+                    cancellationToken);
+
                 await publisher.Publish(integrationEvent, eventType, cancellationToken);
 
                 message.ProcessedAtUtc = DateTime.UtcNow;
@@ -92,6 +99,32 @@ public sealed class IdentityOutboxPublisherHostedService(
             await dbContext.SaveChangesAsync(cancellationToken);
 
         return messages.Count;
+    }
+
+    private static async Task<object> RepairLegacyLicenseEventAsync(
+        object integrationEvent,
+        Type eventType,
+        IdentityDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (eventType != typeof(TenantLicenseChangedIntegrationEvent)
+            || integrationEvent is not TenantLicenseChangedIntegrationEvent message
+            || !string.IsNullOrWhiteSpace(message.TenantSlug))
+            return integrationEvent;
+
+        var tenantSlug = await dbContext.Tenants
+            .AsNoTracking()
+            .Where(x => x.Id == message.TenantId)
+            .Select(x => x.Slug)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(tenantSlug))
+        {
+            throw new InvalidOperationException(
+                $"Legacy TenantLicenseChangedIntegrationEvent {message.EventId} for tenant {message.TenantId} has no TenantSlug, and the authoritative Identity tenant record could not supply one.");
+        }
+
+        return message with { TenantSlug = tenantSlug.Trim().ToLowerInvariant() };
     }
 
     private static TimeSpan GetRetryDelay(int retryCount)
