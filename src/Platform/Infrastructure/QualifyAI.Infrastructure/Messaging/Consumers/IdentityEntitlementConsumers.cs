@@ -41,7 +41,7 @@ public sealed class IdentityEntitlementInboxProcessor(
             nameof(TenantCreatedConsumer),
             async () =>
             {
-                var tenantSlug = RequireSlug(message.TenantSlug, message.TenantId, message.EventId);
+                var tenantSlug = ResolveLifecycleSlug(message.TenantSlug, message.TenantId);
                 await entitlements.UpsertTenantAsync(
                     message.TenantId,
                     tenantSlug,
@@ -66,7 +66,7 @@ public sealed class IdentityEntitlementInboxProcessor(
             nameof(TenantStatusChangedConsumer),
             async () =>
             {
-                var tenantSlug = RequireSlug(message.TenantSlug, message.TenantId, message.EventId);
+                var tenantSlug = ResolveLifecycleSlug(message.TenantSlug, message.TenantId);
                 await entitlements.UpsertTenantAsync(
                     message.TenantId,
                     tenantSlug,
@@ -202,17 +202,16 @@ public sealed class IdentityEntitlementInboxProcessor(
         if (!string.IsNullOrWhiteSpace(persistedSlug))
             return persistedSlug.Trim().ToLowerInvariant();
 
-        return $"tenant-{tenantId:N}";
+        return CreateFallbackSlug(tenantId);
     }
 
-    private static string RequireSlug(string? slug, Guid tenantId, Guid eventId)
-    {
-        if (!string.IsNullOrWhiteSpace(slug))
-            return slug.Trim().ToLowerInvariant();
+    private static string ResolveLifecycleSlug(string? slug, Guid tenantId)
+        => !string.IsNullOrWhiteSpace(slug)
+            ? slug.Trim().ToLowerInvariant()
+            : CreateFallbackSlug(tenantId);
 
-        throw new InvalidOperationException(
-            $"Tenant event {eventId} for tenant {tenantId} has no TenantSlug.");
-    }
+    private static string CreateFallbackSlug(Guid tenantId)
+        => $"tenant-{tenantId:N}";
 
     private async Task ProcessOnceAsync(
         Guid eventId,
