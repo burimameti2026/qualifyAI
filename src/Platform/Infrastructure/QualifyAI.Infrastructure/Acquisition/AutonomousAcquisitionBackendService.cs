@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using QualifyAI.Domain;
 using QualifyAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.Identity.Application;
 using QualifyAI.Identity.Application.Licensing;
 using QualifyAI.Identity.Application.Tenants.ProvisionTenant;
 using QualifyAI.Identity.Domain.Licensing;

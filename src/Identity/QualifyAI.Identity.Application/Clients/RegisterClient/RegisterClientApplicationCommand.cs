@@ -3,7 +3,7 @@ using FluentValidation;
 using MediatR;
 using QualifyAI.Identity.Application.Abstractions.Persistence;
 using QualifyAI.Identity.Domain.Clients;
-using QualifyAI.Identity.Application;
+
 
 namespace QualifyAI.Identity.Application.Clients.RegisterClient;
 

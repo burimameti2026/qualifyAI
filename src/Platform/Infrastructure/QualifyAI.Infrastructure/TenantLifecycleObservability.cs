@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Persistence.SqlServer;
+using Microsoft.Extensions.DependencyInjection;
+
 using QualifyAI.Persistence.SqlServer.Projections;
 
 namespace QualifyAI.Infrastructure;

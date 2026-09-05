@@ -13,8 +13,8 @@ public sealed class BillingQuotaMiddleware(RequestDelegate next)
         if(current is null||!MeteredPrefixes.Any(path.StartsWith)||context.Request.Method is "OPTIONS") {await next(context);return;}
         var metric=path.StartsWith("/api/ai")?"ai_tokens":path.StartsWith("/api/knowledge")?"storage_mb":"api_requests";
         var key=$"Billing:Quotas:{metric}";var limit=configuration.GetValue<long?>(key)??-1;
-        var check=quotas.Consume(current.TenantId,metric,limit,1);
-        if(!check.Allowed){context.Response.StatusCode=StatusCodes.Status429TooManyRequests;context.Response.Headers.RetryAfter="3600";await context.Response.WriteAsJsonAsync(new{error="quota_exceeded",check.metric,check.used,check.limit});return;}
+        var check=quotas.Consume(current.Id,metric,limit,1);
+        if(!check.Allowed){context.Response.StatusCode=StatusCodes.Status429TooManyRequests;context.Response.Headers.RetryAfter="3600";await context.Response.WriteAsJsonAsync(new{error="quota_exceeded",check.Metric,check.Used,check.Limit});return;}
         await next(context);
     }
 }

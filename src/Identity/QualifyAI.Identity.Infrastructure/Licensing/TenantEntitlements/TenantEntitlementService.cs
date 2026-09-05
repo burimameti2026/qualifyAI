@@ -1,9 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Identity.Application.Licensing.TenantEntitlements;
+using QualifyAI.Identity.Application;
+using QualifyAI.Identity.Application.Licensing;
 using QualifyAI.Identity.Domain.Licensing;
 using QualifyAI.Identity.Persistence.SqlServer;
 
-namespace QualifyAI.Identity.Infrastructure.Licensing.TenantEntitlements;
+namespace QualifyAI.Identity.Infrastructure.Licensing;
 
 public sealed class TenantEntitlementService(IdentityDbContext db) : ITenantEntitlementService
 {
@@ -23,20 +24,22 @@ public sealed class TenantEntitlementService(IdentityDbContext db) : ITenantEnti
             .ToArray();
 
         return new TenantEntitlements(
-            tenantId,
-            license.Plan,
-            status,
-            license.ExpiresAtUtc,
-            license.GracePeriodEndsAtUtc,
-            license.MaxUsers,
-            modules);
+          license.TenantId,
+          license.Plan,
+          license.Status.ToString(),
+          license.IsUsable(DateTime.UtcNow),
+          license.MaxUsers,
+          license.StartsAtUtc,
+          license.ExpiresAtUtc,
+          license.Version,
+          license.Modules.Where(x => x.Enabled).Select(x => x.Code).ToArray());
     }
 
     public async Task EnsureModuleAsync(Guid tenantId, string module, CancellationToken cancellationToken = default)
     {
         var entitlements = await GetAsync(tenantId, cancellationToken);
-        if (entitlements.Status is not (LicenseStatus.Active or LicenseStatus.Trial or LicenseStatus.GracePeriod))
-            throw new IdentityValidationException("license", $"Tenant license is {entitlements.Status}.");
+        if (entitlements.LicenseStatus is not ("Active" or "Trial" or "GracePeriod"))
+            throw new IdentityValidationException("license", $"Tenant license is {entitlements.LicenseStatus}.");
 
         var normalized = module.Trim().ToLowerInvariant();
         if (!entitlements.Modules.Contains(normalized, StringComparer.OrdinalIgnoreCase))

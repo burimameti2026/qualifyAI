@@ -5,16 +5,16 @@ namespace QualifyAI.Identity.Application.Licensing.GetEntitlements;
 
 public sealed record GetTenantEntitlementsQuery(Guid TenantId) : IRequest<TenantEntitlements?>;
 
-public sealed record TenantEntitlements(
-    Guid TenantId,
-    string Plan,
-    string LicenseStatus,
-    bool IsUsable,
-    int MaxUsers,
-    DateTime StartsAtUtc,
-    DateTime? ExpiresAtUtc,
-    long Version,
-    IReadOnlyCollection<string> Modules);
+//public sealed record TenantEntitlements(
+//    Guid TenantId,
+//    string Plan,
+//    string LicenseStatus,
+//    bool IsUsable,
+//    int MaxUsers,
+//    DateTime StartsAtUtc,
+//    DateTime? ExpiresAtUtc,
+//    long Version,
+//    IReadOnlyCollection<string> Modules);
 
 public sealed class GetTenantEntitlementsQueryHandler(ILicenseRepository licenses)
     : IRequestHandler<GetTenantEntitlementsQuery, TenantEntitlements?>

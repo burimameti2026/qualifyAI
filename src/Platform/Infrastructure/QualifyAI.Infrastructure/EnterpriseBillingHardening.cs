@@ -19,7 +19,7 @@ public sealed class BillingLifecycleEngine(BillingLifecyclePolicy policy) : IBil
             var graceEnds = current.GraceEndsAtUtc ?? nowUtc.AddDays(policy.GraceDays);
             var attempt = Math.Min(current.RetryAttempt + 1, policy.MaxRetryAttempts);
             var retryHours = (int)Math.Ceiling(24 * Math.Pow((double)policy.RetryMultiplier, Math.Max(0, attempt - 1)));
-            var next = attempt >= policy.MaxRetryAttempts ? null : nowUtc.AddHours(retryHours);
+            DateTime? next = attempt >= policy.MaxRetryAttempts ? null : nowUtc.AddHours(retryHours);
             var nextState = graceEnds <= nowUtc ? EnterpriseBillingState.Suspended : EnterpriseBillingState.GracePeriod;
             return current with { State=nextState, GraceEndsAtUtc=graceEnds, RetryAttempt=attempt, NextRetryAtUtc=next, LastPaymentState=state };
         }
