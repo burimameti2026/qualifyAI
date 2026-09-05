@@ -12,9 +12,10 @@ using QualifyAI.Identity.Application.Licensing.TenantEntitlements;
 using QualifyAI.Identity.Infrastructure.Authentication;
 using QualifyAI.Identity.Infrastructure.Bootstrap;
 using QualifyAI.Identity.Infrastructure.Clients;
-using QualifyAI.Identity.Persistence.SqlServer.Identity;
+using QualifyAI.Identity.Infrastructure.Licensing.TenantEntitlements;
 using QualifyAI.Identity.Infrastructure.Messaging;
 using QualifyAI.Identity.Persistence.SqlServer;
+using QualifyAI.Identity.Persistence.SqlServer.Identity;
 using QualifyAI.Identity.Persistence.SqlServer.Repositories;
 
 namespace QualifyAI.Identity.Infrastructure;
