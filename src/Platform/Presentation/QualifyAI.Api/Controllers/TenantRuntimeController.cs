@@ -14,7 +14,7 @@ public sealed class TenantRuntimeController(ITenantContext tenant, ITenantEntitl
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var tenantId = tenant.TenantId();
-        var snapshot = await entitlements.GetSnapshotAsync(tenantId, ct);
+        var snapshot = await entitlements.GetAsync(tenantId, ct);
         return Ok(new
         {
             tenantId,
