@@ -11,15 +11,37 @@ public sealed class AddAcquisitionCampaignEngine : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.AddColumn<bool>("Active", "IcpProfiles", "bit", nullable: false, defaultValue: true);
-        migrationBuilder.AddColumn<string>("CountriesCsv", "IcpProfiles", "nvarchar(500)", maxLength: 500, nullable: false, defaultValue: "");
-        migrationBuilder.AddColumn<string>("Industry", "IcpProfiles", "nvarchar(120)", maxLength: 120, nullable: false, defaultValue: "");
-        migrationBuilder.AddColumn<string>("IntentKeywordsCsv", "IcpProfiles", "nvarchar(1000)", maxLength: 1000, nullable: false, defaultValue: "");
-        migrationBuilder.AddColumn<DateTime>("LastDiscoveryAtUtc", "IcpProfiles", "datetime2", nullable: true);
-        migrationBuilder.AddColumn<int>("MaximumEmployees", "IcpProfiles", "int", nullable: true);
-        migrationBuilder.AddColumn<int>("MinimumEmployees", "IcpProfiles", "int", nullable: true);
-        migrationBuilder.AlterColumn<string>("Name", "IcpProfiles", "nvarchar(200)", maxLength: 200, nullable: false, oldClrType: typeof(string), oldType: "nvarchar(max)");
-        migrationBuilder.CreateIndex("IX_IcpProfiles_TenantId_Active", "IcpProfiles", new[] { "TenantId", "Active" });
+        // This migration can run against databases that were partially provisioned before
+        // the EF migration history was introduced. Guard existing ICP columns explicitly.
+        migrationBuilder.Sql("""
+            IF COL_LENGTH('IcpProfiles', 'Active') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [Active] bit NOT NULL CONSTRAINT [DF_IcpProfiles_Active] DEFAULT CAST(1 AS bit);
+            IF COL_LENGTH('IcpProfiles', 'CountriesCsv') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [CountriesCsv] nvarchar(500) NOT NULL CONSTRAINT [DF_IcpProfiles_CountriesCsv] DEFAULT N'';
+            IF COL_LENGTH('IcpProfiles', 'Industry') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [Industry] nvarchar(120) NOT NULL CONSTRAINT [DF_IcpProfiles_Industry] DEFAULT N'';
+            IF COL_LENGTH('IcpProfiles', 'IntentKeywordsCsv') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [IntentKeywordsCsv] nvarchar(1000) NOT NULL CONSTRAINT [DF_IcpProfiles_IntentKeywordsCsv] DEFAULT N'';
+            IF COL_LENGTH('IcpProfiles', 'LastDiscoveryAtUtc') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [LastDiscoveryAtUtc] datetime2 NULL;
+            IF COL_LENGTH('IcpProfiles', 'MaximumEmployees') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [MaximumEmployees] int NULL;
+            IF COL_LENGTH('IcpProfiles', 'MinimumEmployees') IS NULL
+                ALTER TABLE [IcpProfiles] ADD [MinimumEmployees] int NULL;
+            """);
+
+        migrationBuilder.Sql("""
+            IF COL_LENGTH('IcpProfiles', 'Name') IS NOT NULL AND COL_LENGTH('IcpProfiles', 'Name') > 400
+                ALTER TABLE [IcpProfiles] ALTER COLUMN [Name] nvarchar(200) NOT NULL;
+            """);
+
+        migrationBuilder.Sql("""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = N'IX_IcpProfiles_TenantId_Active'
+                  AND object_id = OBJECT_ID(N'[IcpProfiles]'))
+                CREATE INDEX [IX_IcpProfiles_TenantId_Active] ON [IcpProfiles] ([TenantId], [Active]);
+            """);
 
         migrationBuilder.CreateTable("Campaigns", table => new
         {
