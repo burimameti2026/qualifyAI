@@ -17,7 +17,7 @@ public static class BillingSchemaMigration
                 Type nvarchar(128) NOT NULL,
                 TenantId uniqueidentifier NOT NULL,
                 Status nvarchar(64) NOT NULL,
-               DataJson nvarchar(max) NULL,
+                DataJson nvarchar(max) NULL,
                 OccurredAtUtc datetime2 NOT NULL,
                 RecordedAtUtc datetime2 NOT NULL
             );
@@ -60,6 +60,21 @@ public static class BillingSchemaMigration
             );
             CREATE UNIQUE INDEX IX_TenantBillingInvoices_Provider_ExternalInvoiceId ON dbo.TenantBillingInvoices(Provider, ExternalInvoiceId);
             CREATE INDEX IX_TenantBillingInvoices_TenantId_UpdatedAtUtc ON dbo.TenantBillingInvoices(TenantId, UpdatedAtUtc);
+        END
+
+        IF OBJECT_ID(N'dbo.TenantBillingLifecycles', N'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.TenantBillingLifecycles (
+                TenantId uniqueidentifier NOT NULL PRIMARY KEY,
+                State nvarchar(64) NOT NULL,
+                TrialEndsAtUtc datetime2 NULL,
+                GraceEndsAtUtc datetime2 NULL,
+                RetryAttempt int NOT NULL,
+                NextRetryAtUtc datetime2 NULL,
+                LastPaymentState nvarchar(128) NULL,
+                UpdatedAtUtc datetime2 NOT NULL
+            );
+            CREATE INDEX IX_TenantBillingLifecycles_State_NextRetryAtUtc ON dbo.TenantBillingLifecycles(State, NextRetryAtUtc);
         END
         """;
         await db.Database.ExecuteSqlRawAsync(sql, ct);
