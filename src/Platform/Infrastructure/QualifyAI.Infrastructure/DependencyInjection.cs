@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IModuleProvisioner, GoldenPipelineModuleProvisioner>();
         services.AddScoped<IModuleRegistry, ModuleRegistry>();
         services.AddScoped<IModuleProvisioningOrchestrator, ModuleProvisioningOrchestrator>();
+        services.AddScoped<ITenantLifecycleOrchestrator, TenantLifecycleOrchestrator>();
         services.AddHostedService<ModuleProvisioningRetryWorker>();
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IPasswordService, PasswordService>();
