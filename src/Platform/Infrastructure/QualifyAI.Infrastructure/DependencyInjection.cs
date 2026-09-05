@@ -16,27 +16,13 @@ namespace QualifyAI.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddBusinessInfrastructure(
-        this IServiceCollection services,
-        IConfiguration configuration,
-        bool allowDevelopmentModelDrift = false)
+    public static IServiceCollection AddBusinessInfrastructure(this IServiceCollection services, IConfiguration configuration, bool allowDevelopmentModelDrift = false)
     {
         services.AddDbContext<AppDbContext>(options =>
         {
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"), sql => sql.EnableRetryOnFailure());
-            if (allowDevelopmentModelDrift)
-                options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
-            options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection"),
-                sql => sql.EnableRetryOnFailure());
-
-            // Local development must remain startable while model changes are being
-            // captured in explicit migrations. Production keeps EF's strict guard.
-            if(allowDevelopmentModelDrift)
-                options.ConfigureWarnings(warnings =>
-                    warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+            if (allowDevelopmentModelDrift) options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
-
         services.AddScoped<IBusinessUnitOfWork, BusinessUnitOfWork>();
         services.AddScoped<ICrmRepository, CrmRepository>();
         services.AddScoped<ISupportRepository, SupportRepository>();
@@ -45,6 +31,9 @@ public static class DependencyInjection
         services.AddScoped<ITenantEntitlementRepository, TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
         services.AddScoped<IGoldenPipelineProvisioner, GoldenPipelineProvisioner>();
+        services.AddScoped<IModuleProvisioner, GoldenPipelineModuleProvisioner>();
+        services.AddScoped<IModuleRegistry, ModuleRegistry>();
+        services.AddScoped<IModuleProvisioningOrchestrator, ModuleProvisioningOrchestrator>();
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
@@ -59,24 +48,13 @@ public static class DependencyInjection
         services.AddScoped<CampaignExecutionService>();
         services.AddScoped<ProspectReplyProcessingService>();
         services.AddScoped<ProspectDiscoveryService>();
-        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(client =>
-        {
-            client.BaseAddress=new Uri("https://serpapi.com/");
-            client.Timeout=TimeSpan.FromSeconds(60);
-        });
+        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(client => { client.BaseAddress=new Uri("https://serpapi.com/"); client.Timeout=TimeSpan.FromSeconds(60); });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
-        services.AddScoped<AutomationActionExecutor>();
-        services.AddScoped<RealisticScenarioService>();
+        services.AddScoped<AutomationActionExecutor>(); services.AddScoped<RealisticScenarioService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
-        services.AddHttpClient<BrevoEmailProvider>(client =>
-        {
-            client.BaseAddress=new Uri("https://api.brevo.com/v3/");
-            client.Timeout=TimeSpan.FromSeconds(60);
-        });
+        services.AddHttpClient<BrevoEmailProvider>(client => { client.BaseAddress=new Uri("https://api.brevo.com/v3/"); client.Timeout=TimeSpan.FromSeconds(60); });
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<BrevoEmailProvider>());
-        services.AddHttpClient<SendGridEmailProvider>();
-        services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
-        services.AddScoped<EmailDeliveryService>();
-        return services;
+        services.AddHttpClient<SendGridEmailProvider>(); services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
+        services.AddScoped<EmailDeliveryService>(); return services;
     }
 }
