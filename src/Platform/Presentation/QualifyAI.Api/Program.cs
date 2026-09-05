@@ -25,6 +25,6 @@ builder.Services.AddSwaggerGen(options => { options.SwaggerDoc("v1", new OpenApi
 builder.Services.AddQualifyAiResourceServer(builder.Configuration); builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
 var app = builder.Build();
 app.MapDefaultEndpoints(); app.UseCors(); app.UseSwagger(); app.UseSwaggerUI(); app.UseAuthentication(); app.UseMiddleware<TenantMiddleware>(); app.UseMiddleware<TenantEntitlementEnforcementMiddleware>(); app.UseMiddleware<TenantAccessMiddleware>(); app.UseAuthorization();
-app.MapControllers(); app.MapHub<ConversationHub>("/hubs/conversations"); app.MapPublicChat(); app.MapExtendedAdmin(); app.MapPlatformModules();
+app.MapControllers(); app.MapTenantLifecycle(); app.MapHub<ConversationHub>("/hubs/conversations"); app.MapPublicChat(); app.MapExtendedAdmin(); app.MapPlatformModules();
 using (var scope = app.Services.CreateScope()) { var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); await db.Database.MigrateAsync(); await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync(); if (builder.Configuration.GetValue<bool>("DemoSeed:Enabled")) await scope.ServiceProvider.GetRequiredService<DemoSeeder>().SeedAsync(); }
 app.Run();
