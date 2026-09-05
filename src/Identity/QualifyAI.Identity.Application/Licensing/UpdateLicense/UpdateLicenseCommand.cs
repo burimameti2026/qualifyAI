@@ -27,6 +27,7 @@ public sealed class UpdateLicenseCommandValidator : AbstractValidator<UpdateLice
 }
 
 public sealed class UpdateLicenseCommandHandler(
+    ITenantRepository tenants,
     ILicenseRepository licenses,
     IOutboxWriter outbox,
     IIdentityUnitOfWork unitOfWork)
@@ -36,6 +37,9 @@ public sealed class UpdateLicenseCommandHandler(
         UpdateLicenseCommand request,
         CancellationToken cancellationToken)
     {
+        var tenant = await tenants.GetByIdAsync(request.TenantId, cancellationToken)
+            ?? throw new KeyNotFoundException("Tenant not found.");
+
         var license = await licenses.GetByTenantIdAsync(request.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("License not found.");
 
@@ -43,16 +47,23 @@ public sealed class UpdateLicenseCommandHandler(
         license.ChangePlan(request.Plan, request.MaxUsers, request.ExpiresAtUtc);
         license.ReplaceModules(modules);
 
-        QueueLicenseChanged(outbox, license);
+        QueueLicenseChanged(outbox, tenant.Slug, license);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    internal static void QueueLicenseChanged(IOutboxWriter outbox, License license)
+    internal static void QueueLicenseChanged(
+        IOutboxWriter outbox,
+        string tenantSlug,
+        License license)
     {
+        if (string.IsNullOrWhiteSpace(tenantSlug))
+            throw new InvalidOperationException($"Tenant {license.TenantId} has no valid slug.");
+
         outbox.Add(new TenantLicenseChangedIntegrationEvent(
             Guid.NewGuid(),
             DateTime.UtcNow,
             license.TenantId,
+            tenantSlug.Trim().ToLowerInvariant(),
             license.Id,
             license.Plan,
             license.Status.ToString(),
