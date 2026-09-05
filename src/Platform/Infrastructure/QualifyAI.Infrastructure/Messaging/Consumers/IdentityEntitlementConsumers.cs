@@ -91,6 +91,27 @@ public sealed class IdentityEntitlementInboxProcessor(
             nameof(TenantLicenseChangedConsumer),
             async () =>
             {
+                var existing = await entitlements.GetAsync(message.TenantId, ct);
+                var tenantSlug = await ResolveSlugAsync(
+                    message.TenantId,
+                    message.TenantSlug,
+                    ct);
+
+                var tenantStatus =
+                    message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)
+                        ? "active"
+                        : message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
+                          || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase)
+                            ? "suspended"
+                            : existing?.TenantStatus ?? "pending";
+
+                await entitlements.UpsertTenantAsync(
+                    message.TenantId,
+                    tenantSlug,
+                    tenantStatus,
+                    message.OccurredAtUtc,
+                    ct);
+
                 await entitlements.UpsertLicenseAsync(
                     message.TenantId,
                     message.Plan,
@@ -109,14 +130,6 @@ public sealed class IdentityEntitlementInboxProcessor(
 
                 if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
                 {
-                    var tenantSlug = await ResolveSlugAsync(message.TenantId, message.TenantSlug, message.EventId, ct);
-                    await entitlements.UpsertTenantAsync(
-                        message.TenantId,
-                        tenantSlug,
-                        "active",
-                        message.OccurredAtUtc,
-                        ct);
-
                     var result = await licenseChanges.ReconcileAsync(message.TenantId, ct);
                     var status = result.AddedModules.Count > 0 || result.RemovedModules.Count > 0
                         ? "changed"
@@ -146,14 +159,6 @@ public sealed class IdentityEntitlementInboxProcessor(
                 else if (message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
                       || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
                 {
-                    var tenantSlug = await ResolveSlugAsync(message.TenantId, message.TenantSlug, message.EventId, ct);
-                    await entitlements.UpsertTenantAsync(
-                        message.TenantId,
-                        tenantSlug,
-                        "suspended",
-                        message.OccurredAtUtc,
-                        ct);
-
                     events.Record(new(
                         message.TenantId,
                         "license",
@@ -174,14 +179,23 @@ public sealed class IdentityEntitlementInboxProcessor(
     private async Task<string> ResolveSlugAsync(
         Guid tenantId,
         string? messageSlug,
-        Guid eventId,
         CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(messageSlug))
             return messageSlug.Trim().ToLowerInvariant();
 
-        // Backward-compatible recovery for license events already persisted before TenantSlug
-        // became a required field. The authoritative tenant projection is used when available.
+        // Legacy/in-flight license events may predate TenantSlug and the Platform tenant projection.
+        // Prefer any already-projected slug, then the platform tenant record, and finally keep a
+        // deterministic valid identifier until a TenantCreated event supplies the real slug.
+        var projectionSlug = await dbContext.TenantEntitlements
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.TenantSlug != "")
+            .Select(x => x.TenantSlug)
+            .FirstOrDefaultAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(projectionSlug))
+            return projectionSlug.Trim().ToLowerInvariant();
+
         var persistedSlug = await dbContext.Tenants
             .AsNoTracking()
             .Where(x => x.Id == tenantId)
@@ -191,8 +205,7 @@ public sealed class IdentityEntitlementInboxProcessor(
         if (!string.IsNullOrWhiteSpace(persistedSlug))
             return persistedSlug.Trim().ToLowerInvariant();
 
-        throw new InvalidOperationException(
-            $"TenantLicenseChangedIntegrationEvent {eventId} for tenant {tenantId} has no TenantSlug and no persisted tenant slug is available.");
+        return $"tenant-{tenantId:N}";
     }
 
     private static string RequireSlug(string? slug, Guid tenantId, Guid eventId)
