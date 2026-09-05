@@ -6,23 +6,14 @@ using QualifyAI.Contracts.Identity;
 
 namespace QualifyAI.Infrastructure.Messaging.Consumers;
 
-public sealed class TenantCreatedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantCreatedIntegrationEvent>
-{
-    public Task Consume(ConsumeContext<TenantCreatedIntegrationEvent> context) => processor.ProcessTenantCreatedAsync(context.Message, context.CancellationToken);
-}
-public sealed class TenantStatusChangedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantStatusChangedIntegrationEvent>
-{
-    public Task Consume(ConsumeContext<TenantStatusChangedIntegrationEvent> context) => processor.ProcessTenantStatusChangedAsync(context.Message, context.CancellationToken);
-}
-public sealed class TenantLicenseChangedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantLicenseChangedIntegrationEvent>
-{
-    public Task Consume(ConsumeContext<TenantLicenseChangedIntegrationEvent> context) => processor.ProcessLicenseChangedAsync(context.Message, context.CancellationToken);
-}
+public sealed class TenantCreatedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantCreatedIntegrationEvent> { public Task Consume(ConsumeContext<TenantCreatedIntegrationEvent> context) => processor.ProcessTenantCreatedAsync(context.Message, context.CancellationToken); }
+public sealed class TenantStatusChangedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantStatusChangedIntegrationEvent> { public Task Consume(ConsumeContext<TenantStatusChangedIntegrationEvent> context) => processor.ProcessTenantStatusChangedAsync(context.Message, context.CancellationToken); }
+public sealed class TenantLicenseChangedConsumer(IdentityEntitlementInboxProcessor processor) : IConsumer<TenantLicenseChangedIntegrationEvent> { public Task Consume(ConsumeContext<TenantLicenseChangedIntegrationEvent> context) => processor.ProcessLicenseChangedAsync(context.Message, context.CancellationToken); }
 
-public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, ITenantEntitlementRepository entitlements, ILicenseChangeOrchestrator licenseChanges)
+public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, ITenantEntitlementRepository entitlements, ILicenseChangeOrchestrator licenseChanges, ITenantLifecycleEventStore events)
 {
-    public Task ProcessTenantCreatedAsync(TenantCreatedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantCreatedConsumer), () => entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct), ct);
-    public Task ProcessTenantStatusChangedAsync(TenantStatusChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantStatusChangedConsumer), () => entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, message.Status, message.OccurredAtUtc, ct), ct);
+    public Task ProcessTenantCreatedAsync(TenantCreatedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantCreatedConsumer), async () => { await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct); events.Record(new(message.TenantId, "tenant", "created", "Tenant created", message.OccurredAtUtc)); }, ct);
+    public Task ProcessTenantStatusChangedAsync(TenantStatusChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantStatusChangedConsumer), async () => { await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, message.Status, message.OccurredAtUtc, ct); events.Record(new(message.TenantId, "tenant", message.Status, $"Tenant status changed to {message.Status}", message.OccurredAtUtc)); }, ct);
 
     public Task ProcessLicenseChangedAsync(TenantLicenseChangedIntegrationEvent message, CancellationToken ct) => ProcessOnceAsync(message.EventId, nameof(TenantLicenseChangedConsumer), async () =>
     {
@@ -30,20 +21,22 @@ public sealed class IdentityEntitlementInboxProcessor(AppDbContext dbContext, IT
         if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
         {
             await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "active", message.OccurredAtUtc, ct);
-            await licenseChanges.ReconcileAsync(message.TenantId, ct);
+            var result = await licenseChanges.ReconcileAsync(message.TenantId, ct);
+            var status = result.AddedModules.Count > 0 || result.RemovedModules.Count > 0 ? "changed" : "renewed";
+            events.Record(new(message.TenantId, "license", status, status == "renewed" ? "License renewed and tenant reactivated" : "License entitlements changed", message.OccurredAtUtc, new Dictionary<string,string>{{"plan",message.Plan},{"version",message.Version.ToString()}}));
+            events.Record(new(message.TenantId, "tenant", "active", "Tenant access active", message.OccurredAtUtc));
         }
         else if (message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase) || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
         {
             await entitlements.UpsertTenantAsync(message.TenantId, message.TenantSlug, "suspended", message.OccurredAtUtc, ct);
+            events.Record(new(message.TenantId, "license", message.Status, $"License status changed to {message.Status}", message.OccurredAtUtc));
+            events.Record(new(message.TenantId, "tenant", "suspended", "Tenant suspended", message.OccurredAtUtc));
         }
     }, ct);
 
     private async Task ProcessOnceAsync(Guid eventId, string consumer, Func<Task> apply, CancellationToken ct)
     {
-        var inbox = dbContext.Set<InboxMessage>();
-        if (await inbox.AsNoTracking().AnyAsync(x => x.Id == eventId && x.Consumer == consumer, ct)) return;
-        await apply();
-        inbox.Add(new InboxMessage { Id = eventId, Consumer = consumer, ReceivedAtUtc = DateTime.UtcNow, ProcessedAtUtc = DateTime.UtcNow });
-        await dbContext.SaveChangesAsync(ct);
+        var inbox = dbContext.Set<InboxMessage>(); if (await inbox.AsNoTracking().AnyAsync(x => x.Id == eventId && x.Consumer == consumer, ct)) return;
+        await apply(); inbox.Add(new InboxMessage { Id = eventId, Consumer = consumer, ReceivedAtUtc = DateTime.UtcNow, ProcessedAtUtc = DateTime.UtcNow }); await dbContext.SaveChangesAsync(ct);
     }
 }
