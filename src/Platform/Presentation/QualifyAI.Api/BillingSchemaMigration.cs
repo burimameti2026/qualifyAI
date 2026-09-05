@@ -32,7 +32,7 @@ public static class BillingSchemaMigration
                 TenantId uniqueidentifier NOT NULL,
                 Provider nvarchar(64) NOT NULL,
                 ExternalSubscriptionId nvarchar(256) NOT NULL,
-                Plan nvarchar(128) NOT NULL,
+                [Plan] nvarchar(128) NOT NULL,
                 Status nvarchar(64) NOT NULL,
                 StartedAtUtc datetime2 NOT NULL,
                 CurrentPeriodEndsAtUtc datetime2 NULL,
