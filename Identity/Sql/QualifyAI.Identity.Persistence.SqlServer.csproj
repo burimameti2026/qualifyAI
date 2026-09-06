@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="../../Shared/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
-    <ProjectReference Include="../QualifyAI.Identity.Domain/QualifyAI.Identity.Domain.csproj" />
-    <ProjectReference Include="../../Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
-    <ProjectReference Include="..\QualifyAI.Identity.Application\QualifyAI.Identity.Application.csproj" />
+    <ProjectReference Include="../Infrastructure/QualifyAI.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="../Core/Domain/QualifyAI.Identity.Domain.csproj" />
+    <ProjectReference Include="../Core/Application/QualifyAI.Identity.Application.csproj" />
+    <ProjectReference Include="../../../src/Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../../src/Shared/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
