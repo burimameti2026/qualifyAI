@@ -67,7 +67,7 @@ services:
     container_name: qualifyai-identity-api
     build:
       context: .
-      dockerfile: src/Identity/QualifyAI.Identity.Api/Dockerfile
+      dockerfile: Identity/Api/Dockerfile
     environment:
       <<: *api-environment
       SERVICE_NAME: identity-api
