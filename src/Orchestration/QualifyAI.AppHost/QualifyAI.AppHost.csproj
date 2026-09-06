@@ -11,6 +11,6 @@
     <PackageReference Include="Aspire.Hosting.RabbitMQ" />
     <ProjectReference Include="../../Platform/Presentation/QualifyAI.Api/QualifyAI.Api.csproj" />
     <ProjectReference Include="../../ApiGateway/QualifyAI.ApiGateway/QualifyAI.ApiGateway.csproj" />
-    <ProjectReference Include="../../Identity/QualifyAI.Identity.Api/QualifyAI.Identity.Api.csproj" />
+    <ProjectReference Include="../../../Identity/Api/QualifyAI.Identity.Api.csproj" />
   </ItemGroup>
 </Project>
