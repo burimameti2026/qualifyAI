@@ -24,9 +24,9 @@ jobs:
         shell: pwsh
         run: ./scripts/check-architecture.ps1
       - name: Restore
-        run: dotnet restore QualifyAI.sln --disable-parallel
+        run: dotnet restore RaiseLead.sln --disable-parallel
       - name: Build
-        run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
+        run: dotnet build RaiseLead.sln --configuration Release --no-restore --warnaserror
       - name: Billing hardening tests
         run: dotnet test tests/QualifyAI.BillingHardening.Tests/QualifyAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
   admin-ui:
