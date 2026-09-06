@@ -27,13 +27,11 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('RaiseLead.sln')
           s = p.read_text(encoding='utf-8-sig')
-          old = '"src\\Infrastructure\\QualifyAI.Infrastructure.Hosting\\QualifyAI.Infrastructure.Hosting.dcproj", "{B5983083-2E3B-4EF4-B23D-9F731D3370EA}\\n'
-          new = '"src\\Infrastructure\\QualifyAI.Infrastructure.Hosting\\QualifyAI.Infrastructure.Hosting.dcproj", "{B5983083-2E3B-4EF4-B23D-9F731D3370EA}"\\n'
-          if old in s:
-              s = s.replace(old, new, 1)
-              p.write_text(s, encoding='utf-8')
+          s = re.sub(r'^(Project\\("\\{[^}]+\\}"\\) = "[^"]+", "[^"]+", "\\{[0-9A-Fa-f-]+\\})$', r'\\1"', s, flags=re.MULTILINE)
+          p.write_text(s, encoding='utf-8')
           PY
       - name: Commit solution repair
         shell: bash
@@ -42,7 +40,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add RaiseLead.sln
-          git commit -m "Fix malformed RaiseLead solution entry"
+          git commit -m "Fix malformed RaiseLead solution entries"
           git push origin HEAD:renameproject
       - name: Architecture guard (advisory)
         continue-on-error: true
