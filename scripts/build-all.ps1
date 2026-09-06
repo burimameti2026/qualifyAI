@@ -1,10 +1,10 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
-dotnet restore .\QualifyAI.sln
+dotnet restore .\RaiseLead.sln
 if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed" }
 
-dotnet build .\QualifyAI.sln -c Debug --no-restore
+dotnet build .\RaiseLead.sln -c Debug --no-restore
 if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 
 Push-Location .\admin\qualifyai-admin
@@ -15,4 +15,4 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Angular build failed" }
 } finally { Pop-Location }
 
-Write-Host "QualifyAI source build completed." -ForegroundColor Green
+Write-Host "RaiseLead source build completed." -ForegroundColor Green
