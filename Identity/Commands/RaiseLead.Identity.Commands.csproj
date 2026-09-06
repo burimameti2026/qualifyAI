@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Core/Domain/QualifyAI.Identity.Domain.csproj" />
+    <ProjectReference Include="../Core/Application/QualifyAI.Identity.Application.csproj" />
+    <ProjectReference Include="../../src/Shared/QualifyAI.BuildingBlocks.Application/QualifyAI.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="../../src/Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../src/Shared/QualifyAI.BuildingBlocks.Security/QualifyAI.BuildingBlocks.Security.csproj" />
+    <ProjectReference Include="../../src/Platform/Application/QualifyAI.Contracts/QualifyAI.Contracts.csproj" />
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+</Project>
