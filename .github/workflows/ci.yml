@@ -2,7 +2,7 @@ name: RaiseLead CI
 
 on:
   push:
-    branches: [feature/fixes, feature/golden-pipeline, dev, master]
+    branches: [renameproject, feature/fixes, feature/golden-pipeline, dev, master]
   pull_request:
     branches: [dev, master]
 
