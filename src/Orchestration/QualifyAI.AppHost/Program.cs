@@ -25,8 +25,7 @@ var business = builder.AddProject<Projects.QualifyAI_Api>("platform-api")
 var identity = builder.AddProject<Projects.QualifyAI_Identity_Api>("identity-api")
     .WithReference(identityDb)
     .WithReference(redis)
-    .WithReference(rabbit)
-    .WithEnvironment("Services__TenantManagement", business.GetEndpoint("http"));
+    .WithReference(rabbit);
 
 builder.AddProject<Projects.QualifyAI_ApiGateway>("api-gateway")
     .WithEnvironment(
