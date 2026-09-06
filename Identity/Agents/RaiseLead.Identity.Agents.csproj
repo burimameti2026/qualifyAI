@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Core/Domain/QualifyAI.Identity.Domain.csproj" />
+    <ProjectReference Include="../Core/Application/QualifyAI.Identity.Application.csproj" />
+  </ItemGroup>
+</Project>
