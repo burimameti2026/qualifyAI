@@ -1,110 +1,142 @@
 # Architecture
 
-## Deployment model
+## Platform identity
 
-QualifyAI is a modular platform with three deployable .NET hosts:
+The platform name is **RaiseLead**. `QualifyAI` is the legacy solution/project naming and is being retired as part of the architecture migration.
 
-1. `QualifyAI.ApiGateway` — YARP edge routing.
-2. `QualifyAI.Api` — the authenticated platform HTTP host and SignalR endpoint.
-3. `QualifyAI.Identity.Api` — OpenIddict, users, tenants, roles, permissions and licenses.
+## Target deployment model
 
-Automation, Notifications, Knowledge, AI Orchestration and Integrations are modules inside the
-platform process. Each module retains separate Domain, Application and Infrastructure projects,
-its own EF Core DbContext and its own database. They are not separate Web API processes.
-
-## Public request path
+RaiseLead is moving to independently deployable service boundaries. Identity is a completely independent service and other services access it through HTTP APIs only. No other microservice references Identity's internal projects or database.
 
 ```text
-Browser / Angular
+Browser / Frontend
        |
        v
-QualifyAI.ApiGateway :10000
-  |                         |
-  | /connect + /identity    | /api + /hubs + /services
-  v                         v
-Identity API                Platform API
-OpenIddict                  CRM / Support / Sales / Modules / SignalR
+   API Gateway
+       |
+       +--------------------+-------------------+------------------+
+       v                    v                   v                  v
+   Identity API         CRM API            Support API       Billing API ...
+       |                    |                   |                  |
+   Identity DB          CRM DB             Support DB          Billing DB
 ```
 
-The Angular UI uses relative URLs through the gateway and never addresses an internal container
-directly.
+Each business microservice owns its API, application layer, domain model, infrastructure and SQL persistence. Services communicate through explicit HTTP contracts for synchronous operations and through the messaging/event system for asynchronous integration.
 
-## HTTP contract
+## Root organization
 
-- `/connect/*` and `/identity/*` route to Identity.
-- `/api/*` and `/hubs/*` route to the platform API.
-- `/services/{module}/*` is a compatibility route to `/api/modules/{module}/*`.
-
-## Application dependency rule
-
-All modules follow the same dependency direction:
+The target repository organization is:
 
 ```text
-HTTP Endpoint
-    -> Application Command / Query
-    -> Handler / Application Service
-    -> Repository Contract + Unit of Work
-    -> Infrastructure Repository
-    -> DbContext / External Store
-    -> Domain Aggregate
+RaiseLead/
+├── core/
+├── infrastructure/
+├── sql/
+├── commands/
+├── queries/
+├── services/
+│   ├── identity/
+│   ├── crm/
+│   ├── support/
+│   ├── billing/
+│   └── ...
+├── event-processors/
+├── engines/
+├── agents/
+├── orchestration/
+└── tests/
 ```
 
-API code must not contain business rules. Direct `DbContext` access from API endpoints is legacy
-code and is migrated feature-by-feature behind application contracts.
+`services/<name>` is the master folder for each microservice. The exact sub-project names may evolve during the Identity-first migration, but the ownership boundary must remain explicit.
 
-## Module boundaries
+## Service structure
 
-A module exists when there is a real domain ownership, persistence, lifecycle or integration
-boundary. A screen, entity or folder alone is not a module.
-
-Each module keeps the following shape:
+A service should follow this dependency direction:
 
 ```text
-<Module>.Domain
-<Module>.Application
-<Module>.Infrastructure
+API
+  -> Application / Commands / Queries
+  -> Domain
+  -> Infrastructure
+  -> SQL / external stores
 ```
 
-The shared platform API owns HTTP composition only. This keeps modules extractable if a future
-scaling or operational requirement justifies moving one back into a separate process.
+A service may expose repositories, domain services, handlers and contracts internally, but those implementation details are not shared directly with another microservice.
 
-## Persistence boundaries
+## Identity boundary
 
-| Module | Relational context | Additional store |
-| --- | --- | --- |
-| Platform | `AppDbContext` | Redis cache |
-| Identity | `IdentityDbContext` | — |
-| Automation | `AutomationDbContext` | — |
-| Notifications | `NotificationsDbContext` | — |
-| Knowledge | `KnowledgeDbContext` | MongoDB chunks |
-| AI Orchestration | `AIOrchestrationDbContext` | provider APIs |
-| Integrations | `IntegrationsDbContext` | provider APIs |
+Identity owns:
 
-The platform host migrates its module databases during startup. Identity migrates and owns its
-database separately.
+- users
+- authentication and token issuance
+- tenants
+- roles and permissions
+- licenses / entitlements
+- client applications
+- identity-related persistence
 
-## Authentication
+Other services consume Identity through HTTP contracts. Identity events can also be published for eventual-consistency workflows, but consumers must never read Identity's database directly.
 
-Identity uses ASP.NET Core Identity and OpenIddict with password, refresh-token and
-client-credentials flows. It issues tenant, license, module, role and permission claims. The
-platform API validates tokens using Identity as its JWT authority and the `qualifyai-api`
-audience.
+## Commands and queries
 
-## Messaging and consistency
+Commands and queries are separated from HTTP presentation. They should be organized by owning service rather than forming one cross-service business layer.
 
-The platform host configures one MassTransit bus instance with all module consumers. Identity is
-authoritative for tenant, licensing and access state. Identity changes are written to its outbox
-and published through RabbitMQ; module consumers update their projections idempotently through
-their inbox state.
+```text
+commands/
+├── identity/
+├── crm/
+├── support/
+└── ...
 
-## Infrastructure contract
+queries/
+├── identity/
+├── crm/
+├── support/
+└── ...
+```
 
-- SQL Server: external Windows SQL Express in development, configured through the ignored `.env`.
-- MongoDB: knowledge chunk documents.
-- Redis: distributed cache registered through ServiceDefaults.
-- RabbitMQ: integration events and entitlement propagation.
-- Docker DNS: direct service-to-service addressing inside the single Compose network.
-- Seq: centralized structured logs.
-- Portainer: local container operations.
+Handlers remain owned by the service that owns the business capability.
 
-The Docker network is `qualifyai-network`.
+## Event processors
+
+Event processors are separate workers/processes responsible for consuming integration events and driving asynchronous workflows or projections.
+
+```text
+event-processors/
+├── identity/
+├── crm/
+├── billing/
+└── ...
+```
+
+API projects must not become the general-purpose event processing layer.
+
+## Engines
+
+Engines contain substantial business processing that may be reused by an API, event processor or agent without coupling those runtime hosts together.
+
+```text
+engines/
+├── acquisition/
+├── qualification/
+├── scoring/
+└── ...
+```
+
+## Agents
+
+Agents are separate application/runtime components with explicit tools and state. They are not embedded inside API controllers or infrastructure implementations.
+
+```text
+agents/
+├── acquisition/
+├── qualification/
+├── support/
+└── ...
+```
+
+## Existing architecture during migration
+
+The current `dev` branch still contains the legacy `QualifyAI` solution naming and a mixed `src/Platform`, `src/Identity` and `src/Shared` layout. The migration will be performed incrementally, starting with a complete cleanup and isolation of Identity, then moving service-by-service.
+
+Until a service is migrated, existing runtime behavior may temporarily differ from the target structure. New work should follow the target rules above and must not introduce new cross-service project/database coupling.
