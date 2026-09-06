@@ -1,3 +1,4 @@
+using QualifyAI.Application;
 using QualifyAI.Application.Abstractions.Persistence;
 using QualifyAI.BuildingBlocks.Security.Claims;
 
@@ -12,6 +13,7 @@ public sealed class TenantEntitlementEnforcementMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(
         HttpContext context,
+        ITenantContext tenantContext,
         ITenantEntitlementRepository entitlements)
     {
         if (context.User.Identity?.IsAuthenticated != true)
@@ -73,6 +75,9 @@ public sealed class TenantEntitlementEnforcementMiddleware(RequestDelegate next)
             return;
         }
 
+        // Downstream request handlers rely on ITenantContext. Populate it from the
+        // authoritative entitlement projection even when the JWT has no tenant_slug claim.
+        tenantContext.Set(new CurrentTenant(entitlement.TenantId, entitlement.TenantSlug));
         context.Items["TenantEntitlements"] = entitlement;
         await next(context);
     }
