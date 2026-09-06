@@ -75,6 +75,7 @@ services:
       Identity__Issuer: http://identity-api:8080
       Identity__Audience: qualifyai-api
       IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      Services__TenantManagement: http://platform-api:8080/internal
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
     extra_hosts:
       - host.docker.internal:host-gateway
