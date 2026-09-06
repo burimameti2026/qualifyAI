@@ -11,12 +11,12 @@ public class Notification : TenantEntity { public Guid? UserId { get; set; } pub
     public string Message
     {
         get;
-        set;
+        set { field = value; }
     }
     public string Type
     {
         get;
-        set;
+        set { field = value; }
     }
 }
 public class TenantSetting : TenantEntity { public string Key { get; set; }=""; public string Value { get; set; }=""; }
