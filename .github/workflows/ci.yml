@@ -24,9 +24,19 @@ jobs:
         shell: pwsh
         run: ./scripts/check-architecture.ps1
       - name: Restore
-        run: dotnet restore QualifyAI.sln --disable-parallel
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' project; do
+            dotnet restore "$project" --disable-parallel
+          done < <(find src tests -type f -name '*.csproj' -print0 | sort -z)
       - name: Build
-        run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' project; do
+            dotnet build "$project" --configuration Release --no-restore --warnaserror
+          done < <(find src -type f -name '*.csproj' -print0 | sort -z)
       - name: Billing hardening tests
         run: dotnet test tests/QualifyAI.BillingHardening.Tests/QualifyAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
   admin-ui:
