@@ -1,0 +1,3 @@
+<Project>
+  <Import Project="../../../Identity/Api/QualifyAI.Identity.Api.csproj" />
+</Project>
