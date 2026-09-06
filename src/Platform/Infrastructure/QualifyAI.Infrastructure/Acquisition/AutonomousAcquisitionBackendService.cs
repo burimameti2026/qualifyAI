@@ -1,8 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using QualifyAI.Domain;
-using QualifyAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Infrastructure.Acquisition;
@@ -19,7 +17,7 @@ public interface IAutonomousAcquisitionBackendService
  Task RetryFailedRunAsync(Guid runId,CancellationToken ct=default);
 }
 
-public sealed class AutonomousAcquisitionBackendService(AppDbContext db,IEnumerable<IEmailDeliveryProvider> providers,IConfiguration configuration):IAutonomousAcquisitionBackendService
+public sealed class AutonomousAcquisitionBackendService(AppDbContext db):IAutonomousAcquisitionBackendService
 {
  public async Task<string> SelectNextQueryAsync(AutonomousAcquisitionAgent agent,AutonomousAcquisitionTemplate template,CancellationToken ct=default)
  {
