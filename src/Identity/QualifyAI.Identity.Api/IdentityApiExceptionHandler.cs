@@ -15,17 +15,13 @@ public sealed class IdentityApiExceptionHandler(ILogger<IdentityApiExceptionHand
         var response = exception switch
         {
             ValidationException validation => Validation(
-                validation.Errors
-                    .GroupBy(x => string.IsNullOrWhiteSpace(x.PropertyName) ? "request" : x.PropertyName)
-                    .ToDictionary(x => x.Key, x => x.Select(y => y.ErrorMessage).Distinct().ToArray())),
-            IdentityValidationException validation => Validation(validation.Errors),
-            IdentityConflictException conflict => Problem(
-                StatusCodes.Status409Conflict, "Identity operation conflict", conflict.Message),
-            KeyNotFoundException missing => Problem(
-                StatusCodes.Status404NotFound, "Identity resource not found", missing.Message),
-            ArgumentException invalid => Problem(
-                StatusCodes.Status400BadRequest, "Invalid identity request", invalid.Message),
-            _ => null
+                validation.Errors.GroupBy(x => string.IsNullOrWhiteSpace(x.PropertyName) ? "request" : x.PropertyName)
+                .ToDictionary(x => x.Key, x => x.Select(y => y.ErrorMessage).Distinct().ToArray())),
+                    IdentityValidationException validation => Validation(validation.Errors),
+                    IdentityConflictException conflict => Problem(StatusCodes.Status409Conflict, "Identity operation conflict", conflict.Message),
+                    KeyNotFoundException missing => Problem(StatusCodes.Status404NotFound, "Identity resource not found", missing.Message),
+                    ArgumentException invalid => Problem(StatusCodes.Status400BadRequest, "Invalid identity request", invalid.Message),
+                     _ => null
         };
 
         if (response is null) return false;
