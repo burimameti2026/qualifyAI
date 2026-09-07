@@ -1,11 +1,16 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.BuildingBlocks.Security.Access;
+using QualifyAI.BuildingBlocks.Security.Authorization;
 using QualifyAI.Infrastructure;
 using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Api.Controllers;
 
 [ApiController]
+[Authorize]
+[RequirePermission(QualifyAiPermissions.SystemAdmin)]
 [Route("api/admin/tenants/{tenantId:guid}/provisioning")]
 public sealed class TenantProvisioningController(AppDbContext db, IModuleProvisioningOrchestrator provisioning) : ControllerBase
 {
