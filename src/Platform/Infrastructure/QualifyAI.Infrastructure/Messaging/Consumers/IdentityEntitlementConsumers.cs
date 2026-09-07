@@ -98,9 +98,9 @@ public sealed class IdentityEntitlementInboxProcessor(
                     message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)
                         ? "active"
                         : message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
-                          || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase)
+                          ||message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase)
                             ? "suspended"
-                            : existing?.TenantStatus ?? "pending";
+                            : existing?.TenantStatus??"pending";
 
                 await entitlements.UpsertTenantAsync(
                     message.TenantId,
@@ -120,15 +120,15 @@ public sealed class IdentityEntitlementInboxProcessor(
                     message.Modules,
                     new Dictionary<string, int>
                     {
-                        ["users"] = Math.Max(0, message.MaxUsers)
+                        ["users"]=Math.Max(0, message.MaxUsers)
                     },
                     message.OccurredAtUtc,
                     ct);
 
-                if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
+                if(message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
                 {
                     var result = await licenseChanges.ReconcileAsync(message.TenantId, ct);
-                    var status = result.AddedModules.Count > 0 || result.RemovedModules.Count > 0
+                    var status = result.AddedModules.Count>0||result.RemovedModules.Count>0
                         ? "changed"
                         : "renewed";
 
@@ -136,14 +136,14 @@ public sealed class IdentityEntitlementInboxProcessor(
                         message.TenantId,
                         "license",
                         status,
-                        status == "renewed"
+                        status=="renewed"
                             ? "License renewed and tenant reactivated"
                             : "License entitlements changed",
                         message.OccurredAtUtc,
                         new Dictionary<string, string>
                         {
-                            ["plan"] = message.Plan,
-                            ["version"] = message.Version.ToString()
+                            ["plan"]=message.Plan,
+                            ["version"]=message.Version.ToString()
                         }));
 
                     events.Record(new(
@@ -153,8 +153,8 @@ public sealed class IdentityEntitlementInboxProcessor(
                         "Tenant access active",
                         message.OccurredAtUtc));
                 }
-                else if (message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
-                      || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
+                else if(message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
+                      ||message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase))
                 {
                     events.Record(new(
                         message.TenantId,
@@ -178,7 +178,7 @@ public sealed class IdentityEntitlementInboxProcessor(
         string? messageSlug,
         CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(messageSlug))
+        if(!string.IsNullOrWhiteSpace(messageSlug))
             return messageSlug.Trim().ToLowerInvariant();
 
         // Legacy/in-flight license events may predate TenantSlug and the Platform tenant projection.
@@ -186,20 +186,20 @@ public sealed class IdentityEntitlementInboxProcessor(
         // use a deterministic internal slug until a TenantCreated event supplies the real slug.
         var projectionSlug = await dbContext.TenantEntitlements
             .AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.TenantSlug != "")
+            .Where(x => x.TenantId==tenantId&&x.TenantSlug!="")
             .Select(x => x.TenantSlug)
             .FirstOrDefaultAsync(ct);
 
-        if (!string.IsNullOrWhiteSpace(projectionSlug))
+        if(!string.IsNullOrWhiteSpace(projectionSlug))
             return projectionSlug.Trim().ToLowerInvariant();
 
         var persistedSlug = await dbContext.Tenants
             .AsNoTracking()
-            .Where(x => x.Id == tenantId)
+            .Where(x => x.Id==tenantId)
             .Select(x => x.Slug)
             .FirstOrDefaultAsync(ct);
 
-        if (!string.IsNullOrWhiteSpace(persistedSlug))
+        if(!string.IsNullOrWhiteSpace(persistedSlug))
             return persistedSlug.Trim().ToLowerInvariant();
 
         return CreateFallbackSlug(tenantId);
@@ -213,26 +213,41 @@ public sealed class IdentityEntitlementInboxProcessor(
     private static string CreateFallbackSlug(Guid tenantId)
         => $"tenant-{tenantId:N}";
 
+    // IMPORTANT: AppDbContext is configured with EnableRetryOnFailure(), which requires the
+    // *entire* unit of work — every tracked-entity mutation, not just SaveChangesAsync — to be
+    // re-runnable inside the execution strategy. Previously only SaveChangesAsync was awaited
+    // directly, so a transient failure/retry could leave stale Added entries in the
+    // ChangeTracker from a half-completed attempt, causing spurious
+    // "instance already being tracked" exceptions on retry. Wrapping the whole apply()+save in
+    // ExecuteAsync ensures a retry redoes the tracked-entity creation from a clean state.
     private async Task ProcessOnceAsync(
         Guid eventId,
         string consumer,
         Func<Task> apply,
         CancellationToken ct)
     {
-        var inbox = dbContext.Set<InboxMessage>();
-        if (await inbox.AsNoTracking().AnyAsync(
-                x => x.Id == eventId && x.Consumer == consumer,
-                ct))
-            return;
-
-        await apply();
-        inbox.Add(new InboxMessage
+        var strategy = dbContext.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            Id = eventId,
-            Consumer = consumer,
-            ReceivedAtUtc = DateTime.UtcNow,
-            ProcessedAtUtc = DateTime.UtcNow
+            var inbox = dbContext.Set<InboxMessage>();
+            if(await inbox.AsNoTracking().AnyAsync(
+                    x => x.Id==eventId&&x.Consumer==consumer,
+                    ct))
+                return;
+
+            // Ensure a retry starts from a clean tracker: discard anything left tracked
+            // from a previous failed attempt within this same ExecuteAsync retry loop.
+            dbContext.ChangeTracker.Clear();
+
+            await apply();
+            inbox.Add(new InboxMessage
+            {
+                Id=eventId,
+                Consumer=consumer,
+                ReceivedAtUtc=DateTime.UtcNow,
+                ProcessedAtUtc=DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync(ct);
         });
-        await dbContext.SaveChangesAsync(ct);
     }
 }

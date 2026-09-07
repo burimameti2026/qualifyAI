@@ -15,5 +15,5 @@ public sealed class KnowledgeDbContextDesignTimeFactory : IDesignTimeDbContextFa
     }
 
     private const string DesignConnectionString =
-        "Server=localhost;Database=QualifyAI_Knowledge_Design;User Id=sa;Password=DesignOnly123!;TrustServerCertificate=True;Encrypt=False";
+        "Server=localhost;Database=QualifyAI_Knowledge_Design;User Id=t24test;Password=DesignOnly123!;TrustServerCertificate=True;Encrypt=False";
 }
