@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Infrastructure.Demo;
 using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Infrastructure.WorkspacePackages;
 
 public sealed record WorkspacePackageInstallResult(string PackageId, string Scenario, int Prospects, int Campaigns, int Opportunities, int Meetings, int Tickets, int Automations);
 
-public sealed class WorkspacePackageInstaller(AppDbContext db, RealisticScenarioService scenarios)
+public sealed class WorkspacePackageInstaller(
+    AppDbContext db,
+    FusionFleetPackageProvisioner fusionFleet,
+    QualifyAiAcquisitionPackageProvisioner qualifyAi)
 {
     public Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
     {
@@ -24,18 +26,13 @@ public sealed class WorkspacePackageInstaller(AppDbContext db, RealisticScenario
 
     private async Task<WorkspacePackageInstallResult> InstallFusionFleetPackageAsync(Guid tenantId, CancellationToken ct)
     {
-        // Compatibility path: the existing installer is idempotent. This boundary is now
-        // intentionally package-specific so the underlying FusionFleet seed can be extracted
-        // from RealisticScenarioService without changing the public package API.
-        var result = await scenarios.InstallAsync(tenantId, ct);
+        var result = await fusionFleet.ProvisionAsync(tenantId, ct);
         return new WorkspacePackageInstallResult("fusionfleet-promotion", "FusionFleet Promotion", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
     }
 
     private async Task<WorkspacePackageInstallResult> InstallQualifyAiAcquisitionPackageAsync(Guid tenantId, CancellationToken ct)
     {
-        // Compatibility path: keep the stable combined scenario while the existing service
-        // is decomposed behind this package boundary.
-        var result = await scenarios.InstallAsync(tenantId, ct);
+        var result = await qualifyAi.ProvisionAsync(tenantId, ct);
         return new WorkspacePackageInstallResult("qualifyai-acquisition", "QualifyAI Acquisition", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
     }
 
