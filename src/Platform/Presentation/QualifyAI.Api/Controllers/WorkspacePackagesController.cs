@@ -2,8 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.BuildingBlocks.Security.Authorization;
-using QualifyAI.Infrastructure;
-using QualifyAI.Infrastructure.Demo;
 using QualifyAI.Infrastructure.WorkspacePackages;
 
 namespace QualifyAI.Api.Controllers;
@@ -13,7 +11,7 @@ public sealed record InstallWorkspacePackageRequest(string PackageId);
 [ApiController]
 [Authorize]
 [Route("api/workspace-packages")]
-public sealed class WorkspacePackagesController(ITenantContext tenant, RealisticScenarioService scenarios) : ControllerBase
+public sealed class WorkspacePackagesController(ITenantContext tenant, WorkspacePackageInstaller installer) : ControllerBase
 {
     [HttpGet]
     public IActionResult List() => Ok(new[]
@@ -38,10 +36,17 @@ public sealed class WorkspacePackagesController(ITenantContext tenant, Realistic
         if (!WorkspacePackageCatalog.TryGet(request.PackageId, out var package))
             return BadRequest(new { detail = $"Unknown workspace package '{request.PackageId}'." });
 
-        if (package.Id == "blank")
-            return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, alreadyInstalled = false, included = package.Included, message = "Blank workspace ready." });
-
-        var result = await scenarios.InstallAsync(tenantId, ct);
-        return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, alreadyInstalled = false, included = package.Included, result });
+        var result = await installer.InstallAsync(tenantId, package.Id, ct);
+        return Ok(new
+        {
+            packageId = package.Id,
+            package.Name,
+            package.Version,
+            tenantId,
+            installed = true,
+            alreadyInstalled = false,
+            included = package.Included,
+            result
+        });
     }
 }
