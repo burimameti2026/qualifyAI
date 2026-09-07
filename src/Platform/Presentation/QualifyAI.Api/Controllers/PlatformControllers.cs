@@ -59,7 +59,7 @@ public sealed class WhiteLabelController(ISender sender, ITenantContext tenant) 
 
     [HttpPut("branding")]
     [RequirePermission(QualifyAiPermissions.SettingsManage)]
-    public Task<BrandingProfile> UpdateBranding(BrandingProfile input, CancellationToken ct) => sender.Send(new UpdateBrandingCommand(tenant.TenantId(), input, ct);
+    public Task<BrandingProfile> UpdateBranding(BrandingProfile input, CancellationToken ct) => sender.Send(new UpdateBrandingCommand(tenant.TenantId(), input), ct);
 
     [HttpGet("domains")]
     [RequirePermission(QualifyAiPermissions.SettingsManage)]
