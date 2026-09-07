@@ -22,6 +22,15 @@ public sealed class BillingController(ISender sender, ITenantContext tenant) : C
 
     [HttpGet("usage")]
     public Task<IReadOnlyList<UsageMeterDto>> Usage(CancellationToken ct) => sender.Send(new GetBillingUsageQuery(tenant.TenantId()), ct);
+
+    [HttpGet("summary")]
+    public async Task<IActionResult> Summary(CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var plans = await sender.Send(new ListBillingPlansQuery(tenantId), ct);
+        var usage = await sender.Send(new GetBillingUsageQuery(tenantId), ct);
+        return Ok(new { plans, usage, generatedAtUtc = DateTime.UtcNow });
+    }
 }
 
 [ApiController]
@@ -50,7 +59,7 @@ public sealed class WhiteLabelController(ISender sender, ITenantContext tenant) 
 
     [HttpPut("branding")]
     [RequirePermission(QualifyAiPermissions.SettingsManage)]
-    public Task<BrandingProfile> UpdateBranding(BrandingProfile input, CancellationToken ct) => sender.Send(new UpdateBrandingCommand(tenant.TenantId(), input), ct);
+    public Task<BrandingProfile> UpdateBranding(BrandingProfile input, CancellationToken ct) => sender.Send(new UpdateBrandingCommand(tenant.TenantId(), input, ct);
 
     [HttpGet("domains")]
     [RequirePermission(QualifyAiPermissions.SettingsManage)]
