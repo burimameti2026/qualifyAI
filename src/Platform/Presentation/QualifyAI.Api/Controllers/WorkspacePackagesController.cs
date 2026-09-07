@@ -39,13 +39,9 @@ public sealed class WorkspacePackagesController(ITenantContext tenant, Realistic
             return BadRequest(new { detail = $"Unknown workspace package '{request.PackageId}'." });
 
         if (package.Id == "blank")
-            return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, included = package.Included, message = "Blank workspace ready." });
+            return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, alreadyInstalled = false, included = package.Included, message = "Blank workspace ready." });
 
-        var existing = await scenarios.GetPackageReadinessAsync(tenantId, package.Id, ct);
-        if (existing.Installed)
-            return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, alreadyInstalled = true, included = package.Included, readiness = existing });
-
-        var result = await scenarios.InstallPackageAsync(tenantId, package.Id, ct);
-        return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, alreadyInstalled = false, included = package.Included, readiness = result });
+        var result = await scenarios.InstallAsync(tenantId, ct);
+        return Ok(new { packageId = package.Id, package.Name, package.Version, tenantId, installed = true, alreadyInstalled = false, included = package.Included, result });
     }
 }
