@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
 using QualifyAI.Infrastructure.Demo;
 using QualifyAI.Persistence.SqlServer;
 
@@ -9,27 +8,35 @@ public sealed record WorkspacePackageInstallResult(string PackageId, string Scen
 
 public sealed class WorkspacePackageInstaller(AppDbContext db, RealisticScenarioService scenarios)
 {
-    public async Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
+    public Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
     {
         if (!WorkspacePackageCatalog.TryGet(packageId, out var package))
             throw new InvalidOperationException($"Unknown workspace package '{packageId}'.");
 
-        if (package.Id == "blank")
-            return await SnapshotAsync(tenantId, package.Id, "Blank workspace", ct);
-
-        if (package.Id == "fusionfleet-promotion")
+        return package.Id switch
         {
-            var result = await scenarios.InstallAsync(tenantId, ct);
-            return new WorkspacePackageInstallResult(package.Id, "FusionFleet Promotion", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
-        }
+            "fusionfleet-promotion" => InstallFusionFleetPackageAsync(tenantId, ct),
+            "qualifyai-acquisition" => InstallQualifyAiAcquisitionPackageAsync(tenantId, ct),
+            "blank" => SnapshotAsync(tenantId, package.Id, "Blank workspace", ct),
+            _ => throw new InvalidOperationException($"Unsupported workspace package '{packageId}'.")
+        };
+    }
 
-        if (package.Id == "qualifyai-acquisition")
-        {
-            var result = await scenarios.InstallAsync(tenantId, ct);
-            return new WorkspacePackageInstallResult(package.Id, "QualifyAI Acquisition", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
-        }
+    private async Task<WorkspacePackageInstallResult> InstallFusionFleetPackageAsync(Guid tenantId, CancellationToken ct)
+    {
+        // Compatibility path: the existing installer is idempotent. This boundary is now
+        // intentionally package-specific so the underlying FusionFleet seed can be extracted
+        // from RealisticScenarioService without changing the public package API.
+        var result = await scenarios.InstallAsync(tenantId, ct);
+        return new WorkspacePackageInstallResult("fusionfleet-promotion", "FusionFleet Promotion", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
+    }
 
-        throw new InvalidOperationException($"Unsupported workspace package '{packageId}'.");
+    private async Task<WorkspacePackageInstallResult> InstallQualifyAiAcquisitionPackageAsync(Guid tenantId, CancellationToken ct)
+    {
+        // Compatibility path: keep the stable combined scenario while the existing service
+        // is decomposed behind this package boundary.
+        var result = await scenarios.InstallAsync(tenantId, ct);
+        return new WorkspacePackageInstallResult("qualifyai-acquisition", "QualifyAI Acquisition", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
     }
 
     private async Task<WorkspacePackageInstallResult> SnapshotAsync(Guid tenantId, string packageId, string scenario, CancellationToken ct)
