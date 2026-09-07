@@ -13,7 +13,7 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
     public async Task<TenantEntitlementSnapshot?> GetAsync(Guid tenantId, CancellationToken cancellationToken = default)
     {
         var entity = await dbContext.TenantEntitlements.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
+            .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
         return entity is null ? null : Map(entity);
     }
 
@@ -22,11 +22,11 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
         var normalizedSlug = slug.Trim().ToLowerInvariant();
         var now = DateTime.UtcNow;
         var entity = await dbContext.TenantEntitlements.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.TenantSlug == normalizedSlug
-                && x.TenantStatus == "active"
-                && x.LicenseStatus == "active"
-                && x.StartsAtUtc <= now
-                && (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), cancellationToken);
+            .FirstOrDefaultAsync(x => x.TenantSlug==normalizedSlug
+                &&x.TenantStatus=="active"
+                &&x.LicenseStatus=="active"
+                &&x.StartsAtUtc<=now
+                &&(!x.ExpiresAtUtc.HasValue||x.ExpiresAtUtc>now), cancellationToken);
         return entity is null ? null : Map(entity);
     }
 
@@ -34,10 +34,10 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
     {
         var now = DateTime.UtcNow;
         return await dbContext.TenantEntitlements.AsNoTracking()
-            .Where(x => x.TenantStatus == "active"
-                && x.LicenseStatus == "active"
-                && x.StartsAtUtc <= now
-                && (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now))
+            .Where(x => x.TenantStatus=="active"
+                &&x.LicenseStatus=="active"
+                &&x.StartsAtUtc<=now
+                &&(!x.ExpiresAtUtc.HasValue||x.ExpiresAtUtc>now))
             .Select(x => x.TenantId)
             .ToListAsync(cancellationToken);
     }
@@ -52,24 +52,24 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
         DateTime? tokenExpiresAtUtc,
         CancellationToken cancellationToken = default)
     {
-        var existing = await dbContext.TenantEntitlements.FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
-        if (existing is not null) return Map(existing);
+        var existing = await GetTrackedOrNullAsync(tenantId, cancellationToken);
+        if(existing is not null) return Map(existing);
 
         var now = DateTime.UtcNow;
         var entity = new TenantEntitlementProjection
         {
-            TenantId = tenantId,
-            TenantSlug = tenantSlug.Trim().ToLowerInvariant(),
-            TenantStatus = "active",
-            LicensePlan = Normalize(plan, "unassigned"),
-            LicenseStatus = Normalize(licenseStatus, "active"),
-            MaxUsers = 0,
-            StartsAtUtc = now.AddMinutes(-5),
-            ExpiresAtUtc = tokenExpiresAtUtc,
-            Version = Math.Max(0, version),
-            ModulesJson = JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase), JsonOptions),
-            LimitsJson = "{}",
-            UpdatedAtUtc = now
+            TenantId=tenantId,
+            TenantSlug=tenantSlug.Trim().ToLowerInvariant(),
+            TenantStatus="active",
+            LicensePlan=Normalize(plan, "unassigned"),
+            LicenseStatus=Normalize(licenseStatus, "active"),
+            MaxUsers=0,
+            StartsAtUtc=now.AddMinutes(-5),
+            ExpiresAtUtc=tokenExpiresAtUtc,
+            Version=Math.Max(0, version),
+            ModulesJson=JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase), JsonOptions),
+            LimitsJson="{}",
+            UpdatedAtUtc=now
         };
         dbContext.TenantEntitlements.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -78,46 +78,62 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
 
     public async Task UpsertTenantAsync(Guid tenantId, string tenantSlug, string tenantStatus, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
     {
-        var entity = await dbContext.TenantEntitlements.FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
-        if (entity is null)
-        {
-            entity = new TenantEntitlementProjection { TenantId = tenantId };
-            dbContext.TenantEntitlements.Add(entity);
-        }
+        var entity = await GetOrCreateTrackedAsync(tenantId, cancellationToken);
 
-        entity.TenantSlug = tenantSlug.Trim().ToLowerInvariant();
-        entity.TenantStatus = Normalize(tenantStatus, "pending");
-        entity.UpdatedAtUtc = updatedAtUtc;
+        entity.TenantSlug=tenantSlug.Trim().ToLowerInvariant();
+        entity.TenantStatus=Normalize(tenantStatus, "pending");
+        entity.UpdatedAtUtc=updatedAtUtc;
     }
 
     public async Task UpsertLicenseAsync(Guid tenantId, string plan, string licenseStatus, int maxUsers, DateTime startsAtUtc, DateTime? expiresAtUtc, long version, IReadOnlyCollection<string> modules, IReadOnlyDictionary<string, int>? limits, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
     {
-        var entity = await dbContext.TenantEntitlements.FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
-        if (entity is null)
-        {
-            entity = new TenantEntitlementProjection { TenantId = tenantId };
-            dbContext.TenantEntitlements.Add(entity);
-        }
+        var entity = await GetOrCreateTrackedAsync(tenantId, cancellationToken);
 
-        if (entity.Version > version)
+        if(entity.Version>version)
             return;
 
-        entity.LicensePlan = Normalize(plan, "unassigned");
-        entity.LicenseStatus = Normalize(licenseStatus, "unassigned");
-        entity.MaxUsers = Math.Max(0, maxUsers);
-        entity.StartsAtUtc = startsAtUtc;
-        entity.ExpiresAtUtc = expiresAtUtc;
-        entity.Version = version;
-        entity.ModulesJson = JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x), JsonOptions);
-        entity.LimitsJson = JsonSerializer.Serialize(limits ?? new Dictionary<string, int> { ["users"] = Math.Max(0, maxUsers) }, JsonOptions);
-        entity.UpdatedAtUtc = updatedAtUtc;
+        entity.LicensePlan=Normalize(plan, "unassigned");
+        entity.LicenseStatus=Normalize(licenseStatus, "unassigned");
+        entity.MaxUsers=Math.Max(0, maxUsers);
+        entity.StartsAtUtc=startsAtUtc;
+        entity.ExpiresAtUtc=expiresAtUtc;
+        entity.Version=version;
+        entity.ModulesJson=JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x), JsonOptions);
+        entity.LimitsJson=JsonSerializer.Serialize(limits??new Dictionary<string, int> { ["users"]=Math.Max(0, maxUsers) }, JsonOptions);
+        entity.UpdatedAtUtc=updatedAtUtc;
+    }
+
+    // Looks in the local change tracker first so repeated Upsert* calls within the same
+    // DbContext/unit-of-work reuse the same tracked instance instead of creating a second
+    // one with the same key (which throws InvalidOperationException on Add/Attach).
+    private async Task<TenantEntitlementProjection?> GetTrackedOrNullAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var local = dbContext.ChangeTracker.Entries<TenantEntitlementProjection>()
+            .Select(e => e.Entity)
+            .FirstOrDefault(e => e.TenantId==tenantId);
+        if(local is not null)
+            return local;
+
+        return await dbContext.TenantEntitlements
+            .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
+    }
+
+    private async Task<TenantEntitlementProjection> GetOrCreateTrackedAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var entity = await GetTrackedOrNullAsync(tenantId, cancellationToken);
+        if(entity is not null)
+            return entity;
+
+        entity=new TenantEntitlementProjection { TenantId=tenantId };
+        dbContext.TenantEntitlements.Add(entity);
+        return entity;
     }
 
     private static TenantEntitlementSnapshot Map(TenantEntitlementProjection entity)
     {
-        var modules = JsonSerializer.Deserialize<string[]>(entity.ModulesJson, JsonOptions) ?? [];
+        var modules = JsonSerializer.Deserialize<string[]>(entity.ModulesJson, JsonOptions)?? [];
         var limits = JsonSerializer.Deserialize<Dictionary<string, int>>(entity.LimitsJson, JsonOptions)
-            ?? new Dictionary<string, int>();
+            ??new Dictionary<string, int>();
 
         return new TenantEntitlementSnapshot(
             entity.TenantId,

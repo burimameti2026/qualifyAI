@@ -12,8 +12,8 @@ using QualifyAI.Persistence.SqlServer;
 namespace QualifyAI.Persistence.SqlServer.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260905205249_SyncPlatformModelAfterAutonomousAcquisitionAndProvisioning")]
-    partial class SyncPlatformModelAfterAutonomousAcquisitionAndProvisioning
+    [Migration("20260907003134_AddTenantLifecycleEvents")]
+    partial class AddTenantLifecycleEvents
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

@@ -4,8 +4,8 @@ using QualifyAI.Persistence.SqlServer.Projections;
 
 namespace QualifyAI.Infrastructure;
 
-public sealed record TenantLifecycleRequest(Guid TenantId, IReadOnlyCollection<string> Modules);
-public sealed record TenantLifecycleResult(Guid TenantId, string Status, IReadOnlyCollection<string> Modules, IReadOnlyCollection<string> FailedModules);
+//public sealed record TenantLifecycleRequest(Guid TenantId, IReadOnlyCollection<string> Modules);
+//public sealed record TenantLifecycleResult(Guid TenantId, string Status, IReadOnlyCollection<string> Modules, IReadOnlyCollection<string> FailedModules);
 
 public interface ITenantLifecycleOrchestrator
 {

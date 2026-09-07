@@ -586,7 +586,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasMaxLength(8000)
+                        .HasMaxLength(4000)
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
@@ -3607,7 +3607,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("DataJson")
-                        .HasMaxLength(8000)
+                        .HasMaxLength(4000)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ExternalEventId")
@@ -3865,7 +3865,7 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("DataJson")
-                        .HasMaxLength(8000)
+                        .HasMaxLength(4000)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Message")

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -19,7 +19,7 @@ BEGIN
         [Type] nvarchar(64) NOT NULL,
         [Status] nvarchar(64) NOT NULL,
         [Message] nvarchar(2000) NOT NULL,
-        [DataJson] nvarchar(8000) NULL,
+        [DataJson] nvarchar(4000) NULL,
         [CorrelationId] nvarchar(128) NULL,
         [Source] nvarchar(128) NOT NULL,
         [ActorId] nvarchar(256) NULL,
@@ -47,7 +47,7 @@ BEGIN
               AND c.max_length <> -1)
     BEGIN
         ALTER TABLE [TenantLifecycleEvents]
-            ALTER COLUMN [DataJson] nvarchar(8000) NULL;
+            ALTER COLUMN [DataJson] nvarchar(4000) NULL;
     END;
 
     IF NOT EXISTS (
