@@ -31,4 +31,18 @@ public sealed class TenantRuntimeController(ITenantContext tenant, ITenantEntitl
             updatedAtUtc = snapshot?.UpdatedAtUtc
         });
     }
+
+    [HttpGet("modules")]
+    public async Task<IActionResult> Modules(CancellationToken ct)
+    {
+        var snapshot = await entitlements.GetAsync(tenant.TenantId(), ct);
+        return Ok(new
+        {
+            enabledModules = snapshot?.EnabledModules ?? Array.Empty<string>(),
+            limits = snapshot?.Limits ?? new Dictionary<string, int>(),
+            licenseStatus = snapshot?.LicenseStatus,
+            plan = snapshot?.LicensePlan,
+            version = snapshot?.Version ?? 0
+        });
+    }
 }
