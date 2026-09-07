@@ -38,6 +38,7 @@ public static class QualifyAiPermissions
 public static class QualifyAiModules
 {
     public const string Crm = "crm";
+    public const string GoldenPipeline = "golden_pipeline";
     public const string Inbox = "inbox";
     public const string Ticketing = "ticketing";
     public const string Automation = "automation";
@@ -49,5 +50,5 @@ public static class QualifyAiModules
     public const string Settings = "settings";
 
     public static readonly string[] Enterprise =
-    [Crm, Inbox, Ticketing, Automation, Knowledge, Ai, Analytics, Integrations, Billing, Settings];
+    [Crm, GoldenPipeline, Inbox, Ticketing, Automation, Knowledge, Ai, Analytics, Integrations, Billing, Settings];
 }
