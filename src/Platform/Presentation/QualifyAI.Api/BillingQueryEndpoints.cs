@@ -13,7 +13,18 @@ public static class BillingQueryEndpoints
             var invoices = await db.TenantBillingInvoices.AsNoTracking().Where(x => x.TenantId == tenantId).OrderByDescending(x => x.UpdatedAtUtc).Take(100).ToListAsync(ct);
             var events = await db.BillingEvents.AsNoTracking().Where(x => x.TenantId == tenantId).OrderByDescending(x => x.OccurredAtUtc).Take(100).ToListAsync(ct);
             return Results.Ok(new { tenantId, subscription, invoices, events });
-        });
+        }).RequireAuthorization();
+
+        endpoints.MapGet("/api/billing/tenants/{tenantId}/invoices", async (Guid tenantId, AppDbContext db, CancellationToken ct) =>
+        {
+            var invoices = await db.TenantBillingInvoices.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .OrderByDescending(x => x.UpdatedAtUtc)
+                .Take(100)
+                .ToListAsync(ct);
+            return Results.Ok(invoices);
+        }).RequireAuthorization();
+
         return endpoints;
     }
 }
