@@ -21,7 +21,7 @@ public static class RealWorkspaceEndpoints
         {
             if (request.TenantId == Guid.Empty) return Results.BadRequest(new { error = "tenantId is required" });
             var agent = await EnsureAgent(request, db, templates, ct);
-            return Results.Ok(new RealWorkspaceResult(request.TenantId, agent.Id, agent.Name, agent.Status.ToString(), null, "prepared"));
+            return Results.Ok(new RealWorkspaceResult(request.TenantId, agent.Id, agent.Name, agent.Status.ToString(), null, "prepared", null, null));
         });
 
         g.MapPost("/activate", async (RealWorkspaceRequest request, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct) =>
@@ -29,6 +29,7 @@ public static class RealWorkspaceEndpoints
             if (request.TenantId == Guid.Empty) return Results.BadRequest(new { error = "tenantId is required" });
 
             var agent = await EnsureAgent(request, db, templates, ct);
+            var workspace = await EnsureCampaignWorkspace(request, agent, db, ct);
             agent.Status = AutonomousAgentStatus.Active;
             agent.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -53,10 +54,58 @@ public static class RealWorkspaceEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.Accepted($"/api/real-workspace/tenants/{request.TenantId}",
-                new RealWorkspaceResult(request.TenantId, agent.Id, agent.Name, agent.Status.ToString(), initialRun?.Id, "activation-queued"));
+                new RealWorkspaceResult(request.TenantId, agent.Id, agent.Name, agent.Status.ToString(), initialRun?.Id, "activation-queued", workspace.TargetList.Id, workspace.Campaign.Id));
         });
 
         return app;
+    }
+
+    private static async Task<(TargetList TargetList, Campaign Campaign)> EnsureCampaignWorkspace(
+        RealWorkspaceRequest request,
+        AutonomousAcquisitionAgent agent,
+        AppDbContext db,
+        CancellationToken ct)
+    {
+        var workspaceName = string.IsNullOrWhiteSpace(request.Name) ? agent.Name : request.Name.Trim();
+        var targetListName = $"{workspaceName} — Qualified Prospects";
+        var targetList = await db.TargetLists.FirstOrDefaultAsync(x => x.TenantId == request.TenantId && x.Name == targetListName, ct);
+        if (targetList is null)
+        {
+            targetList = new TargetList
+            {
+                Id = Guid.NewGuid(),
+                TenantId = request.TenantId,
+                Name = targetListName,
+                Description = "Qualified prospects produced by the autonomous acquisition agent.",
+                Dynamic = true
+            };
+            db.TargetLists.Add(targetList);
+        }
+
+        var campaignName = $"{workspaceName} — Acquisition Campaign";
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == request.TenantId && x.Name == campaignName, ct);
+        if (campaign is null)
+        {
+            campaign = new Campaign
+            {
+                Id = Guid.NewGuid(),
+                TenantId = request.TenantId,
+                TargetListId = targetList.Id,
+                Name = campaignName,
+                Goal = "book-demo",
+                SenderName = string.Empty,
+                SenderEmail = string.Empty
+            };
+            campaign.Start();
+            db.Campaigns.Add(campaign);
+        }
+        else if (campaign.Status is CampaignStatus.Draft or CampaignStatus.Scheduled or CampaignStatus.Paused)
+        {
+            campaign.TargetListId = targetList.Id;
+            campaign.Start();
+        }
+
+        return (targetList, campaign);
     }
 
     private static async Task<AutonomousAcquisitionAgent> EnsureAgent(
@@ -120,4 +169,4 @@ public sealed record RealWorkspaceRequest(
     int MinimumScore = 70,
     TimeOnly? RunTimeUtc = null);
 
-public sealed record RealWorkspaceResult(Guid TenantId, Guid AgentId, string AgentName, string AgentStatus, Guid? InitialRunId, string Status);
+public sealed record RealWorkspaceResult(Guid TenantId, Guid AgentId, string AgentName, string AgentStatus, Guid? InitialRunId, string Status, Guid? TargetListId, Guid? CampaignId);
