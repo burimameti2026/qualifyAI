@@ -11,6 +11,7 @@ using QualifyAI.Infrastructure.Demo;
 using QualifyAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Repositories;
+using QualifyAI.Infrastructure.WorkspacePackages;
 namespace QualifyAI.Infrastructure;
 public static class DependencyInjection
 {
