@@ -125,7 +125,7 @@ public static class RealWorkspaceEndpoints
                 Id = Guid.NewGuid(),
                 TenantId = request.TenantId,
                 Name = string.IsNullOrWhiteSpace(request.Name) ? "Real Workspace Acquisition" : request.Name.Trim(),
-                TemplateKey = request.TemplateKey ?? string.Empty,
+                TemplateCode = request.TemplateKey ?? "custom",
                 Industry = request.Industry ?? string.Empty,
                 Region = request.Region ?? string.Empty,
                 CountriesJson = request.CountriesJson ?? "[]",
@@ -141,7 +141,7 @@ public static class RealWorkspaceEndpoints
         }
         else
         {
-            if (!string.IsNullOrWhiteSpace(request.TemplateKey)) agent.TemplateKey = request.TemplateKey;
+            if (!string.IsNullOrWhiteSpace(request.TemplateKey)) agent.TemplateCode = request.TemplateKey;
             if (!string.IsNullOrWhiteSpace(request.Industry)) agent.Industry = request.Industry;
             if (!string.IsNullOrWhiteSpace(request.Region)) agent.Region = request.Region;
             if (!string.IsNullOrWhiteSpace(request.CountriesJson)) agent.CountriesJson = request.CountriesJson;
