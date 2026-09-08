@@ -13,7 +13,14 @@ public static class RealWorkspaceEndpoints
 
         g.MapGet("/options", () => Results.Ok(new
         {
-            useCases = new[] { "autonomous-acquisition" },
+            useCases = new[]
+            {
+                new { id = "autonomous-acquisition", name = "Autonomous Acquisition", description = "Automatically discover, enrich, qualify and route prospects into an active campaign." }
+            },
+            templates = new[]
+            {
+                new { id = "autonomous-acquisition", name = "Autonomous Acquisition", useCaseId = "autonomous-acquisition", description = "Daily prospect discovery, enrichment, qualification and campaign activation.", requiredModules = new[] { "acquisition", "automation" } }
+            },
             schedule = "daily"
         }));
 
@@ -33,52 +40,29 @@ public static class RealWorkspaceEndpoints
             agent.Status = AutonomousAgentStatus.Active;
             agent.UpdatedAtUtc = DateTime.UtcNow;
 
-            var existingQueuedOrRunning = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x =>
-                x.TenantId == request.TenantId && x.AgentId == agent.Id &&
-                (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running), ct);
-
+            var existingQueuedOrRunning = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x => x.TenantId == request.TenantId && x.AgentId == agent.Id && (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running), ct);
             AutonomousAcquisitionAgentRun? initialRun = null;
             if (!existingQueuedOrRunning)
             {
-                initialRun = new AutonomousAcquisitionAgentRun
-                {
-                    TenantId = request.TenantId,
-                    AgentId = agent.Id,
-                    IsManual = true,
-                    Status = AutonomousAgentRunStatus.Queued,
-                    ScheduledAtUtc = DateTime.UtcNow
-                };
+                initialRun = new AutonomousAcquisitionAgentRun { TenantId = request.TenantId, AgentId = agent.Id, IsManual = true, Status = AutonomousAgentRunStatus.Queued, ScheduledAtUtc = DateTime.UtcNow };
                 db.AutonomousAcquisitionAgentRuns.Add(initialRun);
             }
 
             await db.SaveChangesAsync(ct);
-
-            return Results.Accepted($"/api/real-workspace/tenants/{request.TenantId}",
-                new RealWorkspaceResult(request.TenantId, agent.Id, agent.Name, agent.Status.ToString(), initialRun?.Id, "activation-queued", workspace.TargetList.Id, workspace.Campaign.Id));
+            return Results.Accepted($"/api/real-workspace/tenants/{request.TenantId}", new RealWorkspaceResult(request.TenantId, agent.Id, agent.Name, agent.Status.ToString(), initialRun?.Id, "activation-queued", workspace.TargetList.Id, workspace.Campaign.Id));
         });
 
         return app;
     }
 
-    private static async Task<(TargetList TargetList, Campaign Campaign)> EnsureCampaignWorkspace(
-        RealWorkspaceRequest request,
-        AutonomousAcquisitionAgent agent,
-        AppDbContext db,
-        CancellationToken ct)
+    private static async Task<(TargetList TargetList, Campaign Campaign)> EnsureCampaignWorkspace(RealWorkspaceRequest request, AutonomousAcquisitionAgent agent, AppDbContext db, CancellationToken ct)
     {
         var workspaceName = string.IsNullOrWhiteSpace(request.Name) ? agent.Name : request.Name.Trim();
         var targetListName = $"{workspaceName} — Qualified Prospects";
         var targetList = await db.TargetLists.FirstOrDefaultAsync(x => x.TenantId == request.TenantId && x.Name == targetListName, ct);
         if (targetList is null)
         {
-            targetList = new TargetList
-            {
-                Id = Guid.NewGuid(),
-                TenantId = request.TenantId,
-                Name = targetListName,
-                Description = "Qualified prospects produced by the autonomous acquisition agent.",
-                Dynamic = true
-            };
+            targetList = new TargetList { Id = Guid.NewGuid(), TenantId = request.TenantId, Name = targetListName, Description = "Qualified prospects produced by the autonomous acquisition agent.", Dynamic = true };
             db.TargetLists.Add(targetList);
         }
 
@@ -86,16 +70,7 @@ public static class RealWorkspaceEndpoints
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == request.TenantId && x.Name == campaignName, ct);
         if (campaign is null)
         {
-            campaign = new Campaign
-            {
-                Id = Guid.NewGuid(),
-                TenantId = request.TenantId,
-                TargetListId = targetList.Id,
-                Name = campaignName,
-                Goal = "book-demo",
-                SenderName = string.Empty,
-                SenderEmail = string.Empty
-            };
+            campaign = new Campaign { Id = Guid.NewGuid(), TenantId = request.TenantId, TargetListId = targetList.Id, Name = campaignName, Goal = "book-demo", SenderName = string.Empty, SenderEmail = string.Empty };
             campaign.Start();
             db.Campaigns.Add(campaign);
         }
@@ -108,34 +83,12 @@ public static class RealWorkspaceEndpoints
         return (targetList, campaign);
     }
 
-    private static async Task<AutonomousAcquisitionAgent> EnsureAgent(
-        RealWorkspaceRequest request,
-        AppDbContext db,
-        IAutonomousAcquisitionTemplateRegistry templates,
-        CancellationToken ct)
+    private static async Task<AutonomousAcquisitionAgent> EnsureAgent(RealWorkspaceRequest request, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct)
     {
-        var agent = await db.AutonomousAcquisitionAgents
-            .OrderByDescending(x => x.UpdatedAtUtc)
-            .FirstOrDefaultAsync(x => x.TenantId == request.TenantId && x.Name == request.Name, ct);
-
+        var agent = await db.AutonomousAcquisitionAgents.OrderByDescending(x => x.UpdatedAtUtc).FirstOrDefaultAsync(x => x.TenantId == request.TenantId && x.Name == request.Name, ct);
         if (agent is null)
         {
-            agent = new AutonomousAcquisitionAgent
-            {
-                Id = Guid.NewGuid(),
-                TenantId = request.TenantId,
-                Name = string.IsNullOrWhiteSpace(request.Name) ? "Real Workspace Acquisition" : request.Name.Trim(),
-                TemplateCode = request.TemplateKey ?? "custom",
-                Industry = request.Industry ?? string.Empty,
-                Region = request.Region ?? string.Empty,
-                CountriesJson = request.CountriesJson ?? "[]",
-                DailyDiscoveryLimit = request.DailyDiscoveryLimit > 0 ? request.DailyDiscoveryLimit : 25,
-                MinimumScore = request.MinimumScore > 0 ? request.MinimumScore : 70,
-                RunTimeUtc = request.RunTimeUtc ?? new TimeOnly(8, 0),
-                Status = AutonomousAgentStatus.Draft,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow
-            };
+            agent = new AutonomousAcquisitionAgent { Id = Guid.NewGuid(), TenantId = request.TenantId, Name = string.IsNullOrWhiteSpace(request.Name) ? "Real Workspace Acquisition" : request.Name.Trim(), TemplateCode = request.TemplateKey ?? "custom", Industry = request.Industry ?? string.Empty, Region = request.Region ?? string.Empty, CountriesJson = request.CountriesJson ?? "[]", DailyDiscoveryLimit = request.DailyDiscoveryLimit > 0 ? request.DailyDiscoveryLimit : 25, MinimumScore = request.MinimumScore > 0 ? request.MinimumScore : 70, RunTimeUtc = request.RunTimeUtc ?? new TimeOnly(8, 0), Status = AutonomousAgentStatus.Draft, CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
             templates.Apply(agent);
             db.AutonomousAcquisitionAgents.Add(agent);
         }
@@ -151,22 +104,10 @@ public static class RealWorkspaceEndpoints
             agent.UpdatedAtUtc = DateTime.UtcNow;
             templates.Apply(agent);
         }
-
         await db.SaveChangesAsync(ct);
         return agent;
     }
 }
 
-public sealed record RealWorkspaceRequest(
-    Guid TenantId,
-    string? Name,
-    string? UseCase,
-    string? TemplateKey,
-    string? Industry,
-    string? Region,
-    string? CountriesJson,
-    int DailyDiscoveryLimit = 25,
-    int MinimumScore = 70,
-    TimeOnly? RunTimeUtc = null);
-
+public sealed record RealWorkspaceRequest(Guid TenantId, string? Name, string? UseCase, string? TemplateKey, string? Industry, string? Region, string? CountriesJson, int DailyDiscoveryLimit = 25, int MinimumScore = 70, TimeOnly? RunTimeUtc = null);
 public sealed record RealWorkspaceResult(Guid TenantId, Guid AgentId, string AgentName, string AgentStatus, Guid? InitialRunId, string Status, Guid? TargetListId, Guid? CampaignId);
