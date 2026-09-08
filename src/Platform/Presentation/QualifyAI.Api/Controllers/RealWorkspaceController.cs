@@ -8,7 +8,7 @@ namespace QualifyAI.Api.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/real-workspace")]
+[Route("api/real-workspace/legacy")]
 public sealed class RealWorkspaceController(ITenantContext tenant, RealWorkspaceService workspaces) : ControllerBase
 {
     [HttpGet("options")]
