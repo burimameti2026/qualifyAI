@@ -3,6 +3,8 @@ namespace QualifyAI.Domain.Core.Portal;
 public sealed class RenovaSiteContentDocument
 {
     public int Version { get; set; } = 1;
+    public string Status { get; set; } = "Published";
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string CompanyIntro { get; set; } = string.Empty;
     public List<RenovaSiteSolution> Solutions { get; set; } = [];
     public List<RenovaSiteKpi> Kpis { get; set; } = [];
