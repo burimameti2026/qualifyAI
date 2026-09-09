@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<SalesAutomationService>();
         services.AddScoped<DemoSeeder>();
         services.AddScoped<RenovaDemoSeeder>();
+        services.AddScoped<RenovaSiteContentSeeder>();
         services.AddScoped<CampaignExecutionService>();
         services.AddScoped<ProspectReplyProcessingService>();
         services.AddScoped<ProspectDiscoveryService>();
