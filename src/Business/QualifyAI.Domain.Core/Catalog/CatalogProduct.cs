@@ -1,0 +1,19 @@
+namespace QualifyAI.Domain.Core.Catalog;
+
+public sealed class CatalogProduct
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TenantId { get; set; }
+    public Guid ProductCategoryId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
+    public string? Brand { get; set; }
+    public string? ShortDescription { get; set; }
+    public string? Description { get; set; }
+    public string? KeyBenefits { get; set; }
+    public string? Applications { get; set; }
+    public string? TechnicalSpecifications { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+}
