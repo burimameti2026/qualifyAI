@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
+using QualifyAI.Persistence.SqlServer;
 
 #nullable disable
 
