@@ -25,6 +25,13 @@ public sealed class Tenant : AggregateRoot
 
     public static Tenant Create(string name, string slug, string contactEmail) => new(name, slug, contactEmail);
 
+    public static Tenant Create(Guid id, string name, string slug, string contactEmail)
+    {
+        var tenant = new Tenant(name, slug, contactEmail);
+        tenant.Id = id;
+        return tenant;
+    }
+
     public void Rename(string name) { Name = NormalizeRequired(name, nameof(name)); Touch(); }
     public void ChangeContactEmail(string email) { ContactEmail = NormalizeRequired(email, nameof(email)).ToLowerInvariant(); Touch(); }
 
