@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,52 @@ namespace QualifyAI.Api.Controllers;
 public sealed class RenovaCatalogController(ITenantContext tenant, AppDbContext db) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
+    private const string SiteContentKey = "renova.portal.content.v1";
+
+    [HttpGet("site-content")]
+    public async Task<IActionResult> SiteContent(CancellationToken ct)
+    {
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == TenantId && x.Key == SiteContentKey, ct);
+        if (setting is null || string.IsNullOrWhiteSpace(setting.Value)) return NotFound(new { code = "site_content_not_seeded" });
+        return Content(setting.Value, "application/json");
+    }
+
+    [HttpPut("site-content")]
+    public async Task<IActionResult> UpdateSiteContent([FromBody] RenovaSiteContentDocument request, CancellationToken ct)
+    {
+        request.Status = string.Equals(request.Status, "Draft", StringComparison.OrdinalIgnoreCase) ? "Draft" : "Published";
+        request.Version = Math.Max(1, request.Version + 1);
+        request.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == TenantId && x.Key == SiteContentKey, ct);
+        var json = JsonSerializer.Serialize(request);
+        if (setting is null)
+            db.TenantSettings.Add(new TenantSetting { TenantId = TenantId, Key = SiteContentKey, Value = json });
+        else
+            setting.Value = json;
+        await db.SaveChangesAsync(ct);
+        return Ok(request);
+    }
+
+    [HttpPost("site-content/publish")]
+    public async Task<IActionResult> PublishSiteContent(CancellationToken ct)
+        => await SetSiteContentStatusAsync("Published", ct);
+
+    [HttpPost("site-content/unpublish")]
+    public async Task<IActionResult> UnpublishSiteContent(CancellationToken ct)
+        => await SetSiteContentStatusAsync("Draft", ct);
+
+    private async Task<IActionResult> SetSiteContentStatusAsync(string status, CancellationToken ct)
+    {
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == TenantId && x.Key == SiteContentKey, ct);
+        if (setting is null) return NotFound(new { code = "site_content_not_seeded" });
+        var content = JsonSerializer.Deserialize<RenovaSiteContentDocument>(setting.Value) ?? new();
+        content.Status = status;
+        content.Version = Math.Max(1, content.Version + 1);
+        content.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        setting.Value = JsonSerializer.Serialize(content);
+        await db.SaveChangesAsync(ct);
+        return Ok(content);
+    }
 
     [HttpGet("categories")]
     public async Task<IActionResult> Categories(CancellationToken ct)
@@ -157,11 +204,25 @@ public sealed record PublishProductRequest(string? Slug);
 [ApiController]
 [AllowAnonymous]
 [Route("api/public/portal")]
-public sealed class RenovaPublicPortalController(AppDbContext db) : ControllerBase
+public sealed class RenovaPublicPortalController(ITenantContext tenant, AppDbContext db) : ControllerBase
 {
+    private bool IsTenant(Guid tenantId) => tenant.Current?.Id == tenantId;
+
+    [HttpGet("{tenantId:guid}/site-content")]
+    public async Task<IActionResult> SiteContent(Guid tenantId, CancellationToken ct = default)
+    {
+        if (!IsTenant(tenantId)) return NotFound();
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Key == "renova.portal.content.v1", ct);
+        if (setting is null || string.IsNullOrWhiteSpace(setting.Value)) return NotFound();
+        var content = JsonSerializer.Deserialize<RenovaSiteContentDocument>(setting.Value);
+        if (content is null || !string.Equals(content.Status, "Published", StringComparison.OrdinalIgnoreCase)) return NotFound();
+        return Ok(content);
+    }
+
     [HttpGet("{tenantId:guid}/products")]
     public async Task<IActionResult> Products(Guid tenantId, [FromQuery] string language = "en", CancellationToken ct = default)
     {
+        if (!IsTenant(tenantId)) return NotFound();
         language = NormalizeLanguage(language); var publications = await db.PortalPublications.Where(x => x.TenantId == tenantId && x.Status == "Published" && x.IsVisible).OrderBy(x => x.Slug).ToListAsync(ct); var ids = publications.Select(x => x.CatalogProductId).ToList(); if (ids.Count == 0) return Ok(Array.Empty<object>());
         var products = await db.CatalogProducts.Where(x => ids.Contains(x.Id) && x.IsActive && x.TenantId == tenantId).ToListAsync(ct); var localized = await db.ProductLocalizations.Where(x => ids.Contains(x.CatalogProductId) && x.TenantId == tenantId && x.Language == language).ToListAsync(ct);
         return Ok(products.Select(p => { var l = localized.SingleOrDefault(x => x.CatalogProductId == p.Id); var pub = publications.Single(x => x.CatalogProductId == p.Id); return new { p.Id, slug = pub.Slug, name = l?.Name ?? p.Name, shortDescription = l?.ShortDescription ?? p.ShortDescription, description = l?.Description ?? p.Description, keyBenefits = l?.KeyBenefits ?? p.KeyBenefits, applications = l?.Applications ?? p.Applications, version = pub.Version }; }));
@@ -170,6 +231,7 @@ public sealed class RenovaPublicPortalController(AppDbContext db) : ControllerBa
     [HttpGet("{tenantId:guid}/products/{slug}")]
     public async Task<IActionResult> Product(Guid tenantId, string slug, [FromQuery] string language = "en", CancellationToken ct = default)
     {
+        if (!IsTenant(tenantId)) return NotFound();
         language = NormalizeLanguage(language); var publication = await db.PortalPublications.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Slug == slug && x.Status == "Published" && x.IsVisible, ct); if (publication is null) return NotFound();
         var p = await db.CatalogProducts.SingleAsync(x => x.Id == publication.CatalogProductId && x.TenantId == tenantId, ct); var l = await db.ProductLocalizations.SingleOrDefaultAsync(x => x.CatalogProductId == p.Id && x.TenantId == tenantId && x.Language == language, ct); var assets = await db.ProductAssets.Where(x => x.CatalogProductId == p.Id && x.TenantId == tenantId && (x.Language == null || x.Language == language) && x.IsPublic).ToListAsync(ct); var variants = await db.ProductVariants.Where(x => x.CatalogProductId == p.Id && x.TenantId == tenantId && x.IsActive).ToListAsync(ct);
         return Ok(new { p.Id, slug = publication.Slug, name = l?.Name ?? p.Name, shortDescription = l?.ShortDescription ?? p.ShortDescription, description = l?.Description ?? p.Description, keyBenefits = l?.KeyBenefits ?? p.KeyBenefits, applications = l?.Applications ?? p.Applications, p.TechnicalSpecifications, assets, variants, version = publication.Version });
@@ -178,6 +240,7 @@ public sealed class RenovaPublicPortalController(AppDbContext db) : ControllerBa
     [HttpPost("{tenantId:guid}/inquiries")]
     public async Task<IActionResult> Inquiry(Guid tenantId, PortalInquiry request, CancellationToken ct)
     {
+        if (!IsTenant(tenantId)) return NotFound();
         request.Id = Guid.NewGuid(); request.TenantId = tenantId; request.CreatedAt = DateTimeOffset.UtcNow; request.Status = "New"; if (request.CatalogProductId.HasValue && !await db.CatalogProducts.AnyAsync(x => x.Id == request.CatalogProductId && x.TenantId == tenantId && x.IsActive, ct)) request.CatalogProductId = null; db.PortalInquiries.Add(request); await db.SaveChangesAsync(ct); return Accepted(new { request.Id, request.Status });
     }
 
