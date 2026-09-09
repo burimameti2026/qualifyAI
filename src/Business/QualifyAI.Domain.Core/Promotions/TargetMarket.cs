@@ -4,7 +4,7 @@ public sealed class TargetMarket
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid TenantId { get; set; }
-    public Guid PromotionProductId { get; set; }
+    public Guid CatalogProductId { get; set; }
     public string CountryCode { get; set; } = string.Empty;
     public string CountryName { get; set; } = string.Empty;
     public string DefaultLanguage { get; set; } = "en";
