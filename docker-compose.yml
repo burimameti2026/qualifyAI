@@ -84,6 +84,7 @@ services:
       IdentityBootstrap__Admin__FirstName: ${RENOVA_ADMIN_FIRST_NAME:-Renova}
       IdentityBootstrap__Admin__LastName: ${RENOVA_ADMIN_LAST_NAME:-Admin}
       IdentityBootstrap__Admin__Password: ${RENOVA_ADMIN_PASSWORD:-RenovaAdmin123!ChangeMe}
+      IdentityBootstrap__Admin__ResetPassword: ${RENOVA_ADMIN_RESET_PASSWORD:-true}
       Services__TenantManagement: http://platform-api:8080/internal
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
     extra_hosts:
