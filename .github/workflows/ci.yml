@@ -2,7 +2,7 @@ name: QualifyAI CI
 
 on:
   push:
-    branches: [feature/fixes, feature/golden-pipeline, dev, master]
+    branches: [feature/fixes, feature/golden-pipeline, dev, master, renova]
   pull_request:
     branches: [dev, master]
 
