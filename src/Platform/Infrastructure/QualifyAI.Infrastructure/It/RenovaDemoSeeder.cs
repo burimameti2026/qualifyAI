@@ -97,9 +97,7 @@ public sealed class RenovaDemoSeeder(
 
         var languages = new[] { "en", "mk", "sq", "de" };
         foreach (var product in products)
-        {
             db.ProductLocalizations.AddRange(languages.Select(language => BuildLocalization(product, language)));
-        }
 
         foreach (var product in products)
         {
@@ -170,8 +168,74 @@ public sealed class RenovaDemoSeeder(
             ActivatedAt = DateTimeOffset.UtcNow
         });
 
+        var targetList = new TargetList
+        {
+            TenantId = tenantId,
+            Name = "Renova Balkan Distributor Acquisition Agent — Qualified Prospects",
+            Description = "Qualified prospects for the Renova Exterior Finish Balkan distributor acquisition use case.",
+            Dynamic = true
+        };
+        db.TargetLists.Add(targetList);
+
+        var demoProspects = new[]
+        {
+            new Prospect
+            {
+                TenantId = tenantId,
+                CompanyName = "Balkan Build Supply (Demo)",
+                Domain = "balkan-build.test",
+                ContactName = "Demo Contact",
+                Email = "procurement@balkan-build.test",
+                JobTitle = "Procurement Manager",
+                Industry = "Building Materials Distribution",
+                Country = "Albania",
+                Source = "demo",
+                Priority = "high",
+                ContactReadiness = "demo-only",
+                SuggestedBuyer = "Procurement / Category Manager",
+                SizeBand = "mid-market",
+                PainHypothesis = "Needs differentiated facade products and reliable supplier support.",
+                Offer = "Renova Exterior Finish distributor discussion and technical pack",
+                SourceUrl = "https://balkan-build.test",
+                VerificationStatus = "demo",
+                OutreachStatus = "not-ready",
+                DatasetOrigin = "renova-demo",
+                FitScore = 88,
+                IntentScore = 82,
+                Status = ProspectStatus.Qualified,
+                LastEvaluatedAtUtc = DateTime.UtcNow
+            },
+            new Prospect
+            {
+                TenantId = tenantId,
+                CompanyName = "Adriatic Trade Materials (Demo)",
+                Domain = "adriatic-trade.test",
+                ContactName = "Demo Buyer",
+                Email = "buying@adriatic-trade.test",
+                JobTitle = "Category Buyer",
+                Industry = "Construction Supply",
+                Country = "Albania",
+                Source = "demo",
+                Priority = "high",
+                ContactReadiness = "demo-only",
+                SuggestedBuyer = "Category Buyer",
+                SizeBand = "mid-market",
+                PainHypothesis = "Expanding facade-system assortment for contractor customers.",
+                Offer = "Technical documentation and distributor qualification conversation",
+                SourceUrl = "https://adriatic-trade.test",
+                VerificationStatus = "demo",
+                OutreachStatus = "not-ready",
+                DatasetOrigin = "renova-demo",
+                FitScore = 84,
+                IntentScore = 78,
+                Status = ProspectStatus.Qualified,
+                LastEvaluatedAtUtc = DateTime.UtcNow
+            }
+        };
+        db.Prospects.AddRange(demoProspects);
+
         var template = templates.Resolve("construction-materials");
-        db.AutonomousAcquisitionAgents.Add(new AutonomousAcquisitionAgent
+        var agent = new AutonomousAcquisitionAgent
         {
             TenantId = tenantId,
             Name = "Renova Balkan Distributor Acquisition Agent",
@@ -190,7 +254,59 @@ public sealed class RenovaDemoSeeder(
             DailyEmailLimit = 10,
             RunTimeUtc = new TimeOnly(8, 0),
             Status = AutonomousAgentStatus.Active
-        });
+        };
+        db.AutonomousAcquisitionAgents.Add(agent);
+
+        var campaign = new Campaign
+        {
+            TenantId = tenantId,
+            TargetListId = targetList.Id,
+            Name = "Renova Exterior Finish — Albania Distributor Outreach",
+            Goal = "book-distributor-conversation",
+            Status = CampaignStatus.Running,
+            SenderName = "Renova Export Team (Demo)",
+            SenderEmail = "sales@renova.test",
+            StartsAtUtc = DateTime.UtcNow
+        };
+        db.Campaigns.Add(campaign);
+
+        db.CampaignSteps.AddRange(
+            new CampaignStep
+            {
+                TenantId = tenantId,
+                CampaignId = campaign.Id,
+                StepNumber = 1,
+                DelayHours = 48,
+                Channel = "email",
+                SubjectTemplate = "Renova Exterior Finish — distributor opportunity for {{company}}",
+                BodyTemplate = "Hello {{contact}},\n\nWe are preparing a distributor expansion program for Renova exterior finishing materials in Albania. Based on {{company}}'s position in construction supply, I thought a short conversation could be relevant.\n\nWe can share a technical product pack and discuss distributor requirements, territory coverage and next steps.\n\nWould you be open to a 15-minute introduction?\n\nRenova Export Team (Demo)"
+            },
+            new CampaignStep
+            {
+                TenantId = tenantId,
+                CampaignId = campaign.Id,
+                StepNumber = 2,
+                DelayHours = 0,
+                Channel = "email",
+                SubjectTemplate = "Following up — Renova Exterior Finish",
+                BodyTemplate = "Hello {{contact}},\n\nFollowing up on the Renova Exterior Finish distributor conversation for {{company}}. We can send the technical pack first and then align on commercial fit.\n\nPlease reply if this is relevant, or let us know who handles construction-material sourcing.\n\nRenova Export Team (Demo)"
+            });
+
+        db.TargetListMembers.AddRange(demoProspects.Select(prospect => new TargetListMember
+        {
+            TenantId = tenantId,
+            TargetListId = targetList.Id,
+            ProspectId = prospect.Id
+        }));
+        db.CampaignRecipients.AddRange(demoProspects.Select(prospect => new CampaignRecipient
+        {
+            TenantId = tenantId,
+            CampaignId = campaign.Id,
+            ProspectId = prospect.Id,
+            Status = "active",
+            CurrentStep = 0,
+            NextRunAtUtc = DateTime.UtcNow
+        }));
 
         await db.SaveChangesAsync(cancellationToken);
         return true;
