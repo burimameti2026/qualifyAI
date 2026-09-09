@@ -13,6 +13,7 @@ using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.It;
 using QualifyAI.Infrastructure.WorkspacePackages;
 using QualifyAI.Persistence.SqlServer;
+using QualifyAI.Persistence.SqlServer.Projections;
 using QualifyAI.Persistence.SqlServer.Queries;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -93,51 +94,70 @@ static async Task BootstrapBusinessDatabasesAsync(
     ILogger logger)
 {
     const string renovaSlug = "renova";
+    var configuredTenantId = configuration["TenantBootstrap:Renova:TenantId"];
+    var renovaTenantId = Guid.TryParse(configuredTenantId, out var parsed)
+        ? parsed
+        : Guid.Parse("2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a");
 
     await using (var defaultScope = services.CreateAsyncScope())
     {
         var defaultDb = defaultScope.ServiceProvider.GetRequiredService<AppDbContext>();
         await defaultDb.Database.MigrateAsync();
         await defaultDb.EnsureBillingSchemaAsync();
-    }
 
-    if (!configuration.GetSection("TenantDatabases").GetChildren()
-        .Any(x => x.Key.Equals(renovaSlug, StringComparison.OrdinalIgnoreCase)))
-        return;
-
-    Guid? renovaTenantId = null;
-    for (var attempt = 1; attempt <= 30 && renovaTenantId is null; attempt++)
-    {
-        await using var lookupScope = services.CreateAsyncScope();
-        var lookupDb = lookupScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        renovaTenantId = await lookupDb.Tenants
-            .Where(x => x.Slug == renovaSlug)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync();
-
-        if (renovaTenantId is null)
+        var tenant = await defaultDb.Tenants.SingleOrDefaultAsync(x => x.Slug == renovaSlug);
+        if (tenant is null)
         {
-            logger.LogInformation("Waiting for tenant projection '{TenantSlug}' before initializing its database (attempt {Attempt}/30).", renovaSlug, attempt);
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            tenant = new QualifyAI.Domain.Tenant
+            {
+                Id = renovaTenantId,
+                Name = "Renova",
+                Slug = renovaSlug,
+                PlanCode = "enterprise",
+                IsActive = true
+            };
+            defaultDb.Tenants.Add(tenant);
         }
+        else if (tenant.Id != renovaTenantId)
+        {
+            renovaTenantId = tenant.Id;
+        }
+
+        var entitlement = await defaultDb.TenantEntitlements.SingleOrDefaultAsync(x => x.TenantId == renovaTenantId);
+        if (entitlement is null)
+        {
+            defaultDb.TenantEntitlements.Add(new TenantEntitlementProjection
+            {
+                TenantId = renovaTenantId,
+                TenantSlug = renovaSlug,
+                TenantStatus = "active",
+                LicensePlan = "enterprise",
+                LicenseStatus = "active",
+                MaxUsers = 100,
+                StartsAtUtc = DateTime.UtcNow.AddMinutes(-5),
+                ExpiresAtUtc = DateTime.UtcNow.AddYears(1),
+                Version = 1,
+                ModulesJson = System.Text.Json.JsonSerializer.Serialize(QualifyAiModules.Enterprise),
+                LimitsJson = "{\"users\":100}",
+                UpdatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        await defaultDb.SaveChangesAsync();
     }
 
-    if (renovaTenantId is not Guid tenantId)
-    {
-        logger.LogWarning("Tenant '{TenantSlug}' is not present in the business tenant projection yet. The dedicated database will initialize after the tenant is provisioned.", renovaSlug);
-        return;
-    }
+    await using var renovaScope = services.CreateAsyncScope();
+    var tenantContext = renovaScope.ServiceProvider.GetRequiredService<ITenantContext>();
+    tenantContext.Set(new CurrentTenant(renovaTenantId, renovaSlug));
 
-    await using (var renovaScope = services.CreateAsyncScope())
-    {
-        var tenantContext = renovaScope.ServiceProvider.GetRequiredService<ITenantContext>();
-        tenantContext.Set(new CurrentTenant(tenantId, renovaSlug));
+    var renovaDb = renovaScope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await renovaDb.Database.MigrateAsync();
+    await renovaDb.EnsureBillingSchemaAsync();
+    var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(renovaTenantId);
 
-        var renovaDb = renovaScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await renovaDb.Database.MigrateAsync();
-        await renovaDb.EnsureBillingSchemaAsync();
-        var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(tenantId);
-
-        logger.LogInformation("Renova tenant database initialized. Database={Database}; SeededDemo={SeededDemo}; TenantId={TenantId}.", "RenovaPromotions", seeded, tenantId);
-    }
+    logger.LogInformation(
+        "Renova tenant database initialized. Database={Database}; SeededDemo={SeededDemo}; TenantId={TenantId}.",
+        "RenovaPromotions",
+        seeded,
+        renovaTenantId);
 }
