@@ -9,6 +9,7 @@ using QualifyAI.Infrastructure.Acquisition;
 using QualifyAI.Infrastructure.Automation;
 using QualifyAI.Infrastructure.Demo;
 using QualifyAI.Infrastructure.Email;
+using QualifyAI.Infrastructure.It;
 using QualifyAI.Infrastructure.WorkspacePackages;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Repositories;
@@ -77,6 +78,7 @@ public static class DependencyInjection
         services.AddScoped<IIntegrationRegistry,IntegrationRegistry>();
         services.AddScoped<SalesAutomationService>();
         services.AddScoped<DemoSeeder>();
+        services.AddScoped<RenovaDemoSeeder>();
         services.AddScoped<CampaignExecutionService>();
         services.AddScoped<ProspectReplyProcessingService>();
         services.AddScoped<ProspectDiscoveryService>();
