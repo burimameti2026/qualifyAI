@@ -1,0 +1,2 @@
+namespace QualifyAI.Domain.Core.Catalog;
+public sealed class ProductVariant { public Guid Id { get; set; } = Guid.NewGuid(); public Guid TenantId { get; set; } public Guid CatalogProductId { get; set; } public string Name { get; set; } = string.Empty; public string? Sku { get; set; } public string? Packaging { get; set; } public decimal? NetWeight { get; set; } public string? WeightUnit { get; set; } public string? Color { get; set; } public string? Specifications { get; set; } public bool IsActive { get; set; } = true; }
