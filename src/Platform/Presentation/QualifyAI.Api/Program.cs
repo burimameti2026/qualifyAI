@@ -140,6 +140,4 @@ static async Task BootstrapBusinessDatabasesAsync(
 
         logger.LogInformation("Renova tenant database initialized. Database={Database}; SeededDemo={SeededDemo}; TenantId={TenantId}.", "RenovaPromotions", seeded, tenantId);
     }
-
-    await services.CreateAsyncScope().DisposeAsync();
 }
