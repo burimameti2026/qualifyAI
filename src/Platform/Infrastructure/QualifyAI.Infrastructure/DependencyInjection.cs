@@ -52,7 +52,7 @@ public static class DependencyInjection
         services.AddScoped<ICrmRepository,CrmRepository>();
         services.AddScoped<ISupportRepository,SupportRepository>();
         services.AddScoped<IKnowledgeAiRepository,KnowledgeAiRepository>();
-        services.AddScoped<IWorkflowAutomationRepository,WorkflowAutomationRepository>();
+        services.AddScoped<IWorkflowAutomationRepository,IWorkflowAutomationRepository>();
         services.AddScoped<ITenantEntitlementRepository,TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
         services.AddScoped<IGoldenPipelineProvisioner,GoldenPipelineProvisioner>();
@@ -91,6 +91,7 @@ public static class DependencyInjection
             c.Timeout = TimeSpan.FromSeconds(60);
         });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
+        services.AddScoped<IProspectDiscoveryProvider,RenovaDemoProspectDiscoveryProvider>();
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
         services.AddScoped<RealWorkspaceService>();
