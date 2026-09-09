@@ -75,6 +75,7 @@ services:
       Identity__Issuer: http://identity-api:8080
       Identity__Audience: qualifyai-api
       IdentityBootstrap__Enabled: "true"
+      IdentityBootstrap__Tenant__Id: ${RENOVA_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
       IdentityBootstrap__Tenant__Slug: ${DEMO_TENANT_SLUG:-renova}
       IdentityBootstrap__Tenant__Name: ${DEMO_TENANT_NAME:-Renova}
       IdentityBootstrap__Tenant__ContactEmail: ${RENOVA_CONTACT_EMAIL:-admin@renova.local}
@@ -109,6 +110,7 @@ services:
       ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      TenantBootstrap__Renova__TenantId: ${RENOVA_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
       TenantDatabases__renova: RenovaPromotions
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
