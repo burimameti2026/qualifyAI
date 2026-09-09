@@ -56,7 +56,7 @@ public sealed class IdentityBootstrapHostedService(
         }
         else if (configuredTenantId.HasValue && tenant.Id != configuredTenantId.Value)
         {
-            throw new InvalidOperationException($"Tenant '{tenantSlug}' already exists with id '{tenant.Id}', but bootstrap requested '{configuredTenantId.Value}'. Refusing to continue with mismatched tenant identity.");
+            logger.LogWarning("Bootstrap tenant '{TenantSlug}' already exists with id '{ExistingTenantId}'. Configured id '{ConfiguredTenantId}' is used only when creating the tenant.", tenantSlug, tenant.Id, configuredTenantId.Value);
         }
 
         var license = await dbContext.Licenses
