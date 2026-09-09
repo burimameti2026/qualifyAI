@@ -52,7 +52,7 @@ public static class DependencyInjection
         services.AddScoped<ICrmRepository,CrmRepository>();
         services.AddScoped<ISupportRepository,SupportRepository>();
         services.AddScoped<IKnowledgeAiRepository,KnowledgeAiRepository>();
-        services.AddScoped<IWorkflowAutomationRepository,IWorkflowAutomationRepository>();
+        services.AddScoped<IWorkflowAutomationRepository,WorkflowAutomationRepository>();
         services.AddScoped<ITenantEntitlementRepository,TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
         services.AddScoped<IGoldenPipelineProvisioner,GoldenPipelineProvisioner>();
