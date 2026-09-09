@@ -4,7 +4,7 @@ public sealed class ProductPromotionPlan
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid TenantId { get; set; }
-    public Guid PromotionProductId { get; set; }
+    public Guid CatalogProductId { get; set; }
     public Guid TargetMarketId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string CampaignLanguage { get; set; } = "en";
