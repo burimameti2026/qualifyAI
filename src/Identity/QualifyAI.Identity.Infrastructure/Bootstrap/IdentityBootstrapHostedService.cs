@@ -87,59 +87,47 @@ public sealed class IdentityBootstrapHostedService(
         outbox.Add(new TenantCreatedIntegrationEvent(
             Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
         outbox.Add(new TenantLicenseChangedIntegrationEvent(
-            Guid.NewGuid(),
-            snapshotAtUtc,
-            tenant.Id,
-            tenant.Slug,
-            license.Id,
-            license.Plan,
-            license.Status.ToString().ToLowerInvariant(),
-            license.MaxUsers,
-            license.StartsAtUtc,
-            license.ExpiresAtUtc,
-            license.Version,
-            license.Modules.Select(x => x.Code).ToArray()));
+            Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, license.Id, license.Plan,
+            license.Status.ToString().ToLowerInvariant(), license.MaxUsers, license.StartsAtUtc,
+            license.ExpiresAtUtc, license.Version, license.Modules.Select(x => x.Code).ToArray()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var adminEmail = configuration["IdentityBootstrap:Admin:Email"]?.Trim().ToLowerInvariant() ?? contactEmail;
         var adminPassword = configuration["IdentityBootstrap:Admin:Password"] ?? "Admin123!ChangeMe";
         var normalizedEmail = adminEmail.ToUpperInvariant();
-
         var admin = await userManager.Users.FirstOrDefaultAsync(
-            x => x.TenantId == tenant.Id && x.NormalizedEmail == normalizedEmail,
-            cancellationToken);
+            x => x.TenantId == tenant.Id && x.NormalizedEmail == normalizedEmail, cancellationToken);
 
         if (admin is null)
         {
             admin = new ApplicationUser
             {
-                Id = Guid.NewGuid(),
-                TenantId = tenant.Id,
-                TenantSlug = tenant.Slug,
-                UserName = adminEmail,
-                Email = adminEmail,
-                EmailConfirmed = true,
-                IsActive = true,
+                Id = Guid.NewGuid(), TenantId = tenant.Id, TenantSlug = tenant.Slug,
+                UserName = adminEmail, Email = adminEmail, EmailConfirmed = true, IsActive = true,
                 FirstName = configuration["IdentityBootstrap:Admin:FirstName"] ?? "Platform",
                 LastName = configuration["IdentityBootstrap:Admin:LastName"] ?? "Admin"
             };
-
             EnsureSucceeded(await userManager.CreateAsync(admin, adminPassword));
+        }
+        else if (configuration.GetValue("IdentityBootstrap:Admin:ResetPassword", false))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(admin);
+            EnsureSucceeded(await userManager.ResetPasswordAsync(admin, token, adminPassword));
+            admin.IsActive = true;
+            await userManager.UpdateAsync(admin);
+            logger.LogWarning("Bootstrap password reset is enabled for tenant {TenantSlug}; disable IdentityBootstrap:Admin:ResetPassword outside local/demo environments.", tenant.Slug);
         }
 
         var roleStorageName = TenantRoleNameCodec.ToStorageName(tenant.Id, "Admin");
         var normalizedRole = roleStorageName.ToUpperInvariant();
         var adminRole = await roleManager.Roles.FirstOrDefaultAsync(
-            x => x.TenantId == tenant.Id && x.NormalizedName == normalizedRole,
-            cancellationToken);
+            x => x.TenantId == tenant.Id && x.NormalizedName == normalizedRole, cancellationToken);
 
         if (adminRole is null)
         {
             adminRole = new ApplicationRole
             {
-                Id = Guid.NewGuid(),
-                TenantId = tenant.Id,
-                Name = roleStorageName,
+                Id = Guid.NewGuid(), TenantId = tenant.Id, Name = roleStorageName,
                 Description = "Tenant administrator"
             };
             EnsureSucceeded(await roleManager.CreateAsync(adminRole));
@@ -148,37 +136,21 @@ public sealed class IdentityBootstrapHostedService(
         if (!await userManager.IsInRoleAsync(admin, roleStorageName))
             EnsureSucceeded(await userManager.AddToRoleAsync(admin, roleStorageName));
 
-        var permissions = configuration
-            .GetSection("IdentityBootstrap:Admin:Permissions")
-            .Get<string[]>()
-            ?? QualifyAiPermissions.All;
-
+        var permissions = configuration.GetSection("IdentityBootstrap:Admin:Permissions").Get<string[]>() ?? QualifyAiPermissions.All;
         var existingPermissions = await dbContext.UserPermissions
             .Where(x => x.TenantId == tenant.Id && x.UserId == admin.Id)
-            .Select(x => x.Permission)
-            .ToListAsync(cancellationToken);
-
+            .Select(x => x.Permission).ToListAsync(cancellationToken);
         var missingPermissions = permissions
             .Where(x => !existingPermissions.Contains(x, StringComparer.OrdinalIgnoreCase))
-            .Select(x => new UserPermission
-            {
-                TenantId = tenant.Id,
-                UserId = admin.Id,
-                Permission = x
-            })
+            .Select(x => new UserPermission { TenantId = tenant.Id, UserId = admin.Id, Permission = x })
             .ToArray();
-
         if (missingPermissions.Length > 0)
         {
             dbContext.UserPermissions.AddRange(missingPermissions);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        logger.LogInformation(
-            "Identity bootstrap ready for tenant {TenantSlug}; admin {AdminEmail}; plan {Plan}.",
-            tenant.Slug,
-            adminEmail,
-            license.Plan);
+        logger.LogInformation("Identity bootstrap ready for tenant {TenantSlug}; admin {AdminEmail}; plan {Plan}.", tenant.Slug, adminEmail, license.Plan);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -190,29 +162,17 @@ public sealed class IdentityBootstrapHostedService(
         throw new InvalidOperationException($"IdentityBootstrap:Tenant:Id must be a valid GUID. Value='{value}'.");
     }
 
-    private static async Task EnsureAdminUiClientAsync(
-        IOpenIddictApplicationManager applicationManager,
-        CancellationToken cancellationToken)
+    private static async Task EnsureAdminUiClientAsync(IOpenIddictApplicationManager applicationManager, CancellationToken cancellationToken)
     {
         const string clientId = "qualifyai-admin";
-        if (await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is not null)
-            return;
-
+        if (await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is not null) return;
         await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
         {
-            ClientId = clientId,
-            DisplayName = "QualifyAI Admin UI",
-            ClientType = ClientTypes.Public,
+            ClientId = clientId, DisplayName = "QualifyAI Admin UI", ClientType = ClientTypes.Public,
             ConsentType = ConsentTypes.Implicit,
-            Permissions =
-            {
-                Permissions.Endpoints.Token,
-                Permissions.GrantTypes.Password,
-                Permissions.GrantTypes.RefreshToken,
-                Permissions.Prefixes.Scope + "qualifyai-api",
-                Permissions.Prefixes.Scope + "profile",
-                Permissions.Prefixes.Scope + "email"
-            }
+            Permissions = { Permissions.Endpoints.Token, Permissions.GrantTypes.Password, Permissions.GrantTypes.RefreshToken,
+                Permissions.Prefixes.Scope + "qualifyai-api", Permissions.Prefixes.Scope + "profile",
+                Permissions.Prefixes.Scope + "email" }
         }, cancellationToken);
     }
 
