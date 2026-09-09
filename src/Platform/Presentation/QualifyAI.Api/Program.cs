@@ -114,43 +114,49 @@ static async Task BootstrapBusinessDatabasesAsync(
     await renovaDb.Database.MigrateAsync();
     await renovaDb.EnsureBillingSchemaAsync();
 
-    await using var bootstrapTransaction = await renovaDb.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-
-    var renovaTenant = await renovaDb.Tenants.SingleOrDefaultAsync(x => x.Slug == renovaSlug);
-    if (renovaTenant is null)
+    var executionStrategy = renovaDb.Database.CreateExecutionStrategy();
+    await executionStrategy.ExecuteAsync(async () =>
     {
-        renovaDb.Tenants.Add(new QualifyAI.Domain.Tenant
-        {
-            Id = renovaTenantId,
-            Name = "Renova",
-            Slug = renovaSlug,
-            PlanCode = "enterprise",
-            IsActive = true
-        });
-    }
+        await using var bootstrapTransaction =
+            await renovaDb.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-    var renovaEntitlement = await renovaDb.TenantEntitlements.SingleOrDefaultAsync(x => x.TenantId == renovaTenantId);
-    if (renovaEntitlement is null)
-    {
-        renovaDb.TenantEntitlements.Add(new TenantEntitlementProjection
+        var renovaTenant = await renovaDb.Tenants.SingleOrDefaultAsync(x => x.Slug == renovaSlug);
+        if (renovaTenant is null)
         {
-            TenantId = renovaTenantId,
-            TenantSlug = renovaSlug,
-            TenantStatus = "active",
-            LicensePlan = "enterprise",
-            LicenseStatus = "active",
-            MaxUsers = 100,
-            StartsAtUtc = DateTime.UtcNow.AddMinutes(-5),
-            ExpiresAtUtc = DateTime.UtcNow.AddYears(1),
-            Version = 1,
-            ModulesJson = System.Text.Json.JsonSerializer.Serialize(QualifyAiModules.Enterprise),
-            LimitsJson = "{\"users\":100}",
-            UpdatedAtUtc = DateTime.UtcNow
-        });
-    }
+            renovaDb.Tenants.Add(new QualifyAI.Domain.Tenant
+            {
+                Id = renovaTenantId,
+                Name = "Renova",
+                Slug = renovaSlug,
+                PlanCode = "enterprise",
+                IsActive = true
+            });
+        }
 
-    await renovaDb.SaveChangesAsync();
-    await bootstrapTransaction.CommitAsync();
+        var renovaEntitlement = await renovaDb.TenantEntitlements
+            .SingleOrDefaultAsync(x => x.TenantId == renovaTenantId);
+        if (renovaEntitlement is null)
+        {
+            renovaDb.TenantEntitlements.Add(new TenantEntitlementProjection
+            {
+                TenantId = renovaTenantId,
+                TenantSlug = renovaSlug,
+                TenantStatus = "active",
+                LicensePlan = "enterprise",
+                LicenseStatus = "active",
+                MaxUsers = 100,
+                StartsAtUtc = DateTime.UtcNow.AddMinutes(-5),
+                ExpiresAtUtc = DateTime.UtcNow.AddYears(1),
+                Version = 1,
+                ModulesJson = System.Text.Json.JsonSerializer.Serialize(QualifyAiModules.Enterprise),
+                LimitsJson = "{\"users\":100}",
+                UpdatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        await renovaDb.SaveChangesAsync();
+        await bootstrapTransaction.CommitAsync();
+    });
 
     var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(renovaTenantId);
     await renovaScope.ServiceProvider.GetRequiredService<RenovaSiteContentSeeder>().SeedAsync(renovaTenantId);
