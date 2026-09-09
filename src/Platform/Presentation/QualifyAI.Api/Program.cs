@@ -10,6 +10,7 @@ using QualifyAI.BuildingBlocks.Application.Behaviors;
 using QualifyAI.BuildingBlocks.Application.Security;
 using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Infrastructure;
+using QualifyAI.Infrastructure.WorkspacePackages;
 using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Queries;
 
@@ -32,6 +33,9 @@ builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<SlaService>();
 builder.Services.AddScoped<KnowledgeGapService>();
 builder.Services.AddScoped<BillingService>();
+builder.Services.AddScoped<WorkspacePackageInstaller>();
+builder.Services.AddScoped<FusionFleetPackageProvisioner>();
+builder.Services.AddScoped<QualifyAiAcquisitionPackageProvisioner>();
 builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>();
 builder.Services.Configure<RevenueAutomationOptions>(builder.Configuration.GetSection("RevenueAutomation"));
 builder.Services.AddHostedService<RevenueAutomationWorker>();
