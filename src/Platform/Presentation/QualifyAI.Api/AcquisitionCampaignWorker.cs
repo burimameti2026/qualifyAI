@@ -1,4 +1,5 @@
 using QualifyAI.Application;
+using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.Acquisition;
 
 namespace QualifyAI.Api;

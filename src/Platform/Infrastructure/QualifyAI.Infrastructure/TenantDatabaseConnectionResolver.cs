@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using QualifyAI.Application;
 
 namespace QualifyAI.Infrastructure;

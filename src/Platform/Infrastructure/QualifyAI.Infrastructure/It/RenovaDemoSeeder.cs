@@ -395,7 +395,7 @@ public sealed class RenovaDemoSeeder(
         };
 
     private static string Slugify(string value) =>
-        new(value.Trim().ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())
+        new string(value.Trim().ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())
             .Trim('-')
             .Replace("--", "-");
 }

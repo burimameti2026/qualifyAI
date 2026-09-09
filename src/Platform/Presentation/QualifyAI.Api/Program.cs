@@ -5,16 +5,15 @@ using Microsoft.OpenApi.Models;
 using QualifyAI.Api;
 using QualifyAI.Api.Security;
 using QualifyAI.Api.Modules;
-using QualifyAI.Application;
 using QualifyAI.BuildingBlocks.Application.Behaviors;
 using QualifyAI.BuildingBlocks.Application.Security;
 using QualifyAI.BuildingBlocks.Security;
 using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.It;
 using QualifyAI.Infrastructure.WorkspacePackages;
-using QualifyAI.Persistence.SqlServer;
 using QualifyAI.Persistence.SqlServer.Projections;
 using QualifyAI.Persistence.SqlServer.Queries;
+using QualifyAI.BuildingBlocks.Security.Access;
 
 var builder = WebApplication.CreateBuilder(args);
 
