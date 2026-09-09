@@ -4,16 +4,8 @@ public class RevenueAttribution : TenantEntity { public Guid? LeadId { get; set;
 public class Plan : Entity { public string Code { get; set; }="starter"; public string Name { get; set; }="Starter"; public decimal MonthlyPrice { get; set; } public string Currency { get; set; }="EUR"; public string EntitlementsJson { get; set; }="{}"; }
 public class Subscription : TenantEntity { public Guid PlanId { get; set; } public string Status { get; set; }="active"; public string ExternalCustomerId { get; set; }=""; public string ExternalSubscriptionId { get; set; }=""; public DateTime CurrentPeriodStartUtc { get; set; } public DateTime CurrentPeriodEndUtc { get; set; } }
 public class UsageRecord : TenantEntity { public string Meter { get; set; }="messages"; public decimal Quantity { get; set; } public DateTime RecordedAtUtc { get; set; }=DateTime.UtcNow; public string ReferenceId { get; set; }="";
-    public string Metric
-    {
-        get;
-        set;
-    }
-    public long Value
-    {
-        get;
-        set;
-    }
+    public string Metric { get; set; } = "";
+    public long Value { get; set; }
 }
 public class BillingInvoice : TenantEntity { public string Number { get; set; }=""; public decimal Amount { get; set; } public string Currency { get; set; }="EUR"; public string Status { get; set; }="draft"; public DateTime? DueAtUtc { get; set; } }
 public class SsoConfiguration : TenantEntity { public string ProviderType { get; set; }="saml"; public string EntityId { get; set; }=""; public string MetadataUrl { get; set; }=""; public bool Enabled { get; set; } }
