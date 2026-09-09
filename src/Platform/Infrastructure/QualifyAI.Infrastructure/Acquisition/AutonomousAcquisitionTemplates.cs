@@ -17,6 +17,7 @@ public sealed class AutonomousAcquisitionTemplateRegistry : IAutonomousAcquisiti
  {
   new("fleet","Fleet Europe","Fleet & Mobility","Europe",["fleet management","commercial vehicle fleet","vehicle operations","transport fleet","telematics"],["fleet","vehicles","logistics","transport","mobility"]),
   new("logistics","Logistics Europe","Logistics & Transport","Europe",["logistics companies","transport operators","freight companies","supply chain companies"],["logistics","freight","transport","warehouse","supply chain"]),
+  new("construction-materials","Construction Materials — Balkans","Construction Materials & Building Supply","Balkans",["building material distributors","construction material wholesalers","plaster distributors","facade system distributors","construction companies","building supply"],["plaster","putz","render","facade","building materials","construction supply","adhesive","primer"] ,75),
   new("saas","SaaS","Software as a Service","Europe",["B2B SaaS companies","software startups","cloud software companies"],["saas","software","cloud","platform","subscription"]),
   new("software","Software Companies","Software","Europe",["software development companies","enterprise software companies","business software companies"],["software","platform","technology","enterprise"]),
   new("custom","Custom ICP","Custom","Europe",[],[])
