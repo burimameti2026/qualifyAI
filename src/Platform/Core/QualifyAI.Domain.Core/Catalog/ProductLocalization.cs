@@ -1,0 +1,2 @@
+namespace QualifyAI.Domain.Core.Catalog;
+public sealed class ProductLocalization { public Guid Id { get; set; } = Guid.NewGuid(); public Guid TenantId { get; set; } public Guid CatalogProductId { get; set; } public string Language { get; set; } = "en"; public string Name { get; set; } = string.Empty; public string? ShortDescription { get; set; } public string? Description { get; set; } public string? KeyBenefits { get; set; } public string? Applications { get; set; } }
