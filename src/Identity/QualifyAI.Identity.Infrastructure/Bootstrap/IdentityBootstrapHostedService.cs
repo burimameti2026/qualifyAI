@@ -42,14 +42,21 @@ public sealed class IdentityBootstrapHostedService(
         var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "demo";
         var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "QualifyAI Demo";
         var contactEmail = configuration["IdentityBootstrap:Tenant:ContactEmail"]?.Trim().ToLowerInvariant() ?? "admin@demo.local";
+        var configuredTenantId = ParseOptionalTenantId(configuration["IdentityBootstrap:Tenant:Id"]);
 
         var tenant = await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
         if (tenant is null)
         {
-            tenant = Tenant.Create(tenantName, tenantSlug, contactEmail);
+            tenant = configuredTenantId.HasValue
+                ? Tenant.Create(configuredTenantId.Value, tenantName, tenantSlug, contactEmail)
+                : Tenant.Create(tenantName, tenantSlug, contactEmail);
             await dbContext.Tenants.AddAsync(tenant, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Provisioned bootstrap tenant {TenantSlug} ({TenantId}).", tenant.Slug, tenant.Id);
+        }
+        else if (configuredTenantId.HasValue && tenant.Id != configuredTenantId.Value)
+        {
+            throw new InvalidOperationException($"Tenant '{tenantSlug}' already exists with id '{tenant.Id}', but bootstrap requested '{configuredTenantId.Value}'. Refusing to continue with mismatched tenant identity.");
         }
 
         var license = await dbContext.Licenses
@@ -175,6 +182,13 @@ public sealed class IdentityBootstrapHostedService(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static Guid? ParseOptionalTenantId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (Guid.TryParse(value, out var id)) return id;
+        throw new InvalidOperationException($"IdentityBootstrap:Tenant:Id must be a valid GUID. Value='{value}'.");
+    }
 
     private static async Task EnsureAdminUiClientAsync(
         IOpenIddictApplicationManager applicationManager,
