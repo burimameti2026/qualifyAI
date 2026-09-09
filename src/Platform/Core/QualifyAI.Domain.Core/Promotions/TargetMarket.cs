@@ -1,0 +1,2 @@
+namespace QualifyAI.Domain.Core.Promotions;
+public sealed class TargetMarket { public Guid Id { get; set; } = Guid.NewGuid(); public Guid TenantId { get; set; } public Guid CatalogProductId { get; set; } public string CountryCode { get; set; } = string.Empty; public string CountryName { get; set; } = string.Empty; public string DefaultLanguage { get; set; } = "en"; public string? TargetIndustries { get; set; } public string? TargetCustomerTypes { get; set; } public bool IsActive { get; set; } = true; public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow; }
