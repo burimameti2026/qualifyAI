@@ -153,6 +153,30 @@ static async Task BootstrapBusinessDatabasesAsync(
     var renovaDb = renovaScope.ServiceProvider.GetRequiredService<AppDbContext>();
     await renovaDb.Database.MigrateAsync();
     await renovaDb.EnsureBillingSchemaAsync();
+
+    // Tenant-scoped middleware evaluates entitlement data against the routed Renova database.
+    // Keep a local projection there as well as the control-plane projection in the default DB.
+    var renovaEntitlement = await renovaDb.TenantEntitlements.SingleOrDefaultAsync(x => x.TenantId == renovaTenantId);
+    if (renovaEntitlement is null)
+    {
+        renovaDb.TenantEntitlements.Add(new TenantEntitlementProjection
+        {
+            TenantId = renovaTenantId,
+            TenantSlug = renovaSlug,
+            TenantStatus = "active",
+            LicensePlan = "enterprise",
+            LicenseStatus = "active",
+            MaxUsers = 100,
+            StartsAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            ExpiresAtUtc = DateTime.UtcNow.AddYears(1),
+            Version = 1,
+            ModulesJson = System.Text.Json.JsonSerializer.Serialize(QualifyAiModules.Enterprise),
+            LimitsJson = "{\"users\":100}",
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+        await renovaDb.SaveChangesAsync();
+    }
+
     var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(renovaTenantId);
 
     logger.LogInformation(
