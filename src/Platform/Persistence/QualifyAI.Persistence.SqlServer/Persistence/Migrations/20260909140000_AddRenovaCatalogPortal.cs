@@ -6,7 +6,7 @@ using QualifyAI.Persistence.SqlServer;
 
 namespace QualifyAI.Persistence.SqlServer.Migrations;
 
-[DbContext(typeof(AppDbContext))]
+[Microsoft.EntityFrameworkCore.Infrastructure.DbContext(typeof(AppDbContext))]
 [Migration("20260909140000_AddRenovaCatalogPortal")]
 public partial class AddRenovaCatalogPortal : Migration
 {
