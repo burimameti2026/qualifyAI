@@ -1,3 +1,4 @@
+using System.Data;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -113,6 +114,8 @@ static async Task BootstrapBusinessDatabasesAsync(
     await renovaDb.Database.MigrateAsync();
     await renovaDb.EnsureBillingSchemaAsync();
 
+    await using var bootstrapTransaction = await renovaDb.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
     var renovaTenant = await renovaDb.Tenants.SingleOrDefaultAsync(x => x.Slug == renovaSlug);
     if (renovaTenant is null)
     {
@@ -147,6 +150,7 @@ static async Task BootstrapBusinessDatabasesAsync(
     }
 
     await renovaDb.SaveChangesAsync();
+    await bootstrapTransaction.CommitAsync();
 
     var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(renovaTenantId);
     await renovaScope.ServiceProvider.GetRequiredService<RenovaSiteContentSeeder>().SeedAsync(renovaTenantId);
