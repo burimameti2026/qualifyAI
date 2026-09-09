@@ -47,7 +47,7 @@ services:
     volumes: [redis-data:/data]
     networks: [qualifyai]
     healthcheck:
-      test: [CMD-SHELL, "redis-cli -a '${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}' ping | grep PONG"]
+      test: ["CMD-SHELL", "redis-cli -a '${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!}' ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -74,7 +74,15 @@ services:
       ConnectionStrings__IdentityDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_IdentityDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       Identity__Issuer: http://identity-api:8080
       Identity__Audience: qualifyai-api
-      IdentityBootstrap__Admin__Password: ${DEMO_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      IdentityBootstrap__Enabled: "true"
+      IdentityBootstrap__Tenant__Slug: ${DEMO_TENANT_SLUG:-renova}
+      IdentityBootstrap__Tenant__Name: ${DEMO_TENANT_NAME:-Renova}
+      IdentityBootstrap__Tenant__ContactEmail: ${RENOVA_CONTACT_EMAIL:-admin@renova.local}
+      IdentityBootstrap__License__Plan: ${RENOVA_LICENSE_PLAN:-Enterprise}
+      IdentityBootstrap__Admin__Email: ${RENOVA_ADMIN_EMAIL:-renovaadmin@renova.local}
+      IdentityBootstrap__Admin__FirstName: ${RENOVA_ADMIN_FIRST_NAME:-Renova}
+      IdentityBootstrap__Admin__LastName: ${RENOVA_ADMIN_LAST_NAME:-Admin}
+      IdentityBootstrap__Admin__Password: ${RENOVA_ADMIN_PASSWORD:-RenovaAdmin123!ChangeMe}
       Services__TenantManagement: http://platform-api:8080/internal
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
     extra_hosts:
@@ -101,6 +109,7 @@ services:
       ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
       ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=QualifyAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      TenantDatabases__renova: RenovaPromotions
       Identity__Authority: http://identity-api:8080
       Identity__Audience: qualifyai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-QualifyAI_Redis_ChangeMe!},abortConnect=false"
