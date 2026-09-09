@@ -98,7 +98,6 @@ static async Task BootstrapBusinessDatabasesAsync(
         ? parsed
         : Guid.Parse("2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a");
 
-    // The default database is control-plane only. Never seed tenant business data here.
     await using (var controlScope = services.CreateAsyncScope())
     {
         var controlDb = controlScope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -106,8 +105,6 @@ static async Task BootstrapBusinessDatabasesAsync(
         await controlDb.EnsureBillingSchemaAsync();
     }
 
-    // All Renova business data, entitlement projection and demo data belong to the routed
-    // tenant database (RenovaPromotions), never to the shared control-plane database.
     await using var renovaScope = services.CreateAsyncScope();
     var tenantContext = renovaScope.ServiceProvider.GetRequiredService<ITenantContext>();
     tenantContext.Set(new CurrentTenant(renovaTenantId, renovaSlug));
@@ -152,6 +149,7 @@ static async Task BootstrapBusinessDatabasesAsync(
     await renovaDb.SaveChangesAsync();
 
     var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(renovaTenantId);
+    await renovaScope.ServiceProvider.GetRequiredService<RenovaSiteContentSeeder>().SeedAsync(renovaTenantId);
 
     logger.LogInformation(
         "Renova tenant database initialized. TenantSlug={TenantSlug}; Database={Database}; SeededDemo={SeededDemo}; TenantId={TenantId}.",
