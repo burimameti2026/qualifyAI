@@ -1,0 +1,2 @@
+namespace QualifyAI.Domain.Core.Catalog;
+public sealed class ProductAsset { public Guid Id { get; set; } = Guid.NewGuid(); public Guid TenantId { get; set; } public Guid CatalogProductId { get; set; } public string AssetType { get; set; } = string.Empty; public string FileName { get; set; } = string.Empty; public string Uri { get; set; } = string.Empty; public string? Language { get; set; } public string? Title { get; set; } public bool IsPublic { get; set; } public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow; }
