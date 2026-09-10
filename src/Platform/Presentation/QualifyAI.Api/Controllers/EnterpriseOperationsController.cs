@@ -120,7 +120,7 @@ public sealed class EnterpriseOperationsController(ITenantContext tenant, AppDbC
 
     [HttpPost("shipments/{id:guid}/status")]
     public async Task<IActionResult> UpdateShipmentStatus(Guid id, ShipmentStatus status, CancellationToken ct)
-    { var entity = await db.Shipments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (entity is null) return NotFound(); if ((int)status < (int)entity.Status && status != QualifyAI.Domain.ShipmentStatus.Cancelled) return BadRequest(new { detail = "Shipment status cannot move backwards." }); entity.Status = status; entity.UpdatedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.ShipmentStatus.Dispatched) entity.DispatchedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.ShipmentStatus.Delivered) entity.DeliveredAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(entity); }
+    { var entity = await db.Shipments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (entity is null) return NotFound(); if ((int)status < (int)entity.Status && status != QualifyAI.Domain.ShipmentStatus.Cancelled) return BadRequest(new { detail = "Shipment status cannot move backwards." }); entity.Status = status; entity.UpdatedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.ShipmentStatus.Delivered) entity.DeliveredAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(entity); }
 
     [HttpGet("routes")]
     public async Task<IReadOnlyList<RoutePlan>> Routes(CancellationToken ct) => await db.RoutePlans.Where(x => x.TenantId == TenantId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
