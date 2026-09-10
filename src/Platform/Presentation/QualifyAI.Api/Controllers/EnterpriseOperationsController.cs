@@ -18,7 +18,7 @@ public sealed class EnterpriseOperationsController(ITenantContext tenant, AppDbC
     public async Task<IActionResult> Overview(CancellationToken ct)
     {
         var id = TenantId;
-        return Ok(new { facilities = await db.Facilities.CountAsync(x => x.TenantId == id && x.IsActive, ct), customers = await db.CustomerAccounts.CountAsync(x => x.TenantId == id && x.IsActive, ct), orders = await db.SalesOrders.CountAsync(x => x.TenantId == id, ct), pendingOrders = await db.SalesOrders.CountAsync(x => x.TenantId == id && x.Status == OrderStatus.Submitted, ct), stockItems = await db.StockBalances.CountAsync(x => x.TenantId == id, ct), movementsInTransit = await db.StockMovements.CountAsync(x => x.TenantId == id && x.Status == StockMovementStatus.InTransit, ct), shipments = await db.Shipments.CountAsync(x => x.TenantId == id && x.Status != ShipmentStatus.Delivered && x.Status != ShipmentStatus.Cancelled, ct), unpaidPayments = await db.Payments.CountAsync(x => x.TenantId == id && x.Status != PaymentStatus.Paid && x.Status != PaymentStatus.Cancelled && x.Status != PaymentStatus.Refunded, ct) });
+        return Ok(new { facilities = await db.Facilities.CountAsync(x => x.TenantId == id && x.IsActive, ct), customers = await db.CustomerAccounts.CountAsync(x => x.TenantId == id && x.IsActive, ct), orders = await db.SalesOrders.CountAsync(x => x.TenantId == id, ct), pendingOrders = await db.SalesOrders.CountAsync(x => x.TenantId == id && x.Status == QualifyAI.Domain.OrderStatus.Submitted, ct), stockItems = await db.StockBalances.CountAsync(x => x.TenantId == id, ct), movementsInTransit = await db.StockMovements.CountAsync(x => x.TenantId == id && x.Status == StockMovementStatus.InTransit, ct), shipments = await db.Shipments.CountAsync(x => x.TenantId == id && x.Status != QualifyAI.Domain.ShipmentStatus.Delivered && x.Status != QualifyAI.Domain.ShipmentStatus.Cancelled, ct), unpaidPayments = await db.Payments.CountAsync(x => x.TenantId == id && x.Status != QualifyAI.Domain.PaymentStatus.Paid && x.Status != QualifyAI.Domain.PaymentStatus.Cancelled && x.Status != QualifyAI.Domain.PaymentStatus.Refunded, ct) });
     }
 
     [HttpGet("facilities")]
@@ -44,54 +44,39 @@ public sealed class EnterpriseOperationsController(ITenantContext tenant, AppDbC
 
     [HttpPost("facilities/{facilityId:guid}/capabilities")]
     public async Task<IActionResult> AddCapability(Guid facilityId, FacilityCapability input, CancellationToken ct)
-    {
-        var id = TenantId; if (!await db.Facilities.AnyAsync(x => x.TenantId == id && x.Id == facilityId, ct)) return NotFound(); input.Id = Guid.NewGuid(); input.TenantId = id; input.FacilityId = facilityId; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.FacilityCapabilities.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/facilities/{facilityId}/capabilities/{input.Id}", input);
-    }
+    { var id = TenantId; if (!await db.Facilities.AnyAsync(x => x.TenantId == id && x.Id == facilityId, ct)) return NotFound(); input.Id = Guid.NewGuid(); input.TenantId = id; input.FacilityId = facilityId; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.FacilityCapabilities.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/facilities/{facilityId}/capabilities/{input.Id}", input); }
 
     [HttpGet("customers")]
     public async Task<IReadOnlyList<CustomerAccount>> Customers(CancellationToken ct) => await db.CustomerAccounts.Where(x => x.TenantId == TenantId).OrderBy(x => x.CompanyId).ToListAsync(ct);
 
     [HttpPost("customers")]
     public async Task<IActionResult> CreateCustomer(CustomerAccount input, CancellationToken ct)
-    {
-        var id = TenantId; if (input.CompanyId == Guid.Empty) return BadRequest(new { detail = "Company is required." }); if (await db.CustomerAccounts.AnyAsync(x => x.TenantId == id && x.CompanyId == input.CompanyId, ct)) return Conflict(new { detail = "Customer account already exists for this company." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.CustomerAccounts.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/customers/{input.Id}", input);
-    }
+    { var id = TenantId; if (input.CompanyId == Guid.Empty) return BadRequest(new { detail = "Company is required." }); if (await db.CustomerAccounts.AnyAsync(x => x.TenantId == id && x.CompanyId == input.CompanyId, ct)) return Conflict(new { detail = "Customer account already exists for this company." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.CustomerAccounts.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/customers/{input.Id}", input); }
 
     [HttpGet("price-lists")]
     public async Task<IReadOnlyList<PriceList>> PriceLists(CancellationToken ct) => await db.PriceLists.Where(x => x.TenantId == TenantId).OrderBy(x => x.Name).ToListAsync(ct);
 
     [HttpPost("price-lists")]
     public async Task<IActionResult> CreatePriceList(PriceList input, CancellationToken ct)
-    {
-        var id = TenantId; if (string.IsNullOrWhiteSpace(input.Code) || string.IsNullOrWhiteSpace(input.Name)) return BadRequest(new { detail = "Price list code and name are required." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.Code = input.Code.Trim(); input.Name = input.Name.Trim(); input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.PriceLists.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/price-lists/{input.Id}", input);
-    }
+    { var id = TenantId; if (string.IsNullOrWhiteSpace(input.Code) || string.IsNullOrWhiteSpace(input.Name)) return BadRequest(new { detail = "Price list code and name are required." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.Code = input.Code.Trim(); input.Name = input.Name.Trim(); input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.PriceLists.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/price-lists/{input.Id}", input); }
 
     [HttpPost("price-lists/{priceListId:guid}/items")]
     public async Task<IActionResult> AddPriceItem(Guid priceListId, PriceListItem input, CancellationToken ct)
-    {
-        var id = TenantId; if (!await db.PriceLists.AnyAsync(x => x.TenantId == id && x.Id == priceListId, ct)) return NotFound(); if (input.UnitPrice < 0) return BadRequest(new { detail = "Unit price cannot be negative." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.PriceListId = priceListId; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.PriceListItems.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/price-lists/{priceListId}/items/{input.Id}", input);
-    }
+    { var id = TenantId; if (!await db.PriceLists.AnyAsync(x => x.TenantId == id && x.Id == priceListId, ct)) return NotFound(); if (input.UnitPrice < 0) return BadRequest(new { detail = "Unit price cannot be negative." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.PriceListId = priceListId; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.PriceListItems.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/price-lists/{priceListId}/items/{input.Id}", input); }
 
     [HttpGet("orders")]
     public async Task<IReadOnlyList<SalesOrder>> Orders(CancellationToken ct) => await db.SalesOrders.Where(x => x.TenantId == TenantId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
 
     [HttpGet("orders/{id:guid}")]
     public async Task<IActionResult> Order(Guid id, CancellationToken ct)
-    {
-        var order = await db.SalesOrders.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (order is null) return NotFound(); var items = await db.SalesOrderItems.Where(x => x.TenantId == TenantId && x.SalesOrderId == id).ToListAsync(ct); return Ok(new { order, items });
-    }
+    { var order = await db.SalesOrders.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (order is null) return NotFound(); var items = await db.SalesOrderItems.Where(x => x.TenantId == TenantId && x.SalesOrderId == id).ToListAsync(ct); return Ok(new { order, items }); }
 
     [HttpPost("orders")]
     public async Task<IActionResult> CreateOrder(SalesOrderRequest request, CancellationToken ct)
-    {
-        var id = TenantId; if (request.Items.Count == 0) return BadRequest(new { detail = "At least one order item is required." }); if (request.Channel != OrderChannel.B2C && request.CompanyId is null) return BadRequest(new { detail = "Company is required for B2B, distributor and partner orders." }); var now = DateTime.UtcNow; var order = new SalesOrder { Id = Guid.NewGuid(), TenantId = id, Number = $"SO-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..24], CustomerAccountId = request.CustomerAccountId, CompanyId = request.CompanyId, ContactId = request.ContactId, Channel = request.Channel, Currency = request.Currency ?? "EUR", Status = OrderStatus.Submitted, Notes = request.Notes ?? string.Empty, RequestedDeliveryAtUtc = request.RequestedDeliveryAtUtc, CreatedAtUtc = now, UpdatedAtUtc = now };
-        foreach (var item in request.Items)
-        { if (item.Quantity <= 0 || item.UnitPrice < 0 || item.Discount < 0 || item.Tax < 0) return BadRequest(new { detail = "Order quantity, price, discount and tax values are invalid." }); var line = new SalesOrderItem { Id = Guid.NewGuid(), TenantId = id, SalesOrderId = order.Id, CatalogProductId = item.CatalogProductId, ProductVariantId = item.ProductVariantId, Sku = item.Sku ?? string.Empty, Description = item.Description ?? string.Empty, Quantity = item.Quantity, Unit = item.Unit ?? "unit", UnitPrice = item.UnitPrice, Discount = item.Discount, Tax = item.Tax, Total = Math.Max(0, item.Quantity * item.UnitPrice - item.Discount + item.Tax), CreatedAtUtc = now, UpdatedAtUtc = now }; db.SalesOrderItems.Add(line); order.Subtotal += line.Quantity * line.UnitPrice; order.DiscountTotal += line.Discount; order.TaxTotal += line.Tax; order.GrandTotal += line.Total; }
-        db.SalesOrders.Add(order); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/orders/{order.Id}", order);
-    }
+    { var id = TenantId; if (request.Items.Count == 0) return BadRequest(new { detail = "At least one order item is required." }); if (request.Channel != OrderChannel.B2C && request.CompanyId is null) return BadRequest(new { detail = "Company is required for B2B, distributor and partner orders." }); var now = DateTime.UtcNow; var order = new SalesOrder { Id = Guid.NewGuid(), TenantId = id, Number = $"SO-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..24], CustomerAccountId = request.CustomerAccountId, CompanyId = request.CompanyId, ContactId = request.ContactId, Channel = request.Channel, Currency = request.Currency ?? "EUR", Status = QualifyAI.Domain.OrderStatus.Submitted, Notes = request.Notes ?? string.Empty, RequestedDeliveryAtUtc = request.RequestedDeliveryAtUtc, CreatedAtUtc = now, UpdatedAtUtc = now }; foreach (var item in request.Items) { if (item.Quantity <= 0 || item.UnitPrice < 0 || item.Discount < 0 || item.Tax < 0) return BadRequest(new { detail = "Order quantity, price, discount and tax values are invalid." }); var line = new SalesOrderItem { Id = Guid.NewGuid(), TenantId = id, SalesOrderId = order.Id, CatalogProductId = item.CatalogProductId, ProductVariantId = item.ProductVariantId, Sku = item.Sku ?? string.Empty, Description = item.Description ?? string.Empty, Quantity = item.Quantity, Unit = item.Unit ?? "unit", UnitPrice = item.UnitPrice, Discount = item.Discount, Tax = item.Tax, Total = Math.Max(0, item.Quantity * item.UnitPrice - item.Discount + item.Tax), CreatedAtUtc = now, UpdatedAtUtc = now }; db.SalesOrderItems.Add(line); order.Subtotal += line.Quantity * line.UnitPrice; order.DiscountTotal += line.Discount; order.TaxTotal += line.Tax; order.GrandTotal += line.Total; } db.SalesOrders.Add(order); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/orders/{order.Id}", order); }
 
     [HttpPost("orders/{id:guid}/status")]
-    public async Task<IActionResult> OrderStatus(Guid id, OrderStatus status, CancellationToken ct)
+    public async Task<IActionResult> UpdateOrderStatus(Guid id, OrderStatus status, CancellationToken ct)
     { var order = await db.SalesOrders.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (order is null) return NotFound(); if ((int)status < (int)order.Status && status != QualifyAI.Domain.OrderStatus.Cancelled) return BadRequest(new { detail = "Order status cannot move backwards." }); order.Status = status; order.UpdatedAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(order); }
 
     [HttpGet("fulfillments")]
@@ -134,37 +119,25 @@ public sealed class EnterpriseOperationsController(ITenantContext tenant, AppDbC
     { var id = TenantId; if (!await db.Fulfillments.AnyAsync(x => x.TenantId == id && x.Id == input.FulfillmentId, ct)) return NotFound(new { detail = "Fulfillment not found." }); var now = DateTime.UtcNow; input.Id = Guid.NewGuid(); input.TenantId = id; input.Number = $"SH-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..24]; input.Status = ShipmentStatus.Planned; input.CreatedAtUtc = now; input.UpdatedAtUtc = now; db.Shipments.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/shipments/{input.Id}", input); }
 
     [HttpPost("shipments/{id:guid}/status")]
-    public async Task<IActionResult> ShipmentStatus(Guid id, ShipmentStatus status, CancellationToken ct)
-    { var entity = await db.Shipments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (entity is null) return NotFound(); if ((int)status < (int)entity.Status && status != ShipmentStatus.Cancelled) return BadRequest(new { detail = "Shipment status cannot move backwards." }); entity.Status = status; entity.UpdatedAtUtc = DateTime.UtcNow; if (status == ShipmentStatus.Delivered) entity.DeliveredAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(entity); }
+    public async Task<IActionResult> UpdateShipmentStatus(Guid id, ShipmentStatus status, CancellationToken ct)
+    { var entity = await db.Shipments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (entity is null) return NotFound(); if ((int)status < (int)entity.Status && status != QualifyAI.Domain.ShipmentStatus.Cancelled) return BadRequest(new { detail = "Shipment status cannot move backwards." }); entity.Status = status; entity.UpdatedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.ShipmentStatus.Dispatched) entity.DispatchedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.ShipmentStatus.Delivered) entity.DeliveredAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(entity); }
 
     [HttpGet("routes")]
     public async Task<IReadOnlyList<RoutePlan>> Routes(CancellationToken ct) => await db.RoutePlans.Where(x => x.TenantId == TenantId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
 
-    [HttpPost("routes")]
-    public async Task<IActionResult> CreateRoute(RoutePlan input, CancellationToken ct)
-    { var id = TenantId; if (input.ShipmentId is not null && !await db.Shipments.AnyAsync(x => x.TenantId == id && x.Id == input.ShipmentId, ct)) return NotFound(new { detail = "Shipment not found." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.RoutePlans.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/routes/{input.Id}", input); }
-
-    [HttpPost("routes/{routeId:guid}/stops")]
-    public async Task<IActionResult> AddRouteStop(Guid routeId, RouteStop input, CancellationToken ct)
-    { var id = TenantId; if (!await db.RoutePlans.AnyAsync(x => x.TenantId == id && x.Id == routeId, ct)) return NotFound(); if (input.Sequence < 1) return BadRequest(new { detail = "Route sequence must start at 1." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.RoutePlanId = routeId; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; db.RouteStops.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/routes/{routeId}/stops/{input.Id}", input); }
-
     [HttpGet("documents")]
     public async Task<IReadOnlyList<CommercialDocument>> Documents(CancellationToken ct) => await db.CommercialDocuments.Where(x => x.TenantId == TenantId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
-
-    [HttpPost("documents")]
-    public async Task<IActionResult> CreateDocument(CommercialDocument input, CancellationToken ct)
-    { var id = TenantId; if (input.Amount < 0) return BadRequest(new { detail = "Document amount cannot be negative." }); var now = DateTime.UtcNow; input.Id = Guid.NewGuid(); input.TenantId = id; input.Number = $"DOC-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..24]; input.Status = "draft"; input.CreatedAtUtc = now; input.UpdatedAtUtc = now; db.CommercialDocuments.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/documents/{input.Id}", input); }
 
     [HttpGet("payments")]
     public async Task<IReadOnlyList<Payment>> Payments(CancellationToken ct) => await db.Payments.Where(x => x.TenantId == TenantId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
 
     [HttpPost("payments")]
     public async Task<IActionResult> CreatePayment(Payment input, CancellationToken ct)
-    { var id = TenantId; if (input.Amount <= 0) return BadRequest(new { detail = "Payment amount must be positive." }); var now = DateTime.UtcNow; input.Id = Guid.NewGuid(); input.TenantId = id; input.Status = PaymentStatus.Requested; input.CreatedAtUtc = now; input.UpdatedAtUtc = now; input.RequestedAtUtc = now; db.Payments.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/payments/{input.Id}", input); }
+    { var id = TenantId; if (input.Amount <= 0) return BadRequest(new { detail = "Payment amount must be positive." }); input.Id = Guid.NewGuid(); input.TenantId = id; input.Status = PaymentStatus.Requested; input.CreatedAtUtc = DateTime.UtcNow; input.UpdatedAtUtc = DateTime.UtcNow; input.RequestedAtUtc = DateTime.UtcNow; db.Payments.Add(input); await db.SaveChangesAsync(ct); return Created($"/api/enterprise/payments/{input.Id}", input); }
 
     [HttpPost("payments/{id:guid}/status")]
-    public async Task<IActionResult> PaymentStatus(Guid id, PaymentStatus status, CancellationToken ct)
-    { var payment = await db.Payments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (payment is null) return NotFound(); payment.Status = status; payment.UpdatedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.PaymentStatus.Paid) payment.PaidAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(payment); }
+    public async Task<IActionResult> UpdatePaymentStatus(Guid id, PaymentStatus status, CancellationToken ct)
+    { var entity = await db.Payments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct); if (entity is null) return NotFound(); entity.Status = status; entity.UpdatedAtUtc = DateTime.UtcNow; if (status == QualifyAI.Domain.PaymentStatus.Paid) entity.PaidAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return Ok(entity); }
 }
 
 public sealed record SalesOrderRequest(Guid? CustomerAccountId, Guid? CompanyId, Guid? ContactId, OrderChannel Channel, string? Currency, DateTime? RequestedDeliveryAtUtc, string? Notes, IReadOnlyList<SalesOrderItemRequest> Items);
