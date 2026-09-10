@@ -19,7 +19,8 @@ internal static class BusinessEntityModelConfiguration
                     .Property(property.Name)
                     .HasColumnType("decimal(18,2)");
             }
-
         }
+
+        builder.ConfigureEnterpriseModel();
     }
 }
