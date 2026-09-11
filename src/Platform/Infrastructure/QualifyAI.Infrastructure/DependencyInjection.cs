@@ -25,18 +25,14 @@ public static class DependencyInjection
     {
         services.AddSingleton<ITenantDatabaseConnectionResolver, TenantDatabaseConnectionResolver>();
         services.AddScoped<ITenantContext, TenantContext>();
-
         services.AddDbContext<AppDbContext>((serviceProvider, options) =>
         {
             var tenantContext = serviceProvider.GetRequiredService<ITenantContext>();
             var connectionResolver = serviceProvider.GetRequiredService<ITenantDatabaseConnectionResolver>();
             var connectionString = connectionResolver.ResolveConnectionString(tenantContext.Current);
-
             options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure());
-            if (allowDevelopmentModelDrift)
-                options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+            if (allowDevelopmentModelDrift) options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
-
         services.AddSingleton<ITenantLifecycleEventStore,TenantLifecycleEventStore>();
         services.AddSingleton<ITenantAlertService,TenantAlertService>();
         services.AddScoped<ITenantLifecycleHealthService,TenantLifecycleHealthService>();
@@ -51,13 +47,13 @@ public static class DependencyInjection
         services.AddScoped<IBusinessUnitOfWork,BusinessUnitOfWork>();
         services.AddScoped<ICrmRepository,CrmRepository>();
         services.AddScoped<ISupportRepository,SupportRepository>();
-        services.AddScoped<IKnowledgeAiRepository,KnowledgeAiRepository>();
+        services.AddScoped<IKnowledgeAiRepository,SqlKnowledgeAiRepository>();
         services.AddScoped<IWorkflowAutomationRepository,WorkflowAutomationRepository>();
         services.AddScoped<ITenantEntitlementRepository,TenantEntitlementRepository>();
         services.AddScoped<IdentityEntitlementInboxProcessor>();
         services.AddScoped<IGoldenPipelineProvisioner,GoldenPipelineProvisioner>();
         services.AddScoped<IModuleProvisioner,GoldenPipelineModuleProvisioner>();
-        services.AddScoped<IModuleLifecycleHandler,GoldenPipelineLifecycleHandler>();
+        services.AddScoped<IModuleLifecycleHandler,GoldenPipelineModuleLifecycleHandler>();
         services.AddScoped<IModuleRegistry,ModuleRegistry>();
         services.AddScoped<IModuleProvisioningOrchestrator,ModuleProvisioningOrchestrator>();
         services.AddScoped<IModuleDeactivationOrchestrator,ModuleDeactivationOrchestrator>();
@@ -86,27 +82,18 @@ public static class DependencyInjection
         services.AddSingleton<IAutonomousAcquisitionTemplateRegistry,AutonomousAcquisitionTemplateRegistry>();
         services.AddScoped<IAutonomousAcquisitionBackendService,AutonomousAcquisitionBackendService>();
         services.AddScoped<IAutonomousAcquisitionRunOrchestrator,AutonomousAcquisitionRunOrchestrator>();
-        services.AddHttpClient<TenantSerpApiProspectDiscoveryProvider>(c =>
-        {
-            c.BaseAddress = new Uri("https://serpapi.com/");
-            c.Timeout = TimeSpan.FromSeconds(60);
-        });
+        services.AddHttpClient<TenantSerpApiProspectDiscoveryProvider>(c => { c.BaseAddress = new Uri("https://serpapi.com/"); c.Timeout = TimeSpan.FromSeconds(60); });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<TenantSerpApiProspectDiscoveryProvider>());
         services.AddScoped<IProspectDiscoveryProvider,RenovaDemoProspectDiscoveryProvider>();
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
         services.AddScoped<RealWorkspaceService>();
         services.AddScoped<IEmailDeliveryProvider,SmtpEmailProvider>();
-        services.AddHttpClient<BrevoEmailProvider>(c =>
-        {
-            c.BaseAddress = new Uri("https://api.brevo.com/v3/");
-            c.Timeout = TimeSpan.FromSeconds(60);
-        });
+        services.AddHttpClient<BrevoEmailProvider>(c => { c.BaseAddress = new Uri("https://api.brevo.com/v3/"); c.Timeout = TimeSpan.FromSeconds(60); });
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<BrevoEmailProvider>());
         services.AddHttpClient<SendGridEmailProvider>();
         services.AddScoped<IEmailDeliveryProvider>(sp => sp.GetRequiredService<SendGridEmailProvider>());
         services.AddScoped<EmailDeliveryService>();
-
         return services;
     }
 }
