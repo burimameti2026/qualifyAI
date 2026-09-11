@@ -103,10 +103,13 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         var agents = await db.AutonomousAcquisitionAgents.Where(x => x.Status == AutonomousAgentStatus.Active).ToListAsync(ct);
         var tenantIds = agents.Select(x => x.TenantId).Distinct().ToList();
         var timeZones = await db.TenantSettings.Where(x => tenantIds.Contains(x.TenantId) && x.Key == TimeZoneSetting).ToDictionaryAsync(x => x.TenantId, x => x.Value, ct);
+        var pendingAgentIds = await db.AutonomousAcquisitionAgentRuns.Where(x => x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running).Select(x => x.AgentId).Distinct().ToListAsync(ct);
+        var pending = pendingAgentIds.ToHashSet();
         var nowUtc = DateTime.UtcNow;
 
         foreach (var agent in agents)
         {
+            if (pending.Contains(agent.Id)) continue;
             var timeZone = ResolveTimeZone(timeZones.TryGetValue(agent.TenantId, out var configured) ? configured : null);
             var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
             var localToday = DateOnly.FromDateTime(localNow);
@@ -122,7 +125,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
                 Status = AutonomousAgentRunStatus.Queued,
                 ScheduledAtUtc = nowUtc
             });
-            agent.LastRunAtUtc = nowUtc;
+            pending.Add(agent.Id);
             agent.UpdatedAtUtc = nowUtc;
         }
         await db.SaveChangesAsync(ct);
