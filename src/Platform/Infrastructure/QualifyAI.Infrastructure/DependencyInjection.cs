@@ -57,7 +57,7 @@ public static class DependencyInjection
         services.AddScoped<IdentityEntitlementInboxProcessor>();
         services.AddScoped<IGoldenPipelineProvisioner,GoldenPipelineProvisioner>();
         services.AddScoped<IModuleProvisioner,GoldenPipelineModuleProvisioner>();
-        services.AddScoped<IModuleLifecycleHandler,GoldenPipelineModuleLifecycleHandler>();
+        services.AddScoped<IModuleLifecycleHandler,GoldenPipelineLifecycleHandler>();
         services.AddScoped<IModuleRegistry,ModuleRegistry>();
         services.AddScoped<IModuleProvisioningOrchestrator,ModuleProvisioningOrchestrator>();
         services.AddScoped<IModuleDeactivationOrchestrator,ModuleDeactivationOrchestrator>();
@@ -86,12 +86,12 @@ public static class DependencyInjection
         services.AddSingleton<IAutonomousAcquisitionTemplateRegistry,AutonomousAcquisitionTemplateRegistry>();
         services.AddScoped<IAutonomousAcquisitionBackendService,AutonomousAcquisitionBackendService>();
         services.AddScoped<IAutonomousAcquisitionRunOrchestrator,AutonomousAcquisitionRunOrchestrator>();
-        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(c =>
+        services.AddHttpClient<TenantSerpApiProspectDiscoveryProvider>(c =>
         {
             c.BaseAddress = new Uri("https://serpapi.com/");
             c.Timeout = TimeSpan.FromSeconds(60);
         });
-        services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
+        services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<TenantSerpApiProspectDiscoveryProvider>());
         services.AddScoped<IProspectDiscoveryProvider,RenovaDemoProspectDiscoveryProvider>();
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<RealisticScenarioService>();
