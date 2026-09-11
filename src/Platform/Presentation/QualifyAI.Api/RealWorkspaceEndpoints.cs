@@ -33,8 +33,37 @@ public static class RealWorkspaceEndpoints
         {
             var tenantId = ResolveTenant(request, currentTenant);
             if (tenantId is null) return Results.BadRequest(new { error = "The selected workspace does not belong to the current tenant." });
-            var agent = await EnsureAgent(request with { TenantId = tenantId.Value }, db, templates, ct);
-            return Results.Ok(new RealWorkspaceResult(tenantId.Value, agent.Id, agent.Name, agent.Status.ToString(), null, "prepared", null, null));
+
+            var scopedRequest = request with { TenantId = tenantId.Value };
+            var agent = await EnsureAgent(scopedRequest, db, templates, ct);
+            var workspace = await EnsureCampaignWorkspace(scopedRequest, agent, db, ct);
+
+            agent.Status = AutonomousAgentStatus.Active;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+
+            var existingQueuedOrRunning = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x =>
+                x.TenantId == tenantId.Value &&
+                x.AgentId == agent.Id &&
+                (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running), ct);
+
+            AutonomousAcquisitionAgentRun? initialRun = null;
+            if (!existingQueuedOrRunning)
+            {
+                initialRun = new AutonomousAcquisitionAgentRun
+                {
+                    TenantId = tenantId.Value,
+                    AgentId = agent.Id,
+                    IsManual = true,
+                    Status = AutonomousAgentRunStatus.Queued,
+                    ScheduledAtUtc = DateTime.UtcNow
+                };
+                db.AutonomousAcquisitionAgentRuns.Add(initialRun);
+            }
+
+            await db.SaveChangesAsync(ct);
+            return Results.Accepted($"/api/real-workspace/tenants/{tenantId.Value}",
+                new RealWorkspaceResult(tenantId.Value, agent.Id, agent.Name, agent.Status.ToString(), initialRun?.Id,
+                    existingQueuedOrRunning ? "already-queued" : "activation-queued", workspace.TargetList.Id, workspace.Campaign.Id));
         });
 
         g.MapPost("/activate", async (RealWorkspaceRequest request, ICurrentTenant currentTenant, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct) =>
