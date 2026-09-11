@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.Application;
 using QualifyAI.Domain;
 using QualifyAI.Persistence.SqlServer;
 
