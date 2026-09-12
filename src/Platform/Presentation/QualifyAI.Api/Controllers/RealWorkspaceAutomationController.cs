@@ -13,14 +13,14 @@ namespace QualifyAI.Api.Controllers;
 [Route("api/real-workspace")]
 public sealed class RealWorkspaceAutomationController(AppDbContext db, ITenantContext tenant, IAutonomousAcquisitionTemplateRegistry templates) : ControllerBase
 {
-    public sealed record Request(string? Name, string? UseCase, string? TemplateKey, string? Industry, string? Region, string? CountriesJson, int DailyDiscoveryLimit = 25, int MinimumScore = 70, string? RunTimeUtc = null);
+    public sealed record PrepareRequest(string? Name, string? UseCase, string? TemplateKey, string? Industry, string? Region, string? CountriesJson, int DailyDiscoveryLimit = 25, int MinimumScore = 70, string? RunTimeUtc = null);
     public sealed record Result(Guid TenantId, Guid AgentId, string AgentName, string AgentStatus, Guid? InitialRunId, string Status, Guid? TargetListId, Guid? CampaignId);
 
     [HttpGet("options")]
     public IActionResult Options() => Ok(new RealWorkspaceService(db).Options());
 
     [HttpPost("prepare")]
-    public async Task<IActionResult> Prepare([FromBody] Request request, CancellationToken ct)
+    public async Task<IActionResult> Prepare([FromBody] PrepareRequest request, CancellationToken ct)
     {
         var tenantId = tenant.TenantId();
         if (string.IsNullOrWhiteSpace(request.UseCase) || string.IsNullOrWhiteSpace(request.TemplateKey) || string.IsNullOrWhiteSpace(request.Industry) || string.IsNullOrWhiteSpace(request.Region))
