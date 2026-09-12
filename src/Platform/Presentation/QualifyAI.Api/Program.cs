@@ -105,6 +105,7 @@ static async Task BootstrapBusinessDatabasesAsync(
         var controlDb = controlScope.ServiceProvider.GetRequiredService<AppDbContext>();
         await controlDb.Database.MigrateAsync();
         await controlDb.EnsureBillingSchemaAsync();
+        await controlDb.EnsureEnterpriseSchemaAsync();
     }
 
     await using var renovaScope = services.CreateAsyncScope();
@@ -114,6 +115,7 @@ static async Task BootstrapBusinessDatabasesAsync(
     var renovaDb = renovaScope.ServiceProvider.GetRequiredService<AppDbContext>();
     await renovaDb.Database.MigrateAsync();
     await renovaDb.EnsureBillingSchemaAsync();
+    await renovaDb.EnsureEnterpriseSchemaAsync();
 
     var executionStrategy = renovaDb.Database.CreateExecutionStrategy();
     await executionStrategy.ExecuteAsync(async () =>
