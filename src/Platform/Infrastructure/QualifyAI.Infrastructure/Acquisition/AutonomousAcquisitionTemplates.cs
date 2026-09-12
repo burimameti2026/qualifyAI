@@ -2,7 +2,10 @@ using QualifyAI.Domain;
 
 namespace QualifyAI.Infrastructure.Acquisition;
 
-public sealed record AutonomousAcquisitionTemplate(string Code,string Name,string Industry,string Region,string[] Keywords,string[] Signals,int MinimumScore=90);
+public sealed record AutonomousAcquisitionTemplate(string Code,string Name,string Industry,string Region,string[] Keywords,string[] Signals,int MinimumScore=90)
+{
+    public string UseCaseId => Code;
+}
 
 public interface IAutonomousAcquisitionTemplateRegistry
 {
