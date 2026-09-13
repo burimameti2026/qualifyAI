@@ -1,27 +1,27 @@
-# QualifyAI Enterprise — Stable v1 Stabilization Report
+# LeadsAI Enterprise — Stable v1 Stabilization Report
 
 This branch is based on the current Complete Functional Master. It keeps the current architecture and restores/regresses fixes from the previous working sessions without reintroducing the old Gateway or the old many-business-API layout.
 
 ## Active architecture
 
 - Separate Identity service:
-  - QualifyAI.Identity.Api
-  - QualifyAI.Identity.Application
-  - QualifyAI.Identity.Domain
-  - QualifyAI.Identity.Infrastructure
+  - LeadsAI.Identity.Api
+  - LeadsAI.Identity.Application
+  - LeadsAI.Identity.Domain
+  - LeadsAI.Identity.Infrastructure
 - Consolidated Business API:
-  - QualifyAI.Domain.Core
-  - QualifyAI.Application
-  - QualifyAI.Application.Commands
-  - QualifyAI.Application.Queries
-  - QualifyAI.Infrastructure
-  - QualifyAI.Api
+  - LeadsAI.Domain.Core
+  - LeadsAI.Application
+  - LeadsAI.Application.Commands
+  - LeadsAI.Application.Queries
+  - LeadsAI.Infrastructure
+  - LeadsAI.Api
 - Specialized services remain separate: Automation, Notifications, Knowledge, AI Orchestration, Integrations.
-- One active Angular source tree: `admin/qualifyai-admin`.
+- One active Angular source tree: `admin/leadsai-admin`.
 
 ## Restored/fixed regressions
 
-1. Removed duplicate obsolete `ui/qualifyai-admin` source tree. Docker and developers now use one Angular source of truth.
+1. Removed duplicate obsolete `ui/leadsai-admin` source tree. Docker and developers now use one Angular source of truth.
 2. `Array.findLast()` regression is absent from the active source.
 3. `CreateLeadTool` duplicate anonymous `Id` regression is absent.
 4. Authenticated tenant context can no longer be overridden with `X-Tenant` or query string. It comes from the signed `tenant_slug` claim.

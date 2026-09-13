@@ -1,18 +1,18 @@
 $ErrorActionPreference = "Stop"
 
-$identity = $env:QUALIFYAI_IDENTITY_URL ?? "http://localhost:8081"
-$api = $env:QUALIFYAI_API_URL ?? "http://localhost:8080"
-$adminTenant = $env:QUALIFYAI_ADMIN_TENANT ?? "demo"
-$adminEmail = $env:QUALIFYAI_ADMIN_EMAIL ?? "admin@demo.local"
-$adminPassword = $env:QUALIFYAI_ADMIN_PASSWORD ?? "Admin123!ChangeMe"
+$identity = $env:LEADSAI_IDENTITY_URL ?? "http://localhost:8081"
+$api = $env:LEADSAI_API_URL ?? "http://localhost:8080"
+$adminTenant = $env:LEADSAI_ADMIN_TENANT ?? "demo"
+$adminEmail = $env:LEADSAI_ADMIN_EMAIL ?? "admin@demo.local"
+$adminPassword = $env:LEADSAI_ADMIN_PASSWORD ?? "Admin123!ChangeMe"
 $ownerEmail = $env:FUSIONFLEET_OWNER_EMAIL ?? "fusionfleet.master@local.test"
 $ownerPassword = $env:FUSIONFLEET_OWNER_PASSWORD ?? "FusionFleet123!ChangeMe"
 
 function Assert-True([bool]$condition, [string]$message) { if (-not $condition) { throw "ASSERTION FAILED: $message" } Write-Host "[OK] $message" -ForegroundColor Green }
 function Get-Token([string]$tenant, [string]$email, [string]$password) {
     $token = Invoke-RestMethod -Method Post -Uri "$identity/connect/token" -ContentType "application/x-www-form-urlencoded" -Body @{
-        grant_type = "password"; client_id = "qualifyai-admin"; username = $email; password = $password; tenant = $tenant
-        scope = "openid profile email offline_access qualifyai-api"
+        grant_type = "password"; client_id = "leadsai-admin"; username = $email; password = $password; tenant = $tenant
+        scope = "openid profile email offline_access leadsai-api"
     }
     Assert-True (-not [string]::IsNullOrWhiteSpace($token.access_token)) "token issued for $tenant/$email"
     return $token.access_token

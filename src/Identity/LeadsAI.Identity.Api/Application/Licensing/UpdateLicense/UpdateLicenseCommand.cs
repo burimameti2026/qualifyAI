@@ -1,0 +1,76 @@
+using FluentValidation;
+using MediatR;
+using LeadsAI.BuildingBlocks.Messaging.Outbox;
+using LeadsAI.Contracts.Identity;
+using LeadsAI.Identity.Application.Abstractions.Persistence;
+using LeadsAI.Identity.Application.Licensing;
+using LeadsAI.Identity.Domain.Licensing;
+
+namespace LeadsAI.Identity.Application.Licensing.UpdateLicense;
+
+public sealed record UpdateLicenseCommand(
+    Guid TenantId,
+    string Plan,
+    int MaxUsers,
+    DateTime? ExpiresAtUtc,
+    IReadOnlyCollection<string> Modules) : IRequest;
+
+public sealed class UpdateLicenseCommandValidator : AbstractValidator<UpdateLicenseCommand>
+{
+    public UpdateLicenseCommandValidator()
+    {
+        RuleFor(x => x.TenantId).NotEmpty();
+        RuleFor(x => x.Plan).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.MaxUsers).GreaterThan(0);
+        RuleFor(x => x.Modules).NotNull();
+    }
+}
+
+public sealed class UpdateLicenseCommandHandler(
+    ITenantRepository tenants,
+    ILicenseRepository licenses,
+    IOutboxWriter outbox,
+    IIdentityUnitOfWork unitOfWork)
+    : IRequestHandler<UpdateLicenseCommand>
+{
+    public async Task Handle(
+        UpdateLicenseCommand request,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await tenants.GetByIdAsync(request.TenantId, cancellationToken)
+            ?? throw new KeyNotFoundException("Tenant not found.");
+
+        var license = await licenses.GetByTenantIdAsync(request.TenantId, cancellationToken)
+            ?? throw new KeyNotFoundException("License not found.");
+
+        var modules = LicensePlanCatalog.ValidateModules(request.Plan, request.Modules);
+        license.ChangePlan(request.Plan, request.MaxUsers, request.ExpiresAtUtc);
+        license.ReplaceModules(modules);
+
+        QueueLicenseChanged(outbox, tenant.Slug, license);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    internal static void QueueLicenseChanged(
+        IOutboxWriter outbox,
+        string tenantSlug,
+        License license)
+    {
+        if (string.IsNullOrWhiteSpace(tenantSlug))
+            throw new InvalidOperationException($"Tenant {license.TenantId} has no valid slug.");
+
+        outbox.Add(new TenantLicenseChangedIntegrationEvent(
+            Guid.NewGuid(),
+            DateTime.UtcNow,
+            license.TenantId,
+            tenantSlug.Trim().ToLowerInvariant(),
+            license.Id,
+            license.Plan,
+            license.Status.ToString(),
+            license.MaxUsers,
+            license.StartsAtUtc,
+            license.ExpiresAtUtc,
+            license.Version,
+            license.Modules.Where(x => x.Enabled).Select(x => x.Code).ToArray()));
+    }
+}

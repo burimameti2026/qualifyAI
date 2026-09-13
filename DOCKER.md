@@ -1,8 +1,8 @@
-# QualifyAI local backend
+# LeadsAI local backend
 
 The backend is one Docker Compose project: Identity API, Platform API, API Gateway,
 MongoDB, RabbitMQ, Redis, and Seq. The Angular UI remains in the separate
-`qualifyai-admin` repository.
+`leadsai-admin` repository.
 
 SQL Server is intentionally external. Both APIs run in Linux containers and connect
 to the Windows `SQLEXPRESS` instance through `host.docker.internal` and a fixed TCP port.

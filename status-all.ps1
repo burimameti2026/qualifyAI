@@ -1,11 +1,11 @@
 $ErrorActionPreference = 'Continue'
 
-Write-Host 'QualifyAI containers:' -ForegroundColor Cyan
-docker ps -a --filter 'name=qualifyai-' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+Write-Host 'LeadsAI containers:' -ForegroundColor Cyan
+docker ps -a --filter 'name=leadsai-' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 
 $containers = @(
-    'qualifyai-mongodb', 'qualifyai-rabbitmq', 'qualifyai-redis', 'qualifyai-seq',
-    'qualifyai-identity-api', 'qualifyai-platform-api', 'qualifyai-api-gateway'
+    'leadsai-mongodb', 'leadsai-rabbitmq', 'leadsai-redis', 'leadsai-seq',
+    'leadsai-identity-api', 'leadsai-platform-api', 'leadsai-api-gateway'
 )
 
 foreach ($container in $containers) {

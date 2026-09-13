@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../LeadsAI.Knowledge.Persistence.SqlServer/LeadsAI.Knowledge.Persistence.SqlServer.csproj" />
+    <ProjectReference Include="../LeadsAI.Knowledge.Domain/LeadsAI.Knowledge.Domain.csproj" />
+    <ProjectReference Include="../LeadsAI.Knowledge.Application/LeadsAI.Knowledge.Application.csproj" />
+    <ProjectReference Include="../../../../Shared/LeadsAI.BuildingBlocks.Messaging/LeadsAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../../Application/LeadsAI.Contracts/LeadsAI.Contracts.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MassTransit" />
+    <PackageReference Include="MassTransit.RabbitMQ" />
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+</Project>

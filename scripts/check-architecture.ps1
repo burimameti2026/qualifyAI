@@ -32,9 +32,9 @@ foreach ($serviceRoot in Get-ServiceRoots) {
 
 Write-Host 'Checking API persistence leaks...'
 $legacyApiAllowList = @(
-    'src/Platform/Presentation/QualifyAI.Api/ModuleEndpoints.cs',
-    'src/Platform/Presentation/QualifyAI.Api/ExtendedAdminEndpoints.cs',
-    'src/Platform/Presentation/QualifyAI.Api/PublicChatEndpoints.cs'
+    'src/Platform/Presentation/LeadsAI.Api/ModuleEndpoints.cs',
+    'src/Platform/Presentation/LeadsAI.Api/ExtendedAdminEndpoints.cs',
+    'src/Platform/Presentation/LeadsAI.Api/PublicChatEndpoints.cs'
 )
 
 $apiFiles = Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter '*.cs' |

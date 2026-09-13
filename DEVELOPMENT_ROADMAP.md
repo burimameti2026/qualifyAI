@@ -1,4 +1,4 @@
-# QualifyAI Development Roadmap
+# LeadsAI Development Roadmap
 
 This document tracks the major development work remaining after completion of the core tenant lifecycle, licensing, provisioning, and enterprise billing hardening foundations.
 
@@ -186,4 +186,4 @@ Central operations UI for:
 
 ## Goal
 
-The objective of these priorities is to move QualifyAI from an enterprise feature-complete platform toward a fully production-grade SaaS platform with strong operational reliability, security, scalability, and observability.
+The objective of these priorities is to move LeadsAI from an enterprise feature-complete platform toward a fully production-grade SaaS platform with strong operational reliability, security, scalability, and observability.

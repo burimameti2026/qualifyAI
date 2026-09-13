@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../Shared/LeadsAI.BuildingBlocks.Domain/LeadsAI.BuildingBlocks.Domain.csproj" />
+
+  </ItemGroup>
+</Project>

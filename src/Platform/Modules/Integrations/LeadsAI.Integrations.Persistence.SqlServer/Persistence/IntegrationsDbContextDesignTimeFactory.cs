@@ -1,0 +1,19 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace LeadsAI.Integrations.Persistence.SqlServer;
+
+public sealed class IntegrationsDbContextDesignTimeFactory : IDesignTimeDbContextFactory<IntegrationsDbContext>
+{
+    public IntegrationsDbContext CreateDbContext(string[] args)
+    {
+        var options = new DbContextOptionsBuilder<IntegrationsDbContext>()
+            .UseSqlServer(DesignConnectionString)
+            .Options;
+
+        return new IntegrationsDbContext(options);
+    }
+
+    private const string DesignConnectionString =
+        "Server=localhost;Database=LeadsAI_Integrations_Design;User Id=t24test;Password=DesignOnly123!;TrustServerCertificate=True;Encrypt=False";
+}

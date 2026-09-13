@@ -12,7 +12,7 @@ Unblock-File .\install-infra.ps1
 Check Docker Desktop plus:
 
 ```powershell
-docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting ps
+docker compose --project-directory src/Infrastructure/LeadsAI.Infrastructure.Hosting ps
 ```
 
 ## 2. Application stack — sequential build
@@ -24,7 +24,7 @@ Unblock-File .\install-api.ps1
 .\install-api.ps1
 ```
 
-Do not replace this with `docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting up -d --build` while diagnosing the NuGet EOF issue. The script builds one service at a time and each .NET image restores with `--disable-parallel`.
+Do not replace this with `docker compose --project-directory src/Infrastructure/LeadsAI.Infrastructure.Hosting up -d --build` while diagnosing the NuGet EOF issue. The script builds one service at a time and each .NET image restores with `--disable-parallel`.
 
 ## 3. Login
 
@@ -59,6 +59,6 @@ For any failure inspect Seq first: `http://localhost:5341`.
 For container logs:
 
 ```powershell
-docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting logs --tail 200 platform-api
-docker compose --project-directory src/Infrastructure/QualifyAI.Infrastructure.Hosting logs --tail 200 identity-api
+docker compose --project-directory src/Infrastructure/LeadsAI.Infrastructure.Hosting logs --tail 200 platform-api
+docker compose --project-directory src/Infrastructure/LeadsAI.Infrastructure.Hosting logs --tail 200 identity-api
 ```

@@ -1,4 +1,4 @@
-namespace QualifyAI.Domain;
+namespace LeadsAI.Domain;
 
 public enum AutonomousAgentStatus { Draft, Active, Paused, Stopped, Failed }
 public enum AutonomousAgentRunStatus { Queued, Running, Completed, Failed, Cancelled }

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="Aspire.AppHost.Sdk" Version="9.4.0" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAspireHost>true</IsAspireHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" />
+    <PackageReference Include="Aspire.Hosting.SqlServer" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" />
+    <ProjectReference Include="../../Platform/Presentation/LeadsAI.Api/LeadsAI.Api.csproj" />
+    <ProjectReference Include="../../ApiGateway/LeadsAI.ApiGateway/LeadsAI.ApiGateway.csproj" />
+    <ProjectReference Include="../../Identity/LeadsAI.Identity.Api/LeadsAI.Identity.Api.csproj" />
+  </ItemGroup>
+</Project>

@@ -53,4 +53,4 @@ The UI and API must enforce these entitlements consistently. A disabled module o
 
 ## Renova
 
-Renova is the reference tenant used to validate this architecture. Its dedicated business database is `RenovaPromotions`. The public Renova portal is exposed at `/renova`, while the root application remains the main QualifyAI landing page.
+Renova is the reference tenant used to validate this architecture. Its dedicated business database is `RenovaPromotions`. The public Renova portal is exposed at `/renova`, while the root application remains the main LeadsAI landing page.

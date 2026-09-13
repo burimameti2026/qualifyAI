@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../LeadsAI.Automation.Persistence.SqlServer/LeadsAI.Automation.Persistence.SqlServer.csproj" />
+    <ProjectReference Include="../LeadsAI.Automation.Domain/LeadsAI.Automation.Domain.csproj" />
+    <ProjectReference Include="../LeadsAI.Automation.Application/LeadsAI.Automation.Application.csproj" />
+    <ProjectReference Include="../../../../Shared/LeadsAI.BuildingBlocks.Messaging/LeadsAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../../Application/LeadsAI.Contracts/LeadsAI.Contracts.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MassTransit" />
+    <PackageReference Include="MassTransit.RabbitMQ" />
+  </ItemGroup>
+</Project>

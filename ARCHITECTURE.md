@@ -2,11 +2,11 @@
 
 ## Deployment model
 
-QualifyAI is a modular platform with three deployable .NET hosts:
+LeadsAI is a modular platform with three deployable .NET hosts:
 
-1. `QualifyAI.ApiGateway` — YARP edge routing.
-2. `QualifyAI.Api` — the authenticated platform HTTP host and SignalR endpoint.
-3. `QualifyAI.Identity.Api` — OpenIddict, users, tenants, roles, permissions and licenses.
+1. `LeadsAI.ApiGateway` — YARP edge routing.
+2. `LeadsAI.Api` — the authenticated platform HTTP host and SignalR endpoint.
+3. `LeadsAI.Identity.Api` — OpenIddict, users, tenants, roles, permissions and licenses.
 
 Automation, Notifications, Knowledge, AI Orchestration and Integrations are modules inside the
 platform process. Each module retains separate Domain, Application and Infrastructure projects,
@@ -18,7 +18,7 @@ its own EF Core DbContext and its own database. They are not separate Web API pr
 Browser / Angular
        |
        v
-QualifyAI.ApiGateway :10000
+LeadsAI.ApiGateway :10000
   |                         |
   | /connect + /identity    | /api + /hubs + /services
   v                         v
@@ -87,7 +87,7 @@ database separately.
 
 Identity uses ASP.NET Core Identity and OpenIddict with password, refresh-token and
 client-credentials flows. It issues tenant, license, module, role and permission claims. The
-platform API validates tokens using Identity as its JWT authority and the `qualifyai-api`
+platform API validates tokens using Identity as its JWT authority and the `leadsai-api`
 audience.
 
 ## Messaging and consistency
@@ -107,4 +107,4 @@ their inbox state.
 - Seq: centralized structured logs.
 - Portainer: local container operations.
 
-The Docker network is `qualifyai-network`.
+The Docker network is `leadsai-network`.

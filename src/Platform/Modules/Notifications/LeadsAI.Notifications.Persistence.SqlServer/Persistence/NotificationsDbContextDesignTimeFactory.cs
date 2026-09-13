@@ -1,0 +1,19 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace LeadsAI.Notifications.Persistence.SqlServer;
+
+public sealed class NotificationsDbContextDesignTimeFactory : IDesignTimeDbContextFactory<NotificationsDbContext>
+{
+    public NotificationsDbContext CreateDbContext(string[] args)
+    {
+        var options = new DbContextOptionsBuilder<NotificationsDbContext>()
+            .UseSqlServer(DesignConnectionString)
+            .Options;
+
+        return new NotificationsDbContext(options);
+    }
+
+    private const string DesignConnectionString =
+        "Server=localhost;Database=LeadsAI_Notifications_Design;User Id=t24test;Password=DesignOnly123!;TrustServerCertificate=True;Encrypt=False";
+}

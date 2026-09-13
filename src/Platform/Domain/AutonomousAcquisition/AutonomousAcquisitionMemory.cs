@@ -1,4 +1,4 @@
-namespace QualifyAI.Domain;
+namespace LeadsAI.Domain;
 
 public sealed class AutonomousAcquisitionAgentMemory
 {

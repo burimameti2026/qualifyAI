@@ -39,11 +39,11 @@ try {
 
     # Remove containers created by the former second Compose project. This is
     # idempotent and prevents container-name conflicts on the first migration.
-    docker compose --project-name qualifyai-apps --env-file $envFile down --remove-orphans
+    docker compose --project-name leadsai-apps --env-file $envFile down --remove-orphans
     if ($LASTEXITCODE -ne 0) { throw 'Legacy Compose project cleanup failed.' }
 
     docker compose --env-file $envFile up -d --build --remove-orphans
-    if ($LASTEXITCODE -ne 0) { throw 'QualifyAI startup failed.' }
+    if ($LASTEXITCODE -ne 0) { throw 'LeadsAI startup failed.' }
 
     & (Join-Path $PSScriptRoot 'status-all.ps1')
 }

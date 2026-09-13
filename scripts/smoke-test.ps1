@@ -5,11 +5,11 @@ $password = "Admin123!ChangeMe"
 
 $token = Invoke-RestMethod -Method Post -Uri "http://localhost:8081/connect/token" -ContentType "application/x-www-form-urlencoded" -Body @{
     grant_type = "password"
-    client_id = "qualifyai-admin"
+    client_id = "leadsai-admin"
     username = $email
     password = $password
     tenant = $tenant
-    scope = "openid profile email offline_access qualifyai-api"
+    scope = "openid profile email offline_access leadsai-api"
 }
 if (-not $token.access_token) { throw "Identity did not return access_token" }
 Write-Host "[OK] Identity login" -ForegroundColor Green
