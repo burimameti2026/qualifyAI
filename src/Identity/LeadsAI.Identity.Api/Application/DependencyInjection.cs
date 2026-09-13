@@ -1,5 +1,6 @@
 
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LeadsAI.Identity.Application;
 public static class DependencyInjection

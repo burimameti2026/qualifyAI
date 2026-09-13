@@ -1,16 +1,17 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
+using LeadsAI.BuildingBlocks.Security.Access;
+using LeadsAI.BuildingBlocks.Security.Claims;
 using LeadsAI.Identity.Application.Tenants.CreateTenant;
+using LeadsAI.Identity.Application.Tenants.ProvisionTenant;
 using LeadsAI.Identity.Application.Tenants.GetTenant;
 using LeadsAI.Identity.Application.Tenants.ListTenants;
 using LeadsAI.Identity.Application.Tenants.SetStatus;
-using LeadsAI.Identity.Application.Tenants.ProvisionTenant;
+using LeadsAI.Identity.Domain.Tenants;
 using LeadsAI.Identity.Application.Authentication;
 using LeadsAI.Identity.Application.Users.CreateUser;
-using LeadsAI.Identity.Domain.Tenants;
-using LeadsAI.BuildingBlocks.Security.Access;
-using LeadsAI.BuildingBlocks.Security.Claims;
 
 namespace LeadsAI.Identity.Api.Controllers.Tenants;
 
