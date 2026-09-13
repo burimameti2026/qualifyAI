@@ -63,6 +63,35 @@ services:
     networks: [leadsai]
     restart: unless-stopped
 
+  database-bootstrap:
+    image: mcr.microsoft.com/mssql-tools18:latest
+    container_name: leadsai-database-bootstrap
+    environment:
+      DB_SERVER: ${DB_SERVER:?Set DB_SERVER in .env}
+      DB_USER: ${DB_USER:?Set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        echo "Waiting for SQL Server at ${DB_SERVER}..."
+        until /opt/mssql-tools18/bin/sqlcmd -S "${DB_SERVER}" -U "${DB_USER}" -P "${DB_PASSWORD}" -C -Q "SELECT 1" >/dev/null 2>&1; do
+          sleep 3
+        done
+        echo "SQL Server is available. Ensuring LeadsAI databases exist..."
+        /opt/mssql-tools18/bin/sqlcmd -S "${DB_SERVER}" -U "${DB_USER}" -P "${DB_PASSWORD}" -C -b -Q "
+        IF DB_ID(N'LeadsAI_IdentityDb') IS NULL CREATE DATABASE [LeadsAI_IdentityDb];
+        IF DB_ID(N'LeadsAI_Business') IS NULL CREATE DATABASE [LeadsAI_Business];
+        IF DB_ID(N'LeadsAI_AutomationDb') IS NULL CREATE DATABASE [LeadsAI_AutomationDb];
+        IF DB_ID(N'LeadsAI_NotificationsDb') IS NULL CREATE DATABASE [LeadsAI_NotificationsDb];
+        IF DB_ID(N'LeadsAI_KnowledgeDb') IS NULL CREATE DATABASE [LeadsAI_KnowledgeDb];
+        IF DB_ID(N'LeadsAI_AIOrchestrationDb') IS NULL CREATE DATABASE [LeadsAI_AIOrchestrationDb];
+        IF DB_ID(N'LeadsAI_IntegrationsDb') IS NULL CREATE DATABASE [LeadsAI_IntegrationsDb];
+        IF DB_ID(N'RenovaPromotions') IS NULL CREATE DATABASE [RenovaPromotions];
+        SELECT name FROM sys.databases WHERE name IN (N'LeadsAI_IdentityDb',N'LeadsAI_Business',N'LeadsAI_AutomationDb',N'LeadsAI_NotificationsDb',N'LeadsAI_KnowledgeDb',N'LeadsAI_AIOrchestrationDb',N'LeadsAI_IntegrationsDb',N'RenovaPromotions') ORDER BY name;"
+        echo "Database provisioning completed. EF migrations will run from the API startup paths."
+    networks: [leadsai]
+    restart: "no"
+
   identity-api:
     container_name: leadsai-identity-api
     build:
@@ -90,6 +119,8 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -142,6 +173,8 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
       rabbitmq:
