@@ -43,12 +43,11 @@ jobs:
               if new != data:
                   p.write_text(new, encoding='utf-8', newline='')
           PY
-          find . -depth -type d \( -name '*QualifyAI*' -o -name '*QUALIFYAI*' -o -name '*qualifyAI*' -o -name '*qualifyai*' \) -empty -delete
           rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml
           git add -A
-          if find . -not -path './.git/*' \( -name '*QualifyAI*' -o -name '*QUALIFYAI*' -o -name '*qualifyAI*' -o -name '*qualifyai*' \) -print -quit | grep -q .; then
-            echo 'ERROR: old-name paths remain'
-            find . -not -path './.git/*' \( -name '*QualifyAI*' -o -name '*QUALIFYAI*' -o -name '*qualifyAI*' -o -name '*qualifyai*' \) -print | head -50
+          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
+            echo 'ERROR: old-name tracked paths remain'
+            git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
             exit 1
           fi
           if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' >/dev/null; then
