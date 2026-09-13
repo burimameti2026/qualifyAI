@@ -1,0 +1,107 @@
+name: Rename QualifyAI to LeadsAI
+
+on:
+  push:
+    branches: [renova]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'Rename QualifyAI to LeadsAI')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout renova
+        uses: actions/checkout@v4
+        with:
+          ref: renova
+          fetch-depth: 0
+
+      - name: Rename paths and references
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Rename tracked paths from the old product/project name to LeadsAI.
+          git ls-files -z | python3 -c '
+          import sys
+          paths = [p.decode() for p in sys.stdin.buffer.read().split(b"\\0") if p]
+          for p in sorted(paths, key=lambda x: (x.count("/"), len(x)), reverse=True):
+              if "QualifyAI" in p:
+                  new = p.replace("QualifyAI", "LeadsAI")
+                  import os, subprocess
+                  os.makedirs(os.path.dirname(new) or ".", exist_ok=True)
+                  subprocess.run(["git", "mv", "--", p, new], check=True)
+          '
+
+          # Replace the application/project name in tracked text files.
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.cs|*.csproj|*.sln|*.slnx|*.props|*.targets|*.json|*.xml|*.yml|*.yaml|*.md|*.txt|*.ps1|*.sh|*.cmd|*.bat|*.dockerfile|Dockerfile|*.config|*.http|*.editorconfig|*.gitignore|*.gitattributes|*.env|*.example)
+                python3 - "$file" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+try:
+    s = p.read_text(encoding="utf-8")
+except (UnicodeDecodeError, OSError):
+    raise SystemExit(0)
+replacements = [
+    ("QualifyAI", "LeadsAI"),
+    ("QUALIFYAI", "LEADSAI"),
+    ("qualifyAI", "leadsAI"),
+    ("qualifyai", "leadsai"),
+]
+for old, new in replacements:
+    s = s.replace(old, new)
+p.write_text(s, encoding="utf-8", newline="")
+PY
+                ;;
+            esac
+          done < <(git ls-files -z)
+
+          # Verify the old product/project name is gone from paths and tracked text.
+          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
+            echo 'ERROR: old name remains in tracked paths'
+            git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
+            exit 1
+          fi
+
+          if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' >/dev/null; then
+            echo 'ERROR: old name remains in tracked content'
+            git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' || true
+            exit 1
+          fi
+
+          # Make sure the expected renamed solution exists.
+          test -f LeadsAI.sln
+
+      - name: Commit coordinated rename
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No rename changes detected.'
+            exit 0
+          fi
+          git commit -m 'Rename QualifyAI to LeadsAI'
+          git push origin HEAD:renova
+
+      - name: Remove rename workflow
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin renova
+          git checkout -B cleanup origin/renova
+          if [ -f .github/workflows/rename-to-leadsai.yml ]; then
+            git rm .github/workflows/rename-to-leadsai.yml
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'Remove temporary rename workflow'
+            git push origin HEAD:renova
+          fi
