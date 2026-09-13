@@ -2,6 +2,8 @@
   <ItemGroup>
     <Compile Remove="Domain\**\*.cs" />
     <Compile Remove="Application\**\*.cs" />
+    <Compile Remove="Infrastructure\**\*.cs" />
+    <Compile Remove="Persistence\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
