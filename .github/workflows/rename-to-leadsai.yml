@@ -43,6 +43,10 @@ jobs:
               if new != data:
                   p.write_text(new, encoding='utf-8', newline='')
           PY
+          find . -type d -name '*QualifyAI*' -prune -exec rm -rf {} +
+          find . -type d -name '*QUALIFYAI*' -prune -exec rm -rf {} +
+          find . -type d -name '*qualifyAI*' -prune -exec rm -rf {} +
+          find . -type d -name '*qualifyai*' -prune -exec rm -rf {} +
           rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml
           git add -A
           if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
