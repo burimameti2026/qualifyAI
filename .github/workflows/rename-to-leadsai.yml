@@ -21,15 +21,26 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import subprocess
+          import subprocess, uuid
           files = [Path(p.decode()) for p in subprocess.check_output(['git','ls-files','-z']).split(b'\0') if p]
           mappings = [(p, Path(str(p).replace('QualifyAI','LeadsAI'))) for p in files if 'QualifyAI' in str(p)]
-          for src, dst in mappings:
-              if dst.exists():
-                  raise SystemExit(f'Destination already exists: {dst}')
-          for src, dst in mappings:
-              dst.parent.mkdir(parents=True, exist_ok=True)
-              src.rename(dst)
+          tmp = Path(f'.rename-tmp-{uuid.uuid4().hex}')
+          tmp.mkdir()
+          try:
+              staged = []
+              for src, dst in mappings:
+                  t = tmp / src
+                  t.parent.mkdir(parents=True, exist_ok=True)
+                  src.rename(t)
+                  staged.append((t, dst))
+              for t, dst in staged:
+                  dst.parent.mkdir(parents=True, exist_ok=True)
+                  t.rename(dst)
+          finally:
+              if tmp.exists():
+                  import shutil
+                  shutil.rmtree(tmp, ignore_errors=True)
+          print(f'Renamed {len(mappings)} tracked paths')
           for p in Path('.').rglob('*'):
               if not p.is_file() or '.git' in p.parts:
                   continue
