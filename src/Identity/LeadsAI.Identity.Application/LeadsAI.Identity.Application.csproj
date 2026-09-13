@@ -1,11 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../LeadsAI.Identity.Domain/LeadsAI.Identity.Domain.csproj" />
     <ProjectReference Include="../../Shared/LeadsAI.BuildingBlocks.Application/LeadsAI.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="../../Shared/LeadsAI.BuildingBlocks.Messaging/LeadsAI.BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="../../Shared/LeadsAI.BuildingBlocks.Security/LeadsAI.BuildingBlocks.Security.csproj" />
     <ProjectReference Include="../../Platform/Application/LeadsAI.Contracts/LeadsAI.Contracts.csproj" />
+  </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../LeadsAI.Identity.Api/Application/**/*.cs" Link="Application/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="MediatR" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
