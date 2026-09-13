@@ -86,6 +86,7 @@ app.MapExtendedAdmin();
 app.MapPlatformModules();
 
 await BootstrapBusinessDatabasesAsync(app.Services, builder.Configuration, app.Logger);
+await app.Services.MigratePlatformModuleDatabasesAsync();
 
 app.Run();
 
