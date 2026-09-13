@@ -14,66 +14,65 @@ jobs:
         with:
           ref: renova
           fetch-depth: 0
-      - name: Rename tracked project paths
+      - name: Rename every tracked project path
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git ls-files -z | python3 -c '
-          import sys, subprocess, os
-          paths = [p.decode() for p in sys.stdin.buffer.read().split(b"\\0") if p]
-          for p in sorted(paths, key=lambda x: (x.count("/"), len(x)), reverse=True):
-              if "QualifyAI" not in p:
-                  continue
-              new = p.replace("QualifyAI", "LeadsAI")
-              if os.path.exists(p):
-                  os.makedirs(os.path.dirname(new) or ".", exist_ok=True)
-                  subprocess.run(["git", "mv", "--", p, new], check=True)
-          '
-      - name: Rename project references and namespaces
+          git ls-files -z | while IFS= read -r -d '' p; do
+            case "$p" in
+              *QualifyAI*)
+                np="${p//QualifyAI/LeadsAI}"
+                mkdir -p "$(dirname "$np")"
+                git mv -- "$p" "$np"
+                ;;
+            esac
+          done
+      - name: Replace all project references and namespaces
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          root = Path('.')
-          skip = {'.git'}
-          replacements = {
-              'QualifyAI': 'LeadsAI',
-              'QUALIFYAI': 'LEADSAI',
-              'qualifyAI': 'leadsAI',
-              'qualifyai': 'leadsai',
-          }
-          for p in root.rglob('*'):
-              if not p.is_file() or any(part in skip for part in p.parts):
-                  continue
-              try:
-                  data = p.read_text(encoding='utf-8')
-              except (UnicodeDecodeError, OSError):
-                  continue
-              new = data
-              for old, value in replacements.items():
-                  new = new.replace(old, value)
-              if new != data:
-                  p.write_text(new, encoding='utf-8', newline='')
-          PY
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.cs|*.csproj|*.sln|*.slnx|*.props|*.targets|*.json|*.xml|*.yml|*.yaml|*.md|*.txt|*.ps1|*.sh|*.cmd|*.bat|*.dockerfile|Dockerfile|*.config|*.http|*.editorconfig|*.gitignore|*.gitattributes|*.env|*.example)
+                python3 - "$file" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+try:
+    s = p.read_text(encoding='utf-8')
+except (UnicodeDecodeError, OSError):
+    raise SystemExit(0)
+for old, new in (
+    ('QualifyAI', 'LeadsAI'),
+    ('QUALIFYAI', 'LEADSAI'),
+    ('qualifyAI', 'leadsAI'),
+    ('qualifyai', 'leadsai'),
+):
+    s = s.replace(old, new)
+p.write_text(s, encoding='utf-8', newline='')
+PY
+                ;;
+            esac
+          done < <(git ls-files -z)
       - name: Verify complete rename
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml || true
-          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
+          git rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml 2>/dev/null || true
+          echo 'Checking old-name paths...'
+          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai'; then
             echo 'ERROR: old name remains in tracked paths.'
-            git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
             exit 1
           fi
+          echo 'Checking old-name content...'
           if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' >/dev/null; then
-            echo 'ERROR: old name remains in tracked content.'
             git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' || true
+            echo 'ERROR: old name remains in tracked content.'
             exit 1
           fi
           test -f LeadsAI.sln
+          echo 'QualifyAI -> LeadsAI rename verified.'
       - name: Commit completed rename
         shell: bash
         run: |
