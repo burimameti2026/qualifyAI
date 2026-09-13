@@ -40,9 +40,8 @@ jobs:
               if tmp.exists():
                   import shutil
                   shutil.rmtree(tmp, ignore_errors=True)
-          print(f'Renamed {len(mappings)} tracked paths')
           for p in Path('.').rglob('*'):
-              if not p.is_file() or '.git' in p.parts:
+              if not p.is_file() or '.git' in p.parts or '.github/workflows' in str(p):
                   continue
               try:
                   data = p.read_text(encoding='utf-8')
@@ -58,16 +57,15 @@ jobs:
           find . -type d -name '*QUALIFYAI*' -prune -exec rm -rf {} +
           find . -type d -name '*qualifyAI*' -prune -exec rm -rf {} +
           find . -type d -name '*qualifyai*' -prune -exec rm -rf {} +
-          rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml
           git add -A
-          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
-            echo 'ERROR: old-name tracked paths remain'
-            git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
+          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' | grep -v '^\.github/workflows/' >/dev/null; then
+            echo 'ERROR: old-name tracked paths remain outside workflows'
+            git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' | grep -v '^\.github/workflows/' || true
             exit 1
           fi
-          if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' >/dev/null; then
-            git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' || true
-            echo 'ERROR: old-name content remains'
+          if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':(exclude).github/workflows/*' >/dev/null; then
+            git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':(exclude).github/workflows/*' || true
+            echo 'ERROR: old-name content remains outside workflows'
             exit 1
           fi
           test -f LeadsAI.sln
