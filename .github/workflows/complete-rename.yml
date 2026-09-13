@@ -14,69 +14,74 @@ jobs:
         with:
           ref: renova
           fetch-depth: 0
-      - name: Rename every tracked project path
+      - name: Rename all tracked paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          paths = subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0')
+          files = [Path(p.decode()) for p in paths if p]
+          mappings = [(p, Path(str(p).replace('QualifyAI', 'LeadsAI'))) for p in files if 'QualifyAI' in str(p)]
+          for src, dst in mappings:
+              if src == dst:
+                  continue
+              if dst.exists():
+                  raise SystemExit(f'Destination already exists: {dst}')
+          for src, dst in mappings:
+              dst.parent.mkdir(parents=True, exist_ok=True)
+              src.rename(dst)
+          print(f'Renamed {len(mappings)} tracked paths')
+          PY
+      - name: Replace all references
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = (
+              ('QualifyAI', 'LeadsAI'),
+              ('QUALIFYAI', 'LEADSAI'),
+              ('qualifyAI', 'leadsAI'),
+              ('qualifyai', 'leadsai'),
+          )
+          for p in Path('.').rglob('*'):
+              if not p.is_file() or '.git' in p.parts:
+                  continue
+              try:
+                  data = p.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              new = data
+              for old, value in replacements:
+                  new = new.replace(old, value)
+              if new != data:
+                  p.write_text(new, encoding='utf-8', newline='')
+          PY
+      - name: Verify complete rename
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml
+          git add -A
+          if git diff --cached --name-only | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
+            echo 'ERROR: old name remains in changed paths'
+            git diff --cached --name-only | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
+            exit 1
+          fi
+          if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' >/dev/null; then
+            git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' || true
+            echo 'ERROR: old name remains in staged content'
+            exit 1
+          fi
+          test -f LeadsAI.sln
+          echo 'QualifyAI -> LeadsAI verification passed.'
+      - name: Commit and push
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git ls-files -z | while IFS= read -r -d '' p; do
-            case "$p" in
-              *QualifyAI*)
-                np="${p//QualifyAI/LeadsAI}"
-                mkdir -p "$(dirname "$np")"
-                git mv -- "$p" "$np"
-                ;;
-            esac
-          done
-      - name: Replace all project references and namespaces
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r -d '' file; do
-            case "$file" in
-              *.cs|*.csproj|*.sln|*.slnx|*.props|*.targets|*.json|*.xml|*.yml|*.yaml|*.md|*.txt|*.ps1|*.sh|*.cmd|*.bat|*.dockerfile|Dockerfile|*.config|*.http|*.editorconfig|*.gitignore|*.gitattributes|*.env|*.example)
-                python3 - "$file" <<'PY'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-try:
-    s = p.read_text(encoding='utf-8')
-except (UnicodeDecodeError, OSError):
-    raise SystemExit(0)
-for old, new in (
-    ('QualifyAI', 'LeadsAI'),
-    ('QUALIFYAI', 'LEADSAI'),
-    ('qualifyAI', 'leadsAI'),
-    ('qualifyai', 'leadsai'),
-):
-    s = s.replace(old, new)
-p.write_text(s, encoding='utf-8', newline='')
-PY
-                ;;
-            esac
-          done < <(git ls-files -z)
-      - name: Verify complete rename
-        shell: bash
-        run: |
-          set -euo pipefail
-          git rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml 2>/dev/null || true
-          echo 'Checking old-name paths...'
-          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai'; then
-            echo 'ERROR: old name remains in tracked paths.'
-            exit 1
-          fi
-          echo 'Checking old-name content...'
-          if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' >/dev/null; then
-            git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' || true
-            echo 'ERROR: old name remains in tracked content.'
-            exit 1
-          fi
-          test -f LeadsAI.sln
-          echo 'QualifyAI -> LeadsAI rename verified.'
-      - name: Commit completed rename
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add -A
           git commit -m "Rename QualifyAI to LeadsAI"
           git push origin HEAD:renova
