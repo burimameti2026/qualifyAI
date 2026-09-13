@@ -1,10 +1,11 @@
 using QualifyAI.BuildingBlocks.Messaging.MassTransit;
 using MediatR;
-using QualifyAI.BuildingBlocks.Application.Behaviors;
+
 using QualifyAI.Identity.Api;
 using QualifyAI.Identity.Api.Endpoints.Authentication;
 using QualifyAI.Identity.Application;
 using QualifyAI.Identity.Infrastructure;
+using QualifyAI.BuildingBlocks.Application.Behaviors;
 
 var builder = WebApplication.CreateBuilder(args);
 

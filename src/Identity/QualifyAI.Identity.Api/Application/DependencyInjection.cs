@@ -1,6 +1,6 @@
+
 using FluentValidation;
-using MediatR;
-using Microsoft.Extensions.DependencyInjection;
+
 namespace QualifyAI.Identity.Application;
 public static class DependencyInjection
 {
