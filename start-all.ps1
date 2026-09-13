@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $envFile = Join-Path $PSScriptRoot '.env'
+$composeArgs = @('--project-name', 'renova', '--env-file', $envFile)
 
 if (-not (Test-Path $envFile)) {
     throw 'Root .env is missing. Copy .env.example to .env and set DB_SERVER, DB_USER and DB_PASSWORD.'
@@ -15,8 +16,7 @@ Get-Content $envFile | ForEach-Object {
 }
 
 foreach ($requiredName in @('DB_SERVER', 'DB_USER', 'DB_PASSWORD')) {
-    if (-not $envValues.ContainsKey($requiredName) -or
-        [string]::IsNullOrWhiteSpace($envValues[$requiredName])) {
+    if (-not $envValues.ContainsKey($requiredName) -or [string]::IsNullOrWhiteSpace($envValues[$requiredName])) {
         throw "$requiredName is missing from the root .env file."
     }
 }
@@ -34,16 +34,32 @@ elseif ($dbServer -match '\\') {
 
 Push-Location $PSScriptRoot
 try {
-    docker compose --env-file $envFile config --quiet
-    if ($LASTEXITCODE -ne 0) { throw 'Docker Compose configuration is invalid.' }
+    docker compose @composeArgs config --quiet
+    if ($LASTEXITCODE -ne 0) { throw 'Renova Docker Compose configuration is invalid.' }
 
-    # Remove containers created by the former second Compose project. This is
-    # idempotent and prevents container-name conflicts on the first migration.
-    docker compose --project-name leadsai-apps --env-file $envFile down --remove-orphans
-    if ($LASTEXITCODE -ne 0) { throw 'Legacy Compose project cleanup failed.' }
+    # Stop this stack and known legacy Compose projects left behind by the rename.
+    foreach ($legacyProject in @('leadsai', 'leadsai-apps', 'qualifyai', 'qualifyai-apps')) {
+        docker compose --project-name $legacyProject --env-file $envFile down --remove-orphans 2>$null
+    }
 
-    docker compose --env-file $envFile up -d --build --remove-orphans
-    if ($LASTEXITCODE -ne 0) { throw 'LeadsAI startup failed.' }
+    # Remove legacy containers that used fixed container names and therefore are
+    # not necessarily owned by the current Compose project label.
+    $legacyContainers = @(
+        'leadsai-mongodb','leadsai-rabbitmq','leadsai-redis','leadsai-seq',
+        'leadsai-identity-api','leadsai-platform-api','leadsai-api-gateway','leadsai-portainer',
+        'qualifyai-mongodb','qualifyai-rabbitmq','qualifyai-redis','qualifyai-seq',
+        'qualifyai-identity-api','qualifyai-platform-api','qualifyai-api-gateway','qualifyai-portainer'
+    )
+    foreach ($container in $legacyContainers) {
+        docker rm -f $container 2>$null | Out-Null
+    }
+
+    docker compose @composeArgs up -d --build --remove-orphans
+    if ($LASTEXITCODE -ne 0) { throw 'Renova startup failed.' }
+
+    # Verify Docker DNS from the API container before declaring the stack ready.
+    docker compose @composeArgs exec -T platform-api sh -c 'getent hosts rabbitmq >/dev/null 2>&1 && getent hosts redis >/dev/null 2>&1 && getent hosts mongodb >/dev/null 2>&1 && getent hosts identity-api >/dev/null 2>&1'
+    if ($LASTEXITCODE -ne 0) { throw 'Renova Docker DNS check failed. Core services are not on the same Compose network.' }
 
     & (Join-Path $PSScriptRoot 'status-all.ps1')
 }
