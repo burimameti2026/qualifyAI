@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: qualifyai-generate-migrations
+  group: leadsai-generate-migrations
   cancel-in-progress: false
 
 jobs:
@@ -36,47 +36,47 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 9.0.18
 
       - name: Restore
-        run: dotnet restore QualifyAI.sln --disable-parallel
+        run: dotnet restore LeadsAI.sln --disable-parallel
 
       - name: Build design-time assemblies
-        run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
+        run: dotnet build LeadsAI.sln --configuration Release --no-restore --warnaserror
 
       - name: Generate Business migration
-        run: dotnet ef migrations add InitialBusiness --project src/Business/QualifyAI.Infrastructure/QualifyAI.Infrastructure.csproj --context AppDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialBusiness --project src/Business/LeadsAI.Infrastructure/LeadsAI.Infrastructure.csproj --context AppDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Generate Identity migration
-        run: dotnet ef migrations add InitialIdentity --project src/Services/Identity/QualifyAI.Identity.Infrastructure/QualifyAI.Identity.Infrastructure.csproj --context IdentityDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialIdentity --project src/Services/Identity/LeadsAI.Identity.Infrastructure/LeadsAI.Identity.Infrastructure.csproj --context IdentityDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Generate Automation migration
-        run: dotnet ef migrations add InitialAutomation --project src/Services/Automation/QualifyAI.Automation.Infrastructure/QualifyAI.Automation.Infrastructure.csproj --context AutomationDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialAutomation --project src/Services/Automation/LeadsAI.Automation.Infrastructure/LeadsAI.Automation.Infrastructure.csproj --context AutomationDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Generate Knowledge migration
-        run: dotnet ef migrations add InitialKnowledge --project src/Services/Knowledge/QualifyAI.Knowledge.Infrastructure/QualifyAI.Knowledge.Infrastructure.csproj --context KnowledgeDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialKnowledge --project src/Services/Knowledge/LeadsAI.Knowledge.Infrastructure/LeadsAI.Knowledge.Infrastructure.csproj --context KnowledgeDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Generate AI Orchestration migration
-        run: dotnet ef migrations add InitialAIOrchestration --project src/Services/AIOrchestration/QualifyAI.AIOrchestration.Infrastructure/QualifyAI.AIOrchestration.Infrastructure.csproj --context AIOrchestrationDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialAIOrchestration --project src/Services/AIOrchestration/LeadsAI.AIOrchestration.Infrastructure/LeadsAI.AIOrchestration.Infrastructure.csproj --context AIOrchestrationDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Generate Integrations migration
-        run: dotnet ef migrations add InitialIntegrations --project src/Services/Integrations/QualifyAI.Integrations.Infrastructure/QualifyAI.Integrations.Infrastructure.csproj --context IntegrationsDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialIntegrations --project src/Services/Integrations/LeadsAI.Integrations.Infrastructure/LeadsAI.Integrations.Infrastructure.csproj --context IntegrationsDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Generate Notifications migration
-        run: dotnet ef migrations add InitialNotifications --project src/Services/Notifications/QualifyAI.Notifications.Infrastructure/QualifyAI.Notifications.Infrastructure.csproj --context NotificationsDbContext --output-dir Persistence/Migrations --configuration Release --no-build
+        run: dotnet ef migrations add InitialNotifications --project src/Services/Notifications/LeadsAI.Notifications.Infrastructure/LeadsAI.Notifications.Infrastructure.csproj --context NotificationsDbContext --output-dir Persistence/Migrations --configuration Release --no-build
 
       - name: Validate generated migrations
-        run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
+        run: dotnet build LeadsAI.sln --configuration Release --no-restore --warnaserror
 
       - name: Commit generated migrations
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/Business/QualifyAI.Infrastructure/Persistence/Migrations \
-                  src/Services/Identity/QualifyAI.Identity.Infrastructure/Persistence/Migrations \
-                  src/Services/Automation/QualifyAI.Automation.Infrastructure/Persistence/Migrations \
-                  src/Services/Knowledge/QualifyAI.Knowledge.Infrastructure/Persistence/Migrations \
-                  src/Services/AIOrchestration/QualifyAI.AIOrchestration.Infrastructure/Persistence/Migrations \
-                  src/Services/Integrations/QualifyAI.Integrations.Infrastructure/Persistence/Migrations \
-                  src/Services/Notifications/QualifyAI.Notifications.Infrastructure/Persistence/Migrations
+          git add src/Business/LeadsAI.Infrastructure/Persistence/Migrations \
+                  src/Services/Identity/LeadsAI.Identity.Infrastructure/Persistence/Migrations \
+                  src/Services/Automation/LeadsAI.Automation.Infrastructure/Persistence/Migrations \
+                  src/Services/Knowledge/LeadsAI.Knowledge.Infrastructure/Persistence/Migrations \
+                  src/Services/AIOrchestration/LeadsAI.AIOrchestration.Infrastructure/Persistence/Migrations \
+                  src/Services/Integrations/LeadsAI.Integrations.Infrastructure/Persistence/Migrations \
+                  src/Services/Notifications/LeadsAI.Notifications.Infrastructure/Persistence/Migrations
           if git diff --cached --quiet; then
             echo "No migration changes generated."
             exit 0
