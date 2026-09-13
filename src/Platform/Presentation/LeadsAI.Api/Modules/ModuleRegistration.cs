@@ -94,15 +94,18 @@ public static class ModuleRegistration
         this IServiceProvider services,
         CancellationToken cancellationToken = default)
     {
-        await services.GetRequiredService<AutomationDbContext>()
+        await using var scope = services.CreateAsyncScope();
+        var scopedServices = scope.ServiceProvider;
+
+        await scopedServices.GetRequiredService<AutomationDbContext>()
             .Database.MigrateAsync(cancellationToken);
-        await services.GetRequiredService<NotificationsDbContext>()
+        await scopedServices.GetRequiredService<NotificationsDbContext>()
             .Database.MigrateAsync(cancellationToken);
-        await services.GetRequiredService<KnowledgeDbContext>()
+        await scopedServices.GetRequiredService<KnowledgeDbContext>()
             .Database.MigrateAsync(cancellationToken);
-        await services.GetRequiredService<AIOrchestrationDbContext>()
+        await scopedServices.GetRequiredService<AIOrchestrationDbContext>()
             .Database.MigrateAsync(cancellationToken);
-        await services.GetRequiredService<IntegrationsDbContext>()
+        await scopedServices.GetRequiredService<IntegrationsDbContext>()
             .Database.MigrateAsync(cancellationToken);
     }
 }
