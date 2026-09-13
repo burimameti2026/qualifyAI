@@ -1,4 +1,4 @@
-name: renova
+name: leadsai
 
 x-api-environment: &api-environment
   ASPNETCORE_URLS: http://+:8080
@@ -11,12 +11,12 @@ x-api-environment: &api-environment
 services:
   mongodb:
     image: mongo:8.0
-    container_name: renova-mongodb
+    container_name: leadsai-mongodb
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-leadsai}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}
     volumes: [mongodb-data:/data/db]
-    networks: [renova]
+    networks: [leadsai]
     healthcheck:
       test: [CMD-SHELL, "mongosh --quiet --eval \"db.adminCommand('ping').ok\" -u \"$${MONGO_INITDB_ROOT_USERNAME}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin | grep 1"]
       interval: 10s
@@ -26,13 +26,13 @@ services:
 
   rabbitmq:
     image: rabbitmq:4-management
-    container_name: renova-rabbitmq
+    container_name: leadsai-rabbitmq
     hostname: rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-leadsai}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-LeadsAI_Rabbit_ChangeMe!}
     volumes: [rabbitmq-data:/var/lib/rabbitmq]
-    networks: [renova]
+    networks: [leadsai]
     healthcheck:
       test: [CMD, rabbitmq-diagnostics, -q, ping]
       interval: 10s
@@ -42,10 +42,10 @@ services:
 
   redis:
     image: redis:7.4-alpine
-    container_name: renova-redis
+    container_name: leadsai-redis
     command: [redis-server, --appendonly, "yes", --requirepass, "${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!}"]
     volumes: [redis-data:/data]
-    networks: [renova]
+    networks: [leadsai]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a '${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!}' ping | grep PONG"]
       interval: 10s
@@ -55,16 +55,16 @@ services:
 
   seq:
     image: datalust/seq:2025.2
-    container_name: renova-seq
+    container_name: leadsai-seq
     environment:
       ACCEPT_EULA: "Y"
       SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_ADMIN_PASSWORD:-LeadsAI_Seq_ChangeMe!}
     volumes: [seq-data:/data]
-    networks: [renova]
+    networks: [leadsai]
     restart: unless-stopped
 
   identity-api:
-    container_name: renova-identity-api
+    container_name: leadsai-identity-api
     build:
       context: .
       dockerfile: src/Identity/LeadsAI.Identity.Api/Dockerfile
@@ -94,11 +94,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks: [renova]
+    networks: [leadsai]
     restart: unless-stopped
 
   platform-api:
-    container_name: renova-platform-api
+    container_name: leadsai-platform-api
     build:
       context: .
       dockerfile: src/Platform/Presentation/LeadsAI.Api/Dockerfile
@@ -148,11 +148,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks: [renova]
+    networks: [leadsai]
     restart: unless-stopped
 
   api-gateway:
-    container_name: renova-api-gateway
+    container_name: leadsai-api-gateway
     build:
       context: .
       dockerfile: src/ApiGateway/LeadsAI.ApiGateway/Dockerfile
@@ -166,22 +166,22 @@ services:
         condition: service_started
       platform-api:
         condition: service_started
-    networks: [renova]
+    networks: [leadsai]
     restart: unless-stopped
 
   portainer:
     profiles: [tools]
     image: portainer/portainer-ce:2.27.9
-    container_name: renova-portainer
+    container_name: leadsai-portainer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer-data:/data
-    networks: [renova]
+    networks: [leadsai]
     restart: unless-stopped
 
 networks:
-  renova:
-    name: renova-network
+  leadsai:
+    name: leadsai-network
 
 volumes:
   mongodb-data:
