@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
 namespace QualifyAI.Domain;
 
@@ -8,19 +7,18 @@ public enum OperationalStockMovementType { Receipt, Production, Reservation, Rel
 public enum DeliveryReceiptStatus { Pending, PartiallyDelivered, Delivered, Rejected }
 
 [Table("StorageBlocks")]
-[Index(nameof(TenantId), nameof(FacilityId), nameof(Code), IsUnique = true)]
 public sealed class StorageBlock : TenantEntity
 {
     [MaxLength(64)] public string Code { get; set; } = string.Empty;
     [MaxLength(256)] public string Name { get; set; } = string.Empty;
     [MaxLength(64)] public string BlockType { get; set; } = "storage";
+    public Guid FacilityId { get; set; }
     public decimal? Capacity { get; set; }
     [MaxLength(32)] public string CapacityUnit { get; set; } = "unit";
     public bool IsActive { get; set; } = true;
 }
 
 [Table("StorageStocks")]
-[Index(nameof(TenantId), nameof(FacilityId), nameof(StorageBlockId), nameof(CatalogProductId), nameof(ProductVariantId), nameof(LotNumber), IsUnique = true)]
 public sealed class StorageStock : TenantEntity
 {
     public Guid FacilityId { get; set; }
@@ -34,7 +32,6 @@ public sealed class StorageStock : TenantEntity
 }
 
 [Table("OperationalStockMovements")]
-[Index(nameof(TenantId), nameof(IdempotencyKey), IsUnique = true)]
 public sealed class OperationalStockMovement : TenantEntity
 {
     public Guid FacilityId { get; set; }
@@ -51,7 +48,6 @@ public sealed class OperationalStockMovement : TenantEntity
 }
 
 [Table("Vehicles")]
-[Index(nameof(TenantId), nameof(RegistrationNumber), IsUnique = true)]
 public sealed class Vehicle : TenantEntity
 {
     [MaxLength(64)] public string RegistrationNumber { get; set; } = string.Empty;
@@ -63,7 +59,6 @@ public sealed class Vehicle : TenantEntity
 }
 
 [Table("Drivers")]
-[Index(nameof(TenantId), nameof(LicenseNumber), IsUnique = true)]
 public sealed class Driver : TenantEntity
 {
     [MaxLength(256)] public string Name { get; set; } = string.Empty;
@@ -73,7 +68,6 @@ public sealed class Driver : TenantEntity
 }
 
 [Table("ShipmentItems")]
-[Index(nameof(TenantId), nameof(ShipmentId), nameof(SalesOrderItemId), IsUnique = true)]
 public sealed class ShipmentItem : TenantEntity
 {
     public Guid ShipmentId { get; set; }
@@ -91,7 +85,6 @@ public sealed class ShipmentItem : TenantEntity
 }
 
 [Table("DeliveryReceipts")]
-[Index(nameof(TenantId), nameof(ShipmentId), IsUnique = true)]
 public sealed class DeliveryReceipt : TenantEntity
 {
     public Guid ShipmentId { get; set; }
@@ -107,7 +100,6 @@ public sealed class DeliveryReceipt : TenantEntity
 }
 
 [Table("DeliveryReceiptItems")]
-[Index(nameof(TenantId), nameof(DeliveryReceiptId), nameof(ShipmentItemId), IsUnique = true)]
 public sealed class DeliveryReceiptItem : TenantEntity
 {
     public Guid DeliveryReceiptId { get; set; }
