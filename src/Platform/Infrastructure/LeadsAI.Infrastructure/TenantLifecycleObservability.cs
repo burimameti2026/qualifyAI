@@ -2,9 +2,9 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using QualifyAI.Persistence.SqlServer.Projections;
+using LeadsAI.Persistence.SqlServer.Projections;
 
-namespace QualifyAI.Infrastructure;
+namespace LeadsAI.Infrastructure;
 
 public sealed record TenantLifecycleEvent(Guid TenantId, string Type, string Status, string Message, DateTime OccurredAtUtc, IReadOnlyDictionary<string,string>? Data = null, string? CorrelationId = null, string Source = "system", string? ActorId = null);
 

@@ -1,10 +1,10 @@
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Application.Abstractions.Persistence;
-using QualifyAI.BuildingBlocks.Messaging.Inbox;
-using QualifyAI.Contracts.Identity;
+using LeadsAI.Application.Abstractions.Persistence;
+using LeadsAI.BuildingBlocks.Messaging.Inbox;
+using LeadsAI.Contracts.Identity;
 
-namespace QualifyAI.Infrastructure.Messaging.Consumers;
+namespace LeadsAI.Infrastructure.Messaging.Consumers;
 
 public sealed class TenantCreatedConsumer(IdentityEntitlementInboxProcessor processor)
     : IConsumer<TenantCreatedIntegrationEvent>

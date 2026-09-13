@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Persistence.SqlServer;
-using QualifyAI.Persistence.SqlServer.Projections;
+using LeadsAI.Persistence.SqlServer;
+using LeadsAI.Persistence.SqlServer.Projections;
 
-namespace QualifyAI.Infrastructure;
+namespace LeadsAI.Infrastructure;
 
 public sealed record TenantLifecycleRequest(Guid TenantId, IReadOnlyCollection<string> Modules);
 public sealed record TenantLifecycleResult(Guid TenantId, string Status, IReadOnlyCollection<string> Modules, IReadOnlyCollection<string> FailedModules);

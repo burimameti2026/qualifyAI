@@ -171,7 +171,7 @@ public sealed class EnterpriseWorkflowController(ITenantContext tenant, AppDbCon
     }
 
     [HttpPost("dispatch/{shipmentId:guid}/status")]
-    public async Task<IActionResult> ShipmentStatus(Guid shipmentId, ShipmentStatus status, CancellationToken ct)
+    public async Task<IActionResult> ShipmentState(Guid shipmentId, ShipmentStatus status, CancellationToken ct)
     {
         var entity = await db.Shipments.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == shipmentId, ct); if (entity is null) return NotFound();
         if (status == ShipmentStatus.InTransit && entity.Status != ShipmentStatus.Dispatched) return BadRequest(new { detail = "Shipment must be dispatched before entering transit." });
