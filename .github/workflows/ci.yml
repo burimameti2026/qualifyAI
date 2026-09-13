@@ -1,4 +1,4 @@
-name: QualifyAI CI
+name: LeadsAI CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [dev, master]
 
 concurrency:
-  group: qualifyai-ci-${{ github.ref }}
+  group: leadsai-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,11 +24,11 @@ jobs:
         shell: pwsh
         run: ./scripts/check-architecture.ps1
       - name: Restore
-        run: dotnet restore QualifyAI.sln --disable-parallel
+        run: dotnet restore LeadsAI.sln --disable-parallel
       - name: Build
-        run: dotnet build QualifyAI.sln --configuration Release --no-restore --warnaserror
+        run: dotnet build LeadsAI.sln --configuration Release --no-restore --warnaserror
       - name: Billing hardening tests
-        run: dotnet test tests/QualifyAI.BillingHardening.Tests/QualifyAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
+        run: dotnet test tests/LeadsAI.BillingHardening.Tests/LeadsAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
   admin-ui:
     name: Admin UI build
     runs-on: ubuntu-latest
