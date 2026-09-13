@@ -38,13 +38,13 @@ jobs:
       - id: admin-ui
         shell: bash
         run: |
-          if [ -f "admin/qualifyai-admin/package-lock.json" ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "admin/leadsai-admin/package-lock.json" ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-node@v4
         if: steps.admin-ui.outputs.exists == 'true'
-        with: { node-version: 22, cache: npm, cache-dependency-path: admin/qualifyai-admin/package-lock.json }
+        with: { node-version: 22, cache: npm, cache-dependency-path: admin/leadsai-admin/package-lock.json }
       - if: steps.admin-ui.outputs.exists == 'true'
-        working-directory: admin/qualifyai-admin
+        working-directory: admin/leadsai-admin
         run: npm ci --no-audit --no-fund
       - if: steps.admin-ui.outputs.exists == 'true'
-        working-directory: admin/qualifyai-admin
+        working-directory: admin/leadsai-admin
         run: npm run build
