@@ -21,12 +21,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
-          paths = subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0')
-          files = [Path(p.decode()) for p in paths if p]
-          mappings = [(p, Path(str(p).replace('QualifyAI', 'LeadsAI'))) for p in files if 'QualifyAI' in str(p)]
+          files = [Path(p.decode()) for p in subprocess.check_output(['git','ls-files','-z']).split(b'\0') if p]
+          mappings = [(p, Path(str(p).replace('QualifyAI','LeadsAI'))) for p in files if 'QualifyAI' in str(p)]
           for src, dst in mappings:
-              if src == dst:
-                  continue
               if dst.exists():
                   raise SystemExit(f'Destination already exists: {dst}')
           for src, dst in mappings:
@@ -40,12 +37,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          replacements = (
-              ('QualifyAI', 'LeadsAI'),
-              ('QUALIFYAI', 'LEADSAI'),
-              ('qualifyAI', 'leadsAI'),
-              ('qualifyai', 'leadsai'),
-          )
+          replacements = (('QualifyAI','LeadsAI'),('QUALIFYAI','LEADSAI'),('qualifyAI','leadsAI'),('qualifyai','leadsai'))
           for p in Path('.').rglob('*'):
               if not p.is_file() or '.git' in p.parts:
                   continue
@@ -59,20 +51,19 @@ jobs:
               if new != data:
                   p.write_text(new, encoding='utf-8', newline='')
           PY
-      - name: Verify complete rename
+      - name: Verify rename
         shell: bash
         run: |
           set -euo pipefail
           rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml
           git add -A
-          if git diff --cached --name-only | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
-            echo 'ERROR: old name remains in changed paths'
-            git diff --cached --name-only | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
+          if find . -not -path './.git/*' \( -name '*QualifyAI*' -o -name '*QUALIFYAI*' -o -name '*qualifyAI*' -o -name '*qualifyai*' \) -print -quit | grep -q .; then
+            echo 'ERROR: old-name filesystem paths remain'
             exit 1
           fi
           if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' >/dev/null; then
             git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' --cached -- . ':!.git' || true
-            echo 'ERROR: old name remains in staged content'
+            echo 'ERROR: old-name content remains'
             exit 1
           fi
           test -f LeadsAI.sln
