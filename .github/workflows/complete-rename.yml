@@ -7,24 +7,30 @@ permissions:
   contents: write
 jobs:
   rename:
-    if: github.event.head_commit.message != 'Rename QualifyAI to LeadsAI'
+    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message != 'Rename QualifyAI to LeadsAI'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: renova
           fetch-depth: 0
-      - name: Rename project paths
+      - name: Rename tracked project paths
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          find . -depth -name '*QualifyAI*' -print0 | while IFS= read -r -d '' p; do
-            np="${p//QualifyAI/LeadsAI}"
-            if [ "$p" != "$np" ]; then
-              git mv "$p" "$np"
-            fi
-          done
+          git ls-files -z | python3 -c '
+          import sys, subprocess, os
+          paths = [p.decode() for p in sys.stdin.buffer.read().split(b"\\0") if p]
+          for p in sorted(paths, key=lambda x: (x.count("/"), len(x)), reverse=True):
+              if "QualifyAI" not in p:
+                  continue
+              new = p.replace("QualifyAI", "LeadsAI")
+              if os.path.exists(p):
+                  os.makedirs(os.path.dirname(new) or ".", exist_ok=True)
+                  subprocess.run(["git", "mv", "--", p, new], check=True)
+          '
       - name: Rename project references and namespaces
         shell: bash
         run: |
@@ -32,8 +38,13 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           root = Path('.')
-          skip = {'.git', '.github'}
-          replacements = {'QualifyAI': 'LeadsAI', 'QUALIFYAI': 'LEADSAI'}
+          skip = {'.git'}
+          replacements = {
+              'QualifyAI': 'LeadsAI',
+              'QUALIFYAI': 'LEADSAI',
+              'qualifyAI': 'leadsAI',
+              'qualifyai': 'leadsai',
+          }
           for p in root.rglob('*'):
               if not p.is_file() or any(part in skip for part in p.parts):
                   continue
@@ -47,23 +58,26 @@ jobs:
               if new != data:
                   p.write_text(new, encoding='utf-8', newline='')
           PY
-      - name: Verify no old project name remains
+      - name: Verify complete rename
         shell: bash
         run: |
           set -euo pipefail
-          if git grep -n -I -e 'QualifyAI' -e 'QUALIFYAI' -- ':!.github/workflows/complete-rename.yml'; then
-            echo 'ERROR: old QualifyAI references remain.'
+          git rm -f .github/workflows/complete-rename.yml .github/workflows/rename-to-leadsai.yml || true
+          if git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' >/dev/null; then
+            echo 'ERROR: old name remains in tracked paths.'
+            git ls-files | grep -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' || true
             exit 1
           fi
-          if find . -not -path './.git/*' -name '*QualifyAI*' -print -quit | grep -q .; then
-            echo 'ERROR: old QualifyAI paths remain.'
+          if git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' >/dev/null; then
+            echo 'ERROR: old name remains in tracked content.'
+            git grep -n -I -E 'QualifyAI|QUALIFYAI|qualifyAI|qualifyai' -- . ':!.git' || true
             exit 1
           fi
+          test -f LeadsAI.sln
       - name: Commit completed rename
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f .github/workflows/complete-rename.yml
           git add -A
           git commit -m "Rename QualifyAI to LeadsAI"
           git push origin HEAD:renova
