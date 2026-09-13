@@ -1,11 +1,11 @@
 $ErrorActionPreference = 'Continue'
 
-Write-Host 'LeadsAI containers:' -ForegroundColor Cyan
-docker ps -a --filter 'name=leadsai-' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+Write-Host 'Renova containers:' -ForegroundColor Cyan
+docker ps -a --filter 'name=renova-' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 
 $containers = @(
-    'leadsai-mongodb', 'leadsai-rabbitmq', 'leadsai-redis', 'leadsai-seq',
-    'leadsai-identity-api', 'leadsai-platform-api', 'leadsai-api-gateway'
+    'renova-mongodb', 'renova-rabbitmq', 'renova-redis', 'renova-seq',
+    'renova-identity-api', 'renova-platform-api', 'renova-api-gateway'
 )
 
 foreach ($container in $containers) {
@@ -22,6 +22,9 @@ foreach ($container in $containers) {
         docker logs $container --tail 80
     }
 }
+
+Write-Host 'Renova Docker network:' -ForegroundColor Cyan
+docker network inspect renova-network --format '{{.Name}}: {{range .Containers}}{{.Name}} {{end}}' 2>$null
 
 Write-Host 'Liveness endpoints:' -ForegroundColor Cyan
 foreach ($endpoint in @('http://localhost:8081/health', 'http://localhost:8080/health', 'http://localhost:10000/health')) {
