@@ -36,7 +36,7 @@ public class WorkflowNode : TenantEntity
         };
     }
 
-    internal static void EnsureJson(string? json, string label)
+    public static void EnsureJson(string? json, string label)
     {
         try { using var _ = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json); }
         catch (JsonException ex) { throw new InvalidOperationException($"{label} must be valid JSON.", ex); }
