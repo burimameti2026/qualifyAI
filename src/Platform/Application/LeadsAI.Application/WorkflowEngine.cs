@@ -69,7 +69,7 @@ public sealed class WorkflowEngine
         if (string.IsNullOrWhiteSpace(conditionJson))
             return true;
 
-        using var document = ParseObject(conditionJson, "Workflow edge condition");
+        var document = ParseObject(conditionJson, "Workflow edge condition");
         if (document.ValueKind == JsonValueKind.Undefined || document.EnumerateObject().Count() == 0)
             return true;
 
