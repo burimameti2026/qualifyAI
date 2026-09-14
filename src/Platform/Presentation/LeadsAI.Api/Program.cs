@@ -80,6 +80,7 @@ app.MapAcquisitionTenantSettings();
 app.MapAutonomousAcquisitionVerification();
 app.MapAutonomousAcquisitionE2e();
 app.MapRealWorkspace();
+app.MapCatalog();
 app.MapHub<ConversationHub>("/hubs/conversations");
 app.MapPublicChat();
 app.MapExtendedAdmin();
