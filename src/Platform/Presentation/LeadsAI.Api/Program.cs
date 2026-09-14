@@ -83,6 +83,7 @@ app.MapRealWorkspace();
 app.MapCatalog();
 app.MapEnterpriseOperations();
 app.MapFinance();
+app.MapAutomationAnalytics();
 app.MapHub<ConversationHub>("/hubs/conversations");
 app.MapPublicChat();
 app.MapExtendedAdmin();
