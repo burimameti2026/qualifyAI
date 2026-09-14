@@ -1,8 +1,8 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure.Automation;
 using LeadsAI.Persistence.SqlServer;
+using QualifyAI.BuildingBlocks.Security.Tenancy;
 
 namespace LeadsAI.Api;
 
@@ -14,13 +14,13 @@ public static class AutomationAnalyticsEndpoints
         var analytics = app.MapGroup("/api/analytics").RequireAuthorization();
 
         automation.MapGet("/rules", async (AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
-            Results.Ok(await db.AutomationRules.AsNoTracking().Where(x => x.TenantId == tenant.Id()).OrderBy(x => x.Name).ToListAsync(ct)));
+            Results.Ok(await db.AutomationRules.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Name).ToListAsync(ct)));
 
         automation.MapPost("/rules", async (AutomationRuleRequest request, AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
             try
             {
-                var rule = AutomationRule.Create(tenant.Id(), request.Name, request.Trigger, request.ConditionsJson ?? "[]", request.ActionsJson ?? "[]", request.Active);
+                var rule = AutomationRule.Create(tenant.Id, request.Name, request.Trigger, request.ConditionsJson ?? "[]", request.ActionsJson ?? "[]", request.Active);
                 db.AutomationRules.Add(rule);
                 await db.SaveChangesAsync(ct);
                 return Results.Created($"/api/automation/rules/{rule.Id}", rule);
@@ -30,7 +30,7 @@ public static class AutomationAnalyticsEndpoints
 
         automation.MapPut("/rules/{id:guid}", async (Guid id, AutomationRuleRequest request, AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
-            var rule = await db.AutomationRules.SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenant.Id(), ct);
+            var rule = await db.AutomationRules.SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenant.Id, ct);
             if (rule is null) return Results.NotFound();
             try
             {
@@ -43,12 +43,12 @@ public static class AutomationAnalyticsEndpoints
 
         automation.MapPost("/rules/{id:guid}/run", async (Guid id, AutomationRunRequest? request, AppDbContext db, ICurrentTenant tenant, AutomationActionExecutor executor, CancellationToken ct) =>
         {
-            var rule = await db.AutomationRules.SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenant.Id() && x.Active, ct);
+            var rule = await db.AutomationRules.SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenant.Id && x.Active, ct);
             if (rule is null) return Results.NotFound();
             var triggerData = request?.TriggerDataJson ?? "{\"source\":\"manual\"}";
             try { WorkflowNode.EnsureJson(triggerData, "Automation trigger data"); }
             catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
-            var run = AutomationRun.Create(tenant.Id(), rule.Id, triggerData);
+            var run = AutomationRun.Create(tenant.Id, rule.Id, triggerData);
             db.AutomationRuns.Add(run); run.Start(); await db.SaveChangesAsync(ct);
             var result = await executor.ExecuteAsync(rule, run, ct);
             if (result.Success) run.Complete(result.LogJson); else run.Fail(result.LogJson);
@@ -58,13 +58,13 @@ public static class AutomationAnalyticsEndpoints
 
         automation.MapGet("/runs/{id:guid}", async (Guid id, AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
-            var run = await db.AutomationRuns.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenant.Id(), ct);
+            var run = await db.AutomationRuns.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenant.Id, ct);
             return run is null ? Results.NotFound() : Results.Ok(run);
         });
 
         analytics.MapGet("/overview", async (AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
-            var tenantId = tenant.Id();
+            var tenantId = tenant.Id;
             var prospects = db.Prospects.Where(x => x.TenantId == tenantId);
             var campaigns = db.Campaigns.Where(x => x.TenantId == tenantId);
             var outreach = db.OutreachMessages.Where(x => x.TenantId == tenantId);
@@ -95,7 +95,7 @@ public static class AutomationAnalyticsEndpoints
 
         analytics.MapGet("/metrics", async (DateTime? fromUtc, DateTime? toUtc, AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
-            var tenantId = tenant.Id();
+            var tenantId = tenant.Id;
             var from = fromUtc ?? DateTime.UtcNow.Date.AddDays(-30);
             var to = toUtc ?? DateTime.UtcNow;
             var metrics = await db.MetricSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.PeriodEndUtc >= from && x.PeriodStartUtc <= to).OrderByDescending(x => x.PeriodStartUtc).Take(500).ToListAsync(ct);
@@ -105,7 +105,7 @@ public static class AutomationAnalyticsEndpoints
         analytics.MapPost("/metrics/snapshot", async (MetricSnapshotRequest request, AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.Metric)) return Results.BadRequest(new { error = "metric is required" });
-            var snapshot = new MetricSnapshot { Id = Guid.NewGuid(), TenantId = tenant.Id(), Metric = request.Metric.Trim().ToLowerInvariant(), Value = request.Value, PeriodStartUtc = request.PeriodStartUtc, PeriodEndUtc = request.PeriodEndUtc, DimensionsJson = request.DimensionsJson ?? "{}" };
+            var snapshot = new MetricSnapshot { Id = Guid.NewGuid(), TenantId = tenant.Id, Metric = request.Metric.Trim().ToLowerInvariant(), Value = request.Value, PeriodStartUtc = request.PeriodStartUtc, PeriodEndUtc = request.PeriodEndUtc, DimensionsJson = request.DimensionsJson ?? "{}" };
             try { WorkflowNode.EnsureJson(snapshot.DimensionsJson, "Metric dimensions"); }
             catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
             db.MetricSnapshots.Add(snapshot); await db.SaveChangesAsync(ct); return Results.Created($"/api/analytics/metrics/{snapshot.Id}", snapshot);
@@ -113,7 +113,7 @@ public static class AutomationAnalyticsEndpoints
 
         analytics.MapGet("/attribution", async (AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
-            var rows = await db.RevenueAttributions.AsNoTracking().Where(x => x.TenantId == tenant.Id()).OrderByDescending(x => x.CreatedAtUtc).Take(500).ToListAsync(ct);
+            var rows = await db.RevenueAttributions.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderByDescending(x => x.CreatedAtUtc).Take(500).ToListAsync(ct);
             return Results.Ok(new { totalInfluencedRevenue = rows.Sum(x => x.InfluencedRevenue), count = rows.Count, items = rows });
         });
 
