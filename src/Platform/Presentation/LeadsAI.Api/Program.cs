@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using LeadsAI.Api;
 using LeadsAI.Api.Security;
@@ -10,6 +11,7 @@ using LeadsAI.BuildingBlocks.Security;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.It;
 using LeadsAI.Infrastructure.WorkspacePackages;
+using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Persistence.SqlServer.Queries;
 using LeadsAI.BuildingBlocks.Security.Access;
 
@@ -48,7 +50,7 @@ builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
-    o.SwaggerDoc("v1", new OpenApiInfo { Title="QualifyAI Business API", Version="v1" });
+    o.SwaggerDoc("v1", new OpenApiInfo { Title="FindLeadsAI Business API", Version="v1" });
     o.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type=SecuritySchemeType.Http, Scheme="bearer", BearerFormat="JWT" });
 });
 builder.Services.AddQualifyAiResourceServer(builder.Configuration);
@@ -86,6 +88,14 @@ app.MapPublicChat();
 app.MapExtendedAdmin();
 app.MapPlatformModules();
 
-await app.Services.MigratePlatformModuleDatabasesAsync();
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    // The Business database must be fully migrated before any hosted worker can query it.
+    await db.Database.MigrateAsync();
+    await db.EnsureBillingSchemaAsync();
+    await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
+}
 
 app.Run();
