@@ -51,7 +51,7 @@ public sealed class IdentityBootstrapHostedService(
         }
 
         var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "master";
-        var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "QualifyAI Master";
+        var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "FindLeadsAI Master";
         var contactEmail = configuration["IdentityBootstrap:Tenant:ContactEmail"]?.Trim().ToLowerInvariant() ?? "admin@qualifyai.local";
         var configuredTenantId = ParseOptionalTenantId(configuration["IdentityBootstrap:Tenant:Id"]);
 
@@ -175,11 +175,11 @@ public sealed class IdentityBootstrapHostedService(
 
     private static async Task EnsureAdminUiClientAsync(IOpenIddictApplicationManager applicationManager, CancellationToken cancellationToken)
     {
-        const string clientId = "qualifyai-admin";
+        const string clientId = "findleadsai-admin";
         var descriptor = new OpenIddictApplicationDescriptor
         {
             ClientId = clientId,
-            DisplayName = "QualifyAI Admin UI",
+            DisplayName = "FindLeadsAI Admin UI",
             ClientType = ClientTypes.Public,
             ConsentType = ConsentTypes.Implicit,
             Permissions =
@@ -191,7 +191,7 @@ public sealed class IdentityBootstrapHostedService(
                 Permissions.Prefixes.Scope + "profile",
                 Permissions.Prefixes.Scope + "email",
                 Permissions.Prefixes.Scope + "offline_access",
-                Permissions.Prefixes.Scope + "qualifyai-api"
+                Permissions.Prefixes.Scope + "leadsai-api"
             }
         };
 
