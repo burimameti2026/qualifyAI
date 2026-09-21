@@ -1,4 +1,3 @@
-using System.Data;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +11,6 @@ using LeadsAI.BuildingBlocks.Security;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.It;
 using LeadsAI.Infrastructure.WorkspacePackages;
-using LeadsAI.Persistence.SqlServer.Projections;
 using LeadsAI.Persistence.SqlServer.Queries;
 using LeadsAI.BuildingBlocks.Security.Access;
 
@@ -51,7 +49,7 @@ builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
-    o.SwaggerDoc("v1", new OpenApiInfo { Title="LeadsAI Business API", Version="v1" });
+    o.SwaggerDoc("v1", new OpenApiInfo { Title="QualifyAI Business API", Version="v1" });
     o.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type=SecuritySchemeType.Http, Scheme="bearer", BearerFormat="JWT" });
 });
 builder.Services.AddQualifyAiResourceServer(builder.Configuration);
@@ -84,39 +82,11 @@ app.MapCatalog();
 app.MapEnterpriseOperations();
 app.MapFinance();
 app.MapAutomationAnalytics();
-app.MapHub<ConversationHub>("/hubs/conversations");
+app.MapHub<ConversationHub>(" /hubs/conversations".Trim());
 app.MapPublicChat();
 app.MapExtendedAdmin();
 app.MapPlatformModules();
 
-await BootstrapBusinessDatabasesAsync(app.Services, builder.Configuration, app.Logger);
 await app.Services.MigratePlatformModuleDatabasesAsync();
 
 app.Run();
-
-static async Task BootstrapBusinessDatabasesAsync(IServiceProvider services, IConfiguration configuration, ILogger logger)
-{
-    const string renovaSlug = "renova";
-    var configuredTenantId = configuration["TenantBootstrap:Renova:TenantId"];
-    var renovaTenantId = Guid.TryParse(configuredTenantId, out var parsed) ? parsed : Guid.Parse("2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a");
-    await using (var controlScope = services.CreateAsyncScope())
-    {
-        var controlDb = controlScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await controlDb.Database.MigrateAsync(); await controlDb.EnsureBillingSchemaAsync(); await controlDb.EnsureEnterpriseSchemaAsync(); await controlDb.EnsureEnterpriseWorkflowSchemaAsync();
-    }
-    await using var renovaScope = services.CreateAsyncScope();
-    var tenantContext = renovaScope.ServiceProvider.GetRequiredService<ITenantContext>(); tenantContext.Set(new CurrentTenant(renovaTenantId, renovaSlug));
-    var renovaDb = renovaScope.ServiceProvider.GetRequiredService<AppDbContext>(); await renovaDb.Database.MigrateAsync(); await renovaDb.EnsureBillingSchemaAsync(); await renovaDb.EnsureEnterpriseSchemaAsync(); await renovaDb.EnsureEnterpriseWorkflowSchemaAsync();
-    var executionStrategy = renovaDb.Database.CreateExecutionStrategy();
-    await executionStrategy.ExecuteAsync(async () =>
-    {
-        await using var bootstrapTransaction = await renovaDb.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-        var renovaTenant = await renovaDb.Tenants.SingleOrDefaultAsync(x => x.Slug == renovaSlug);
-        if (renovaTenant is null) renovaDb.Tenants.Add(new LeadsAI.Domain.Tenant { Id = renovaTenantId, Name = "Renova", Slug = renovaSlug, PlanCode = "enterprise", IsActive = true });
-        var renovaEntitlement = await renovaDb.TenantEntitlements.SingleOrDefaultAsync(x => x.TenantId == renovaTenantId);
-        if (renovaEntitlement is null) renovaDb.TenantEntitlements.Add(new TenantEntitlementProjection { TenantId = renovaTenantId, TenantSlug = renovaSlug, TenantStatus = "active", LicensePlan = "enterprise", LicenseStatus = "active", MaxUsers = 100, StartsAtUtc = DateTime.UtcNow.AddMinutes(-5), ExpiresAtUtc = DateTime.UtcNow.AddYears(1), Version = 1, ModulesJson = System.Text.Json.JsonSerializer.Serialize(QualifyAiModules.Enterprise), LimitsJson = "{\"users\":100}", UpdatedAtUtc = DateTime.UtcNow });
-        await renovaDb.SaveChangesAsync(); await bootstrapTransaction.CommitAsync();
-    });
-    var seeded = await renovaScope.ServiceProvider.GetRequiredService<RenovaDemoSeeder>().SeedAsync(renovaTenantId); await renovaScope.ServiceProvider.GetRequiredService<RenovaSiteContentSeeder>().SeedAsync(renovaTenantId);
-    logger.LogInformation("Renova tenant database initialized. TenantSlug={TenantSlug}; Database={Database}; SeededDemo={SeededDemo}; TenantId={TenantId}.", renovaSlug, "RenovaPromotions", seeded, renovaTenantId);
-}
