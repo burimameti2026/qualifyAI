@@ -12,6 +12,7 @@ using LeadsAI.Infrastructure.It;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Persistence.SqlServer.Repositories;
+using LeadsAI.Infrastructure.Demo;
 
 namespace LeadsAI.Infrastructure;
 
