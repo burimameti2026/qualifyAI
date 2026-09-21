@@ -39,8 +39,19 @@ public sealed class IdentityBootstrapHostedService(
         await dbContext.Database.MigrateAsync(cancellationToken);
         await EnsureAdminUiClientAsync(applicationManager, cancellationToken);
 
-        var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "admin";
-        var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "QualifyAI Admin";
+        var legacyTenants = await dbContext.Tenants
+            .Where(x => x.Slug == "demo" || x.Slug == "renova")
+            .ToListAsync(cancellationToken);
+
+        if (legacyTenants.Count > 0)
+        {
+            dbContext.Tenants.RemoveRange(legacyTenants);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Removed {Count} legacy demo/Renova identity tenants.", legacyTenants.Count);
+        }
+
+        var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "master";
+        var tenantName = configuration["IdentityBootstrap:Tenant:Name"]?.Trim() ?? "QualifyAI Master";
         var contactEmail = configuration["IdentityBootstrap:Tenant:ContactEmail"]?.Trim().ToLowerInvariant() ?? "admin@qualifyai.local";
         var configuredTenantId = ParseOptionalTenantId(configuration["IdentityBootstrap:Tenant:Id"]);
 
@@ -52,11 +63,11 @@ public sealed class IdentityBootstrapHostedService(
                 : Tenant.Create(tenantName, tenantSlug, contactEmail);
             await dbContext.Tenants.AddAsync(tenant, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Provisioned bootstrap tenant {TenantSlug} ({TenantId}).", tenant.Slug, tenant.Id);
+            logger.LogInformation("Provisioned master tenant {TenantSlug} ({TenantId}).", tenant.Slug, tenant.Id);
         }
         else if (configuredTenantId.HasValue && tenant.Id != configuredTenantId.Value)
         {
-            logger.LogWarning("Bootstrap tenant '{TenantSlug}' already exists with id '{ExistingTenantId}'. Configured id '{ConfiguredTenantId}' is used only when creating the tenant.", tenantSlug, tenant.Id, configuredTenantId.Value);
+            logger.LogWarning("Configured master tenant id is only used when creating the tenant.");
         }
 
         var license = await dbContext.Licenses
@@ -80,7 +91,7 @@ public sealed class IdentityBootstrapHostedService(
 
             await dbContext.Licenses.AddAsync(license, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Provisioned bootstrap license {LicenseId} for tenant {TenantId}.", license.Id, tenant.Id);
+            logger.LogInformation("Provisioned master license {LicenseId}.", license.Id);
         }
 
         var snapshotAtUtc = DateTime.UtcNow;
@@ -104,7 +115,7 @@ public sealed class IdentityBootstrapHostedService(
             {
                 Id = Guid.NewGuid(), TenantId = tenant.Id, TenantSlug = tenant.Slug,
                 UserName = adminEmail, Email = adminEmail, EmailConfirmed = true, IsActive = true,
-                FirstName = configuration["IdentityBootstrap:Admin:FirstName"] ?? "Platform",
+                FirstName = configuration["IdentityBootstrap:Admin:FirstName"] ?? "Master",
                 LastName = configuration["IdentityBootstrap:Admin:LastName"] ?? "Admin"
             };
             EnsureSucceeded(await userManager.CreateAsync(admin, adminPassword));
@@ -115,7 +126,6 @@ public sealed class IdentityBootstrapHostedService(
             EnsureSucceeded(await userManager.ResetPasswordAsync(admin, token, adminPassword));
             admin.IsActive = true;
             await userManager.UpdateAsync(admin);
-            logger.LogWarning("Bootstrap password reset is enabled for tenant {TenantSlug}; disable IdentityBootstrap:Admin:ResetPassword outside local/demo environments.", tenant.Slug);
         }
 
         var roleStorageName = TenantRoleNameCodec.ToStorageName(tenant.Id, "Admin");
@@ -128,7 +138,7 @@ public sealed class IdentityBootstrapHostedService(
             adminRole = new ApplicationRole
             {
                 Id = Guid.NewGuid(), TenantId = tenant.Id, Name = roleStorageName,
-                Description = "Tenant administrator"
+                Description = "Master platform administrator"
             };
             EnsureSucceeded(await roleManager.CreateAsync(adminRole));
         }
@@ -144,13 +154,14 @@ public sealed class IdentityBootstrapHostedService(
             .Where(x => !existingPermissions.Contains(x, StringComparer.OrdinalIgnoreCase))
             .Select(x => new UserPermission { TenantId = tenant.Id, UserId = admin.Id, Permission = x })
             .ToArray();
+
         if (missingPermissions.Length > 0)
         {
             dbContext.UserPermissions.AddRange(missingPermissions);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        logger.LogInformation("Identity bootstrap ready for tenant {TenantSlug}; admin {AdminEmail}; plan {Plan}.", tenant.Slug, adminEmail, license.Plan);
+        logger.LogInformation("Master identity bootstrap ready; admin {AdminEmail}; plan {Plan}.", adminEmail, license.Plan);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
