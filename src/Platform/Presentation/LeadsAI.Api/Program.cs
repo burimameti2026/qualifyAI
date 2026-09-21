@@ -1,6 +1,5 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using LeadsAI.Api;
 using LeadsAI.Api.Security;
@@ -82,7 +81,7 @@ app.MapCatalog();
 app.MapEnterpriseOperations();
 app.MapFinance();
 app.MapAutomationAnalytics();
-app.MapHub<ConversationHub>(" /hubs/conversations".Trim());
+app.MapHub<ConversationHub>("/hubs/conversations");
 app.MapPublicChat();
 app.MapExtendedAdmin();
 app.MapPlatformModules();
