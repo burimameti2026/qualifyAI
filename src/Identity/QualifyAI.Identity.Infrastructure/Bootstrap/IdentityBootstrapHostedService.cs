@@ -55,7 +55,13 @@ public sealed class IdentityBootstrapHostedService(
         var contactEmail = configuration["IdentityBootstrap:Tenant:ContactEmail"]?.Trim().ToLowerInvariant() ?? "admin@qualifyai.local";
         var configuredTenantId = ParseOptionalTenantId(configuration["IdentityBootstrap:Tenant:Id"]);
 
-        var tenant = await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
+        // Resolve the master tenant by stable ID first. This prevents a duplicate-key
+        // failure when an existing database already contains the configured master ID.
+        var tenant = configuredTenantId.HasValue
+            ? await dbContext.Tenants.FirstOrDefaultAsync(x => x.Id == configuredTenantId.Value, cancellationToken)
+            : null;
+
+        tenant ??= await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
         if (tenant is null)
         {
             tenant = configuredTenantId.HasValue
@@ -67,7 +73,9 @@ public sealed class IdentityBootstrapHostedService(
         }
         else if (configuredTenantId.HasValue && tenant.Id != configuredTenantId.Value)
         {
-            logger.LogWarning("Configured master tenant id is only used when creating the tenant.");
+            logger.LogWarning(
+                "Master tenant slug {TenantSlug} already exists with id {TenantId}; configured id {ConfiguredTenantId} will not create a duplicate.",
+                tenantSlug, tenant.Id, configuredTenantId.Value);
         }
 
         var license = await dbContext.Licenses
