@@ -267,6 +267,7 @@ public sealed class AcquisitionController(
             {
                 campaign.Id,
                 campaign.TargetListId,
+                campaign.OfferId,
                 campaign.Name,
                 campaign.Goal,
                 campaign.Status,
