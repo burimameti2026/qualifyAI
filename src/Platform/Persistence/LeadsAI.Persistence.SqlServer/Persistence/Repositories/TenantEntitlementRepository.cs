@@ -106,8 +106,11 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
         {
             Detach(entity);
             entity = await dbContext.TenantEntitlements
-                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken)
-                ?? throw;
+                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
+
+            if (entity is null)
+                throw;
+
             entity.TenantSlug=tenantSlug.Trim().ToLowerInvariant();
             entity.TenantStatus=Normalize(tenantStatus, "pending");
             entity.UpdatedAtUtc=updatedAtUtc;
@@ -140,8 +143,10 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
         {
             Detach(entity);
             entity = await dbContext.TenantEntitlements
-                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken)
-                ?? throw;
+                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
+
+            if (entity is null)
+                throw;
 
             if(entity.Version>version)
                 return;
