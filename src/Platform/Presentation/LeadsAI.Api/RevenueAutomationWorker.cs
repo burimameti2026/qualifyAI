@@ -34,6 +34,10 @@ public sealed class RevenueAutomationWorker(
                 var tenantIds = await entitlements.ListActiveTenantIdsAsync(stoppingToken);
                 foreach (var tenantId in tenantIds)
                 {
+                    var entitlement = await entitlements.GetAsync(tenantId, stoppingToken);
+                    if (entitlement is null || !entitlement.IsAccessibleAt(DateTime.UtcNow))
+                        continue;
+
                     var result = await automation.RunAsync(tenantId, stoppingToken);
                     if (result.OpportunitiesCreated > 0 || result.TasksCreated > 0)
                     {
