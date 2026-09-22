@@ -20,15 +20,16 @@ public sealed class IdentityEntitlementConsumer(AutomationDbContext db) :
         => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
-            state.TenantSlug = context.Message.TenantSlug.Trim().ToLowerInvariant();
-            state.TenantStatus = "active";
+            state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
+            // TenantCreated means the tenant exists; license activation is a separate event.
+            state.TenantStatus = "pending";
         }, context.CancellationToken);
 
     public Task Consume(ConsumeContext<TenantStatusChangedIntegrationEvent> context)
         => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
-            state.TenantSlug = context.Message.TenantSlug.Trim().ToLowerInvariant();
+            state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
             state.TenantStatus = context.Message.Status.Trim().ToLowerInvariant();
         }, context.CancellationToken);
 
@@ -36,6 +37,7 @@ public sealed class IdentityEntitlementConsumer(AutomationDbContext db) :
         => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
+            state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
             if (state.Version > context.Message.Version) return;
             state.LicensePlan = context.Message.Plan.Trim().ToLowerInvariant();
             state.LicenseStatus = context.Message.Status.Trim().ToLowerInvariant();
@@ -63,6 +65,17 @@ public sealed class IdentityEntitlementConsumer(AutomationDbContext db) :
         return state;
     }
 
+    private static string RequireTenantSlug(string? slug, Guid tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            throw new InvalidOperationException(
+                $"Identity entitlement event for tenant {tenantId} does not contain TenantSlug.");
+        }
+
+        return slug.Trim().ToLowerInvariant();
+    }
+
     private async Task ProcessAsync(
         Guid eventId,
         DateTime occurredAtUtc,
@@ -73,6 +86,10 @@ public sealed class IdentityEntitlementConsumer(AutomationDbContext db) :
 
         await strategy.ExecuteAsync(async () =>
         {
+            // Retries reuse the DbContext. Always start from a clean tracker so an
+            // Added tenant from a failed attempt cannot collide on the retry.
+            db.ChangeTracker.Clear();
+
             await using var transaction =
                 await db.Database.BeginTransactionAsync(
                     IsolationLevel.Serializable,
