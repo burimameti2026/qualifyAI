@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -56,11 +57,30 @@ public sealed class IdentityEntitlementConsumer(NotificationsDbContext db) :
 
     private async Task ProcessAsync(Guid eventId, DateTime occurredAtUtc, Func<Task> mutate, CancellationToken ct)
     {
-        if (await db.InboxMessages.AnyAsync(x => x.Id == eventId && x.Consumer == ConsumerName, ct)) return;
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+        if (await db.InboxMessages.AnyAsync(x => x.Id == eventId && x.Consumer == ConsumerName, ct))
+        {
+            await transaction.CommitAsync(ct);
+            return;
+        }
+
         await mutate();
-        db.InboxMessages.Add(new InboxMessage { Id = eventId, Consumer = ConsumerName, ReceivedAtUtc = DateTime.UtcNow, ProcessedAtUtc = DateTime.UtcNow });
-        var tracked = db.ChangeTracker.Entries<TenantEntitlementState>().FirstOrDefault(x => x.State != EntityState.Unchanged)?.Entity;
-        if (tracked is not null) tracked.UpdatedAtUtc = occurredAtUtc;
+
+        db.InboxMessages.Add(new InboxMessage
+        {
+            Id = eventId,
+            Consumer = ConsumerName,
+            ReceivedAtUtc = DateTime.UtcNow,
+            ProcessedAtUtc = DateTime.UtcNow
+        });
+
+        var tracked = db.ChangeTracker.Entries<TenantEntitlementState>()
+            .FirstOrDefault(x => x.State != EntityState.Unchanged)?.Entity;
+        if (tracked is not null)
+            tracked.UpdatedAtUtc = occurredAtUtc;
+
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 }
