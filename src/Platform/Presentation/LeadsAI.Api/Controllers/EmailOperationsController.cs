@@ -279,6 +279,21 @@ public sealed class EmailOperationsController(
         return Ok(task);
     }
 
+    [HttpPost("messages/{id:guid}/reject"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
+    public async Task<IActionResult> RejectApproval(Guid id, CancellationToken ct)
+    {
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+        if (message.Status != OutreachStatus.Queued)
+            return Conflict(new { detail = "Only queued outreach messages can be rejected." });
+
+        var task = await db.CrmTasks.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}", ct);
+        if (task is not null) task.Completed = true;
+        message.Status = OutreachStatus.Suppressed;
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message.Id, message.Status, rejected = true });
+    }
+
     [HttpPost("messages/{id:guid}/approve-and-send"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
     public async Task<IActionResult> ApproveAndSend(Guid id, CancellationToken ct)
     {
