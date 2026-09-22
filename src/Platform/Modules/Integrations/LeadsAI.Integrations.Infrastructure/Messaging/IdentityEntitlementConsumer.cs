@@ -17,7 +17,7 @@ public sealed class IdentityEntitlementConsumer(IntegrationsDbContext db) :
     private const string ConsumerName = "integrations.identity-entitlements";
 
     public Task Consume(ConsumeContext<TenantCreatedIntegrationEvent> context)
-        => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
+        => ProcessAsync(context.Message.EventId, context.Message.TenantId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
             state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
@@ -26,7 +26,7 @@ public sealed class IdentityEntitlementConsumer(IntegrationsDbContext db) :
         }, context.CancellationToken);
 
     public Task Consume(ConsumeContext<TenantStatusChangedIntegrationEvent> context)
-        => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
+        => ProcessAsync(context.Message.EventId, context.Message.TenantId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
             state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
@@ -34,7 +34,7 @@ public sealed class IdentityEntitlementConsumer(IntegrationsDbContext db) :
         }, context.CancellationToken);
 
     public Task Consume(ConsumeContext<TenantLicenseChangedIntegrationEvent> context)
-        => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
+        => ProcessAsync(context.Message.EventId, context.Message.TenantId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
             state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
@@ -81,6 +81,7 @@ public sealed class IdentityEntitlementConsumer(IntegrationsDbContext db) :
 
     private async Task ProcessAsync(
         Guid eventId,
+        Guid tenantId,
         DateTime occurredAtUtc,
         Func<Task> mutate,
         CancellationToken ct)
@@ -112,6 +113,15 @@ public sealed class IdentityEntitlementConsumer(IntegrationsDbContext db) :
                     await db.Database.BeginTransactionAsync(
                         System.Data.IsolationLevel.ReadCommitted,
                         ct);
+
+                // Serialize entitlement creation/update per tenant without using
+                // Serializable isolation or range locks. Created/Status/License
+                // events for the same tenant can arrive concurrently.
+                var lockResource = $"leadsai:tenant-entitlement:{ConsumerName}:{tenantId:D}";
+                await db.Database.ExecuteSqlRawAsync(
+                    "EXEC sp_getapplock @Resource = {0}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000",
+                    lockResource,
+                    ct);
 
                 try
                 {
