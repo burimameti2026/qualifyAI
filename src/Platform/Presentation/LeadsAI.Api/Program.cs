@@ -11,7 +11,6 @@ using LeadsAI.BuildingBlocks.Security;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.It;
 using LeadsAI.Infrastructure.WorkspacePackages;
-using LeadsAI.Infrastructure.Demo;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Persistence.SqlServer.Queries;
 using LeadsAI.BuildingBlocks.Security.Access;
@@ -147,8 +146,6 @@ using (var scope = app.Services.CreateScope())
 
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
 
-    if (builder.Configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
-        await scope.ServiceProvider.GetRequiredService<DevelopmentSeedService>().SeedAsync();
 }
 
 app.Run();
