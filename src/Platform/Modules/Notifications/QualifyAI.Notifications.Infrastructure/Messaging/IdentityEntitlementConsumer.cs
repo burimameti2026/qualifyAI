@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Text.Json;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
