@@ -379,7 +379,29 @@ public sealed class AcquisitionController(
         }
     }
 
-    private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);\n\n    private static CampaignStepRules ParseRules(string json) { try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); } catch { return new CampaignStepRules(); } }\n    private static bool Matches(Prospect p, CampaignStepRules r) {\n        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;\n        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;\n        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;\n        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;\n        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;\n        return true;\n    }\n    private static bool ContainsAny(string value, string csv) => csv.Split((Prospect prospect, ProspectImportRow row, string domain, string email, string batchSource, DateTime now)
+    private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+
+    private static CampaignStepRules ParseRules(string json)
+    {
+        try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); }
+        catch { return new CampaignStepRules(); }
+    }
+
+    private static bool Matches(Prospect p, CampaignStepRules r)
+    {
+        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
+        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
+        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
+        return true;
+    }
+
+    private static bool ContainsAny(string value, string csv) =>
+        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
+
+    private static void MergeImportedProspect(Prospect prospect, ProspectImportRow row, string domain, string email, string batchSource, DateTime now)
     {
         prospect.CompanyName=Prefer(row.CompanyName, prospect.CompanyName);
         prospect.Domain=Prefer(domain, prospect.Domain);
@@ -408,7 +430,7 @@ public sealed class AcquisitionController(
 
     private static string NormalizeDomain(string? value)
     {
-        var domain = (value??string.Empty).Trim().ToLowerInvariant();
+        var domain=(value??string.Empty).Trim().ToLowerInvariant();
         domain=domain.Replace("https://", string.Empty).Replace("http://", string.Empty);
         if(domain.StartsWith("www.")) domain=domain[4..];
         return domain.Split('/')[0].TrimEnd('.');
@@ -419,35 +441,9 @@ public sealed class AcquisitionController(
 }
 
 public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
-public sealed record DiscoveryRequest(
-    string? Source = null,
-    string? Region = null,
-    int MaximumResults = 50,
-    int MinimumScore = 70,
-    string? TargetListName = null,
-    bool CreateTargetList = true);
+public sealed record DiscoveryRequest(string? Source = null, string? Region = null, int MaximumResults = 50, int MinimumScore = 70, string? TargetListName = null, bool CreateTargetList = true);
 public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
-public sealed record ProspectImportRow(
-    string CompanyName,
-    string Domain,
-    string? ContactName,
-    string? Email,
-    string? JobTitle,
-    string? Industry,
-    string? Country,
-    string? Source,
-    int FitScore,
-    int IntentScore,
-    string? Priority = null,
-    string? ContactReadiness = null,
-    string? SuggestedBuyer = null,
-    string? SizeBand = null,
-    string? PainHypothesis = null,
-    string? Offer = null,
-    string? SourceUrl = null,
-    string? VerificationStatus = null,
-    string? OutreachStatus = null,
-    string? DatasetOrigin = null);
+public sealed record ProspectImportRow(string CompanyName, string Domain, string? ContactName, string? Email, string? JobTitle, string? Industry, string? Country, string? Source, int FitScore, int IntentScore, string? Priority = null, string? ContactReadiness = null, string? SuggestedBuyer = null, string? SizeBand = null, string? PainHypothesis = null, string? Offer = null, string? SourceUrl = null, string? VerificationStatus = null, string? OutreachStatus = null, string? DatasetOrigin = null);
 public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
 public sealed record CampaignInput(Guid TargetListId, Guid? OfferId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
