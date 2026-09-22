@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
+using LeadsAI.Persistence.SqlServer.Projections;
 
 namespace LeadsAI.Infrastructure.Demo;
 
@@ -30,7 +31,7 @@ public sealed class DevelopmentSeedService(
             return;
         }
 
-        for (var attempt = 1; attempt <= 60; attempt++)
+        for (var attempt = 1; attempt <= 30; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -46,13 +47,65 @@ public sealed class DevelopmentSeedService(
                 return;
             }
 
-            if (attempt < 60)
+            // Development is intentionally self-healing on a clean database. Identity
+            // publishes the authoritative entitlement events asynchronously, but a fresh
+            // local environment must not block for two minutes when RabbitMQ delivery is
+            // delayed or a previous broker queue is stale. The next identity event will
+            // reconcile this projection with the authoritative license state.
+            if (attempt == 10)
+            {
+                await EnsureDevelopmentEntitlementAsync(tenantId, cancellationToken);
+                continue;
+            }
+
+            if (attempt < 30)
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
         logger.LogWarning(
-            "Development seed skipped because tenant {TenantId} did not reach an active entitlement state in time.",
+            "Development seed skipped because tenant {TenantId} did not reach an active entitlement state.",
             tenantId);
+    }
+
+    private async Task EnsureDevelopmentEntitlementAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var existing = await db.TenantEntitlements
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
+
+        if (existing is null)
+        {
+            var now = DateTime.UtcNow;
+            var plan = configuration["IdentityBootstrap:License:Plan"]?.Trim().ToLowerInvariant() ?? "enterprise";
+            var maxUsers = configuration.GetValue("IdentityBootstrap:License:MaxUsers", 100);
+            var modules = configuration
+                .GetSection("IdentityBootstrap:License:Modules")
+                .Get<string[]>()
+                ?? [];
+
+            existing = new TenantEntitlementProjection
+            {
+                TenantId = tenantId,
+                TenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "findleadsai",
+                TenantStatus = "active",
+                LicensePlan = plan,
+                LicenseStatus = "active",
+                MaxUsers = Math.Max(0, maxUsers),
+                StartsAtUtc = now.AddMinutes(-5),
+                ExpiresAtUtc = now.AddYears(1),
+                Version = 1,
+                ModulesJson = System.Text.Json.JsonSerializer.Serialize(modules),
+                LimitsJson = System.Text.Json.JsonSerializer.Serialize(
+                    new Dictionary<string, int> { ["users"] = Math.Max(0, maxUsers) }),
+                UpdatedAtUtc = now
+            };
+
+            db.TenantEntitlements.Add(existing);
+            await db.SaveChangesAsync(cancellationToken);
+
+            logger.LogWarning(
+                "Development entitlement projection was bootstrapped locally for tenant {TenantId}; Identity events will reconcile it.",
+                tenantId);
+        }
     }
 
     private async Task EnsureWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken)
