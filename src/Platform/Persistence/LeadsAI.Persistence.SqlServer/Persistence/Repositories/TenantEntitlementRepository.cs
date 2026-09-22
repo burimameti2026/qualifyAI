@@ -93,75 +93,30 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
     public async Task UpsertTenantAsync(Guid tenantId, string tenantSlug, string tenantStatus, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
     {
         var entity = await GetOrCreateTrackedAsync(tenantId, cancellationToken);
-
-        entity.TenantSlug=tenantSlug.Trim().ToLowerInvariant();
-        entity.TenantStatus=Normalize(tenantStatus, "pending");
-        entity.UpdatedAtUtc=updatedAtUtc;
-
-        try
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
-        {
-            Detach(entity);
-            entity = await dbContext.TenantEntitlements
-                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
-
-            if (entity is null)
-                throw;
-
-            entity.TenantSlug=tenantSlug.Trim().ToLowerInvariant();
-            entity.TenantStatus=Normalize(tenantStatus, "pending");
-            entity.UpdatedAtUtc=updatedAtUtc;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
+        entity.TenantSlug = tenantSlug.Trim().ToLowerInvariant();
+        entity.TenantStatus = Normalize(tenantStatus, "pending");
+        entity.UpdatedAtUtc = updatedAtUtc;
     }
 
     public async Task UpsertLicenseAsync(Guid tenantId, string plan, string licenseStatus, int maxUsers, DateTime startsAtUtc, DateTime? expiresAtUtc, long version, IReadOnlyCollection<string> modules, IReadOnlyDictionary<string, int>? limits, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
     {
         var entity = await GetOrCreateTrackedAsync(tenantId, cancellationToken);
-
-        if(entity.Version>version)
+        if (entity.Version > version)
             return;
 
-        entity.LicensePlan=Normalize(plan, "unassigned");
-        entity.LicenseStatus=Normalize(licenseStatus, "unassigned");
-        entity.MaxUsers=Math.Max(0, maxUsers);
-        entity.StartsAtUtc=startsAtUtc;
-        entity.ExpiresAtUtc=expiresAtUtc;
-        entity.Version=version;
-        entity.ModulesJson=JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x), JsonOptions);
-        entity.LimitsJson=JsonSerializer.Serialize(limits??new Dictionary<string, int> { ["users"]=Math.Max(0, maxUsers) }, JsonOptions);
-        entity.UpdatedAtUtc=updatedAtUtc;
-
-        try
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
-        {
-            Detach(entity);
-            entity = await dbContext.TenantEntitlements
-                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
-
-            if (entity is null)
-                throw;
-
-            if(entity.Version>version)
-                return;
-
-            entity.LicensePlan=Normalize(plan, "unassigned");
-            entity.LicenseStatus=Normalize(licenseStatus, "unassigned");
-            entity.MaxUsers=Math.Max(0, maxUsers);
-            entity.StartsAtUtc=startsAtUtc;
-            entity.ExpiresAtUtc=expiresAtUtc;
-            entity.Version=version;
-            entity.ModulesJson=JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x), JsonOptions);
-            entity.LimitsJson=JsonSerializer.Serialize(limits??new Dictionary<string, int> { ["users"]=Math.Max(0, maxUsers) }, JsonOptions);
-            entity.UpdatedAtUtc=updatedAtUtc;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
+        entity.LicensePlan = Normalize(plan, "unassigned");
+        entity.LicenseStatus = Normalize(licenseStatus, "unassigned");
+        entity.MaxUsers = Math.Max(0, maxUsers);
+        entity.StartsAtUtc = startsAtUtc;
+        entity.ExpiresAtUtc = expiresAtUtc;
+        entity.Version = version;
+        entity.ModulesJson = JsonSerializer.Serialize(
+            modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x),
+            JsonOptions);
+        entity.LimitsJson = JsonSerializer.Serialize(
+            limits ?? new Dictionary<string, int> { ["users"] = Math.Max(0, maxUsers) },
+            JsonOptions);
+        entity.UpdatedAtUtc = updatedAtUtc;
     }
 
     // Looks in the local change tracker first so repeated Upsert* calls within the same
