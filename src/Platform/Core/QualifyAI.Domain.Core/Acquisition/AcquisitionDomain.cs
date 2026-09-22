@@ -87,6 +87,20 @@ public sealed class Campaign : TenantEntity
         StartsAtUtc ??= DateTime.UtcNow;
         Touch();
     }
+
+    public void Pause()
+    {
+        if (Status is not CampaignStatus.Running) throw new InvalidOperationException("Only running campaigns can be paused.");
+        Status = CampaignStatus.Paused;
+        Touch();
+    }
+
+    public void Resume()
+    {
+        if (Status is not CampaignStatus.Paused) throw new InvalidOperationException("Only paused campaigns can be resumed.");
+        Status = CampaignStatus.Running;
+        Touch();
+    }
 }
 
 public sealed class CampaignStep : TenantEntity
