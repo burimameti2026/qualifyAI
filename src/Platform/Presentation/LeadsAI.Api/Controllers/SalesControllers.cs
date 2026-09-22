@@ -51,8 +51,17 @@ public sealed class SalesController(ISender sender, ITenantContext tenant, Sales
         try { pipeline.Rename(input.Name); }
         catch (InvalidOperationException ex) { return BadRequest(new { detail = ex.Message }); }
         if (input.IsDefault)
-            await db.Pipelines.Where(x => x.TenantId == tenantId && x.Id != id).ExecuteUpdateAsync(x => x.SetProperty(p => p.IsDefault, false), ct);
-        pipeline.IsDefault = input.IsDefault;
+        {
+            await db.Pipelines
+                .Where(x => x.TenantId == tenantId && x.Id != id)
+                .ExecuteUpdateAsync(x => x.SetProperty(p => p.IsDefault, false), ct);
+            pipeline.IsDefault = true;
+        }
+        else if (pipeline.IsDefault)
+        {
+            // Keep one deterministic default route for automated opportunities.
+            pipeline.IsDefault = true;
+        }
         await db.SaveChangesAsync(ct);
         return Ok(pipeline);
     }
