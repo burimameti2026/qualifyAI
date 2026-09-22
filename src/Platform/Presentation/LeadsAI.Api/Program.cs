@@ -55,6 +55,50 @@ builder.Services.AddSwaggerGen(o =>
 builder.Services.AddQualifyAiResourceServer(builder.Configuration);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
 
+static async Task ResetDevelopmentDatabaseAsync(DbContext db)
+{
+    if (!Environment.GetEnvironmentVariable("RESET_DATABASE_ON_STARTUP")
+        .Equals("true", StringComparison.OrdinalIgnoreCase))
+        return;
+
+    await db.Database.ExecuteSqlRawAsync("""
+        DECLARE @sql nvarchar(max) = N'';
+
+        SELECT @sql = @sql +
+            N'ALTER TABLE ' +
+            QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) +
+            N' NOCHECK CONSTRAINT ALL;' + CHAR(13)
+        FROM sys.tables t
+        WHERE t.is_ms_shipped = 0
+          AND t.name <> N'__EFMigrationsHistory';
+
+        EXEC sp_executesql @sql;
+
+        SET @sql = N'';
+
+        SELECT @sql = @sql +
+            N'DELETE FROM ' +
+            QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) + N';' + CHAR(13)
+        FROM sys.tables t
+        WHERE t.is_ms_shipped = 0
+          AND t.name <> N'__EFMigrationsHistory';
+
+        EXEC sp_executesql @sql;
+
+        SET @sql = N'';
+
+        SELECT @sql = @sql +
+            N'ALTER TABLE ' +
+            QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name) +
+            N' WITH CHECK CHECK CONSTRAINT ALL;' + CHAR(13)
+        FROM sys.tables t
+        WHERE t.is_ms_shipped = 0
+          AND t.name <> N'__EFMigrationsHistory';
+
+        EXEC sp_executesql @sql;
+        """);
+}
+
 var app = builder.Build();
 app.MapDefaultEndpoints();
 app.UseCors();
@@ -94,7 +138,18 @@ using (var scope = app.Services.CreateScope())
     // The Business database must be fully migrated before any hosted worker can query it.
     await db.Database.MigrateAsync();
     await db.EnsureBillingSchemaAsync();
+
+    // TEMPORARY DEV RESET: set RESET_DATABASE_ON_STARTUP=true for one clean run.
+    await ResetDevelopmentDatabaseAsync(db);
+
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
+
+    // TEMPORARY DEV RESET: also clear module databases without deleting migration history.
+    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<AutomationDbContext>());
+    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<NotificationsDbContext>());
+    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<KnowledgeDbContext>());
+    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<AIOrchestrationDbContext>());
+    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<IntegrationsDbContext>());
 }
 
 app.Run();
