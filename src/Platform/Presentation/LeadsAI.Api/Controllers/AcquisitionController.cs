@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -266,6 +267,7 @@ public sealed class AcquisitionController(
             {
                 campaign.Id,
                 campaign.TargetListId,
+                campaign.OfferId,
                 campaign.Name,
                 campaign.Goal,
                 campaign.Status,
@@ -283,6 +285,69 @@ public sealed class AcquisitionController(
                 sent = db.OutreachMessages.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==OutreachStatus.Sent||x.Status==OutreachStatus.Delivered||x.Status==OutreachStatus.Replied))
             }).ToListAsync(ct);
         return Ok(campaigns);
+    }
+
+    [HttpGet("campaigns/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> CampaignDetail(Guid id, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var campaign = await db.Campaigns.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id)
+            .Select(x => new { x.Id, x.TargetListId, x.OfferId, x.Name, x.Goal, x.Status, x.SenderName, x.SenderEmail, x.StartsAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc })
+            .SingleOrDefaultAsync(ct);
+        if (campaign is null) return NotFound();
+        var steps = await db.CampaignSteps.AsNoTracking().Where(x => x.TenantId == tenantId && x.CampaignId == id)
+            .OrderBy(x => x.StepNumber)
+            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate, x.RulesJson })
+            .ToListAsync(ct);
+        return Ok(new { campaign, steps });
+    }
+
+    [HttpPost("campaigns/{id:guid}/pause")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Pause(Guid id, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+        try { campaign.Pause(); await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
+    }
+
+    [HttpPost("campaigns/{id:guid}/resume")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Resume(Guid id, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+        try { campaign.Resume(); await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
+    }
+
+    [HttpPut("campaigns/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateCampaign(Guid id, CampaignInput input, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+        if (campaign.Status is CampaignStatus.Completed) return Conflict(new { detail = "Completed campaigns cannot be edited." });
+        if (input.Steps is null || input.Steps.Length == 0) return BadRequest(new { detail = "At least one campaign message is required." });
+        if (!await db.TargetLists.AnyAsync(x => x.TenantId == tenantId && x.Id == input.TargetListId, ct))
+            return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
+
+        campaign.TargetListId=input.TargetListId; campaign.OfferId=input.OfferId; campaign.Name=input.Name.Trim();
+        campaign.Goal=input.Goal.Trim(); campaign.SenderName=input.SenderName.Trim(); campaign.SenderEmail=input.SenderEmail.Trim();
+        campaign.StartsAtUtc=input.StartsAtUtc; campaign.Touch();
+
+        var existing=await db.CampaignSteps.Where(x => x.TenantId==tenantId&&x.CampaignId==id).ToListAsync(ct);
+        db.CampaignSteps.RemoveRange(existing);
+        db.CampaignSteps.AddRange(input.Steps.OrderBy(x=>x.StepNumber).Select(x=>new CampaignStep {
+            TenantId=tenantId,CampaignId=id,StepNumber=x.StepNumber,DelayHours=x.DelayHours,Channel=x.Channel,
+            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate,
+            RulesJson=JsonSerializer.Serialize(new CampaignStepRules(x.Qualification,x.MinimumScore,x.Industry,x.Countries,x.CompanySizeMin,x.CompanySizeMax,x.ContactRoles,x.StopOnReply))
+        }));
+        await db.SaveChangesAsync(ct);
+        return await CampaignDetail(id, ct);
     }
 
     [HttpGet("campaigns/{id:guid}/activity")]
@@ -335,9 +400,15 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> CreateCampaign(CampaignInput input, CancellationToken ct)
     {
-        var campaign = new Campaign { TenantId=TenantId, TargetListId=input.TargetListId, Name=input.Name.Trim(), Goal=input.Goal, SenderName=input.SenderName, SenderEmail=input.SenderEmail, StartsAtUtc=input.StartsAtUtc };
+        if (input.Steps is null || input.Steps.Length == 0) return BadRequest(new { detail = "At least one campaign message is required." });
+        if (!await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == input.TargetListId, ct)) return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
+        var campaign = new Campaign { TenantId=TenantId, TargetListId=input.TargetListId, OfferId=input.OfferId, Name=input.Name.Trim(), Goal=input.Goal.Trim(), SenderName=input.SenderName.Trim(), SenderEmail=input.SenderEmail.Trim(), StartsAtUtc=input.StartsAtUtc };
         db.Campaigns.Add(campaign);
-        db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep { TenantId=TenantId, CampaignId=campaign.Id, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel, SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate }));
+        db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep {
+            TenantId=TenantId, CampaignId=campaign.Id, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel,
+            SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate,
+            RulesJson=JsonSerializer.Serialize(new CampaignStepRules(x.Qualification,x.MinimumScore,x.Industry,x.Countries,x.CompanySizeMin,x.CompanySizeMax,x.ContactRoles,x.StopOnReply))
+        }));
         await db.SaveChangesAsync(ct); return Created($"/api/acquisition/campaigns/{campaign.Id}", campaign);
     }
 
@@ -349,6 +420,11 @@ public sealed class AcquisitionController(
         if(campaign is null) return NotFound();
         campaign.Start();
         var prospectIds = await db.TargetListMembers.Where(x => x.TenantId==TenantId&&x.TargetListId==campaign.TargetListId).Select(x => x.ProspectId).ToListAsync(ct);
+        var firstStep = await db.CampaignSteps.Where(x => x.TenantId==TenantId&&x.CampaignId==id&&x.StepNumber==1).FirstOrDefaultAsync(ct);
+        if (firstStep is null) return BadRequest(new { detail = "Campaign must contain Message 1." });
+        var firstRules = ParseRules(firstStep.RulesJson);
+        var prospects = await db.Prospects.Where(x => x.TenantId==TenantId).ToListAsync(ct);
+        prospectIds = prospects.Where(x => prospectIds.Contains(x.Id) && Matches(x, firstRules)).Select(x => x.Id).ToList();
         var existing = await db.CampaignRecipients.Where(x => x.TenantId==TenantId&&x.CampaignId==id).Select(x => x.ProspectId).ToListAsync(ct);
         db.CampaignRecipients.AddRange(prospectIds.Except(existing).Select(x => new CampaignRecipient { TenantId=TenantId, CampaignId=id, ProspectId=x, NextRunAtUtc=campaign.StartsAtUtc??DateTime.UtcNow }));
         await db.SaveChangesAsync(ct);
@@ -415,6 +491,26 @@ public sealed class AcquisitionController(
 
     private static string NormalizeEmail(string? value) => (value??string.Empty).Trim().ToLowerInvariant();
 
+    private static CampaignStepRules ParseRules(string json)
+    {
+        try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); }
+        catch { return new CampaignStepRules(); }
+    }
+
+    private static bool Matches(Prospect p, CampaignStepRules r)
+    {
+        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
+        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
+        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
+        return true;
+    }
+
+    private static bool ContainsAny(string value, string csv) =>
+        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
+
 }
 
 public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
@@ -448,7 +544,10 @@ public sealed record ProspectImportRow(
     string? OutreachStatus = null,
     string? DatasetOrigin = null);
 public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
-public sealed record CampaignInput(Guid TargetListId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
+public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+public sealed record CampaignInput(Guid TargetListId, Guid? OfferId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
+internal sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+
 public sealed record DeliveryConfirmation(string ProviderMessageId);
 public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
 public sealed record CampaignActivityItem(Guid Id, DateTime AtUtc, string Type, string Status, string Title, string Detail);
