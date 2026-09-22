@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
+using LeadsAI.Domain;
 
 namespace LeadsAI.Infrastructure.Demo;
 
@@ -90,17 +91,57 @@ public sealed class DevelopmentSeedService(
         const string key = "acquisition.workspace-packages";
         var packages = new[]
         {
-            new SavedWorkspacePackageSeed("en", "FusionFleet Logistics Growth", "AI-powered customer acquisition for logistics and transport companies", "Find high-fit shippers, fleet operators and 3PL prospects, qualify them with AI and automate the follow-up.", "Logistics companies, freight operators, 3PLs and fleet businesses", "299", new[] { "AI prospect discovery", "ICP qualification", "Automated outreach", "CRM pipeline", "Logistics growth workflows", "Revenue analytics" }),
-            new SavedWorkspacePackageSeed("mk", "FusionFleet Логистички раст", "AI-платформа за пронаоѓање и освојување клиенти во логистиката", "Пронајдете компании со висок потенцијал, квалификувајте ги со AI и автоматизирајте го следењето до продажната можност.", "Логистички компании, транспортни оператори, 3PL компании и флота оператори", "299", new[] { "AI пронаоѓање потенцијални клиенти", "ICP квалификација", "Автоматизиран outreach", "CRM pipeline", "Логистички sales workflows", "Аналитика на приход" }),
-            new SavedWorkspacePackageSeed("sq", "FusionFleet Rritje për Logjistikë", "Platformë me AI për gjetjen dhe fitimin e klientëve në logjistikë", "Gjeni kompani me potencial të lartë, kualifikojini me AI dhe automatizoni ndjekjen deri te mundësia e shitjes.", "Kompani logjistike, operatorë transporti, kompani 3PL dhe operatorë flotash", "299", new[] { "Zbulim i prospekteve me AI", "Kualifikim ICP", "Kontaktim i automatizuar", "Pipeline CRM", "Workflow për rritje në logjistikë", "Analitikë e të ardhurave" })
+            new SavedWorkspacePackageSeed(
+                "en",
+                "FusionFleet Logistics Growth",
+                "AI-powered customer acquisition for logistics and transport companies",
+                "Find high-fit shippers, fleet operators and 3PL prospects, qualify them with AI and automate the follow-up.",
+                "Logistics companies, freight operators, 3PLs and fleet businesses",
+                "299",
+                new[] { "AI prospect discovery", "ICP qualification", "Automated outreach", "CRM pipeline", "Logistics growth workflows", "Revenue analytics" }
+            ),
+            new SavedWorkspacePackageSeed(
+                "mk",
+                "FusionFleet Логистички раст",
+                "AI-платформа за пронаоѓање и освојување клиенти во логистиката",
+                "Пронајдете компании со висок потенцијал, квалификувајте ги со AI и автоматизирајте го следењето до продажната можност.",
+                "Логистички компании, транспортни оператори, 3PL компании и флота оператори",
+                "299",
+                new[] { "AI пронаоѓање потенцијални клиенти", "ICP квалификација", "Автоматизиран outreach", "CRM pipeline", "Логистички sales workflows", "Аналитика на приход" }
+            ),
+            new SavedWorkspacePackageSeed(
+                "sq",
+                "FusionFleet Rritje për Logjistikë",
+                "Platformë me AI për gjetjen dhe fitimin e klientëve në logjistikë",
+                "Gjeni kompani me potencial të lartë, kualifikojini me AI dhe automatizoni ndjekjen deri te mundësia e shitjes.",
+                "Kompani logjistike, operatorë transporti, kompani 3PL dhe operatorë flotash",
+                "299",
+                new[] { "Zbulim i prospekteve me AI", "Kualifikim ICP", "Kontaktim i automatizuar", "Pipeline CRM", "Workflow për rritje në logjistikë", "Analitikë e të ardhurave" }
+            )
         };
 
         var setting = await db.TenantSettings.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Key == key, cancellationToken);
-        var saved = packages.Select(x => new\n        {\n            Id = Guid.NewGuid(),\n            Name = x.Name,\n            Headline = x.Headline,\n            Subheadline = x.Subheadline,\n            Audience = x.Audience,\n            Price = x.Price,\n            Billing = "month",\n            Features = x.Features,\n            Sections = new[] { "Hero", "Problem", "AI acquisition", "Automation", "How it works", "Pricing", "Call to action" },\n            HiddenSections = Array.Empty<string>(),\n            UpdatedAtUtc = DateTime.UtcNow,\n            Language = x.Language\n        }).ToArray();
+        var saved = packages.Select(x => new
+        {
+            Id = Guid.NewGuid(),
+            Name = x.Name,
+            Headline = x.Headline,
+            Subheadline = x.Subheadline,
+            Audience = x.Audience,
+            Price = x.Price,
+            Billing = "month",
+            Features = x.Features,
+            Sections = new[] { "Hero", "Problem", "AI acquisition", "Automation", "How it works", "Pricing", "Call to action" },
+            HiddenSections = Array.Empty<string>(),
+            UpdatedAtUtc = DateTime.UtcNow,
+            Language = x.Language
+        }).ToArray();
         var json = System.Text.Json.JsonSerializer.Serialize(saved);
 
         if (setting is null)
+        {
             db.TenantSettings.Add(new TenantSetting { Id = Guid.NewGuid(), TenantId = tenantId, Key = key, Value = json });
+        }
         else
         {
             setting.Value = json;
