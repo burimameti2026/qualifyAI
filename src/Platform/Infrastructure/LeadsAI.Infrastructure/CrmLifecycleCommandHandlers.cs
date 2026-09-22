@@ -107,6 +107,13 @@ public sealed class CrmLifecycleCommandHandlers(
         var stage = await crm.GetPipelineStageAsync(tenantId, stageId, cancellationToken)
             ?? throw new InvalidOperationException("Invalid pipeline stage.");
 
+        if (opportunity.PipelineStageId is { } currentStageId && currentStageId != stage.Id)
+        {
+            var currentStage = await crm.GetPipelineStageAsync(tenantId, currentStageId, cancellationToken);
+            if (currentStage is not null && currentStage.PipelineId != stage.PipelineId)
+                throw new InvalidOperationException("An opportunity cannot be moved between different pipelines.");
+        }
+
         opportunity.MoveToStage(stage.Id);
         crm.AddActivity(CrmActivity.ForOpportunity(opportunity, "Opportunity moved", stage.Name));
     }
