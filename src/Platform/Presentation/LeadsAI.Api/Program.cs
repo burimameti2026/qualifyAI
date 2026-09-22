@@ -35,7 +35,7 @@ builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<SlaService>();
 builder.Services.AddScoped<KnowledgeGapService>();
 builder.Services.AddScoped<BillingService>();
-builder.Services.AddScoped<RealWorkspaceService>();
+builder.Services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
 builder.Services.AddScoped<WorkspacePackageInstaller>();
 builder.Services.AddScoped<FusionFleetPackageProvisioner>();
 builder.Services.AddScoped<QualifyAiAcquisitionPackageProvisioner>();
