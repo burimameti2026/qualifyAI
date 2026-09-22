@@ -88,3 +88,41 @@ public sealed class DevelopmentSeedService(
             tenantId);
     }
 }
+
+public sealed class DevelopmentSeedHostedService(
+    IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
+    ILogger<DevelopmentSeedHostedService> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        if (!configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
+            return;
+
+        // Run after the host (and MassTransit bus) has started. The identity events
+        // that create TenantEntitlements are asynchronous, so running the seed from
+        // Program.cs before app.Run() creates a startup race and can never observe
+        // the entitlement projections on a clean database.
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var seed = scope.ServiceProvider.GetRequiredService<DevelopmentSeedService>();
+                await seed.SeedAsync(stoppingToken);
+                return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Development seed attempt failed; retrying in 10 seconds.");
+                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+            }
+        }
+    }
+}
