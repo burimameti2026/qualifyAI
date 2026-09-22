@@ -189,6 +189,7 @@ public sealed class IdentityEntitlementInboxProcessor(
     private async Task ProcessOnceAsync(
         Guid eventId,
         string consumer,
+        Guid tenantId,
         Func<Task> apply,
         CancellationToken ct)
     {
