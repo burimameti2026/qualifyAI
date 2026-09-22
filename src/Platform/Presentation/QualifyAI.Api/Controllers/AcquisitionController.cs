@@ -357,6 +357,54 @@ public sealed class AcquisitionController(
         return Ok(new { campaign.Id, campaign.Status, recipients = prospectIds.Count, queued });
     }
 
+    [HttpPost("campaigns/{id:guid}/pause")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Pause(Guid id, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId==TenantId&&x.Id==id, ct);
+        if(campaign is null) return NotFound();
+        try { campaign.Pause(); await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        catch(InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
+    }
+
+    [HttpPost("campaigns/{id:guid}/resume")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Resume(Guid id, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId==TenantId&&x.Id==id, ct);
+        if(campaign is null) return NotFound();
+        try { campaign.Resume(); await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        catch(InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
+    }
+
+    [HttpPut("campaigns/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateCampaign(Guid id, CampaignInput input, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId==TenantId&&x.Id==id, ct);
+        if(campaign is null) return NotFound();
+        if(campaign.Status is CampaignStatus.Completed) return Conflict(new { detail = "Completed campaigns cannot be edited." });
+
+        campaign.TargetListId=input.TargetListId;
+        campaign.OfferId=input.OfferId;
+        campaign.Name=input.Name.Trim();
+        campaign.Goal=input.Goal;
+        campaign.SenderName=input.SenderName.Trim();
+        campaign.SenderEmail=input.SenderEmail.Trim();
+        campaign.StartsAtUtc=input.StartsAtUtc;
+
+        var existing=await db.CampaignSteps.Where(x => x.TenantId==TenantId&&x.CampaignId==id).ToListAsync(ct);
+        db.CampaignSteps.RemoveRange(existing);
+        db.CampaignSteps.AddRange(input.Steps.OrderBy(x=>x.StepNumber).Select(x=>new CampaignStep {
+            TenantId=TenantId,CampaignId=id,StepNumber=x.StepNumber,DelayHours=x.DelayHours,Channel=x.Channel,
+            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate,
+            RulesJson=JsonSerializer.Serialize(new CampaignStepRules(x.Qualification,x.MinimumScore,x.Industry,x.Countries,x.CompanySizeMin,x.CompanySizeMax,x.ContactRoles,x.StopOnReply))
+        }));
+        campaign.Touch();
+        await db.SaveChangesAsync(ct);
+        return Ok(campaign);
+    }
+
     [HttpPost("messages/{id:guid}/delivered")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Delivered(Guid id, DeliveryConfirmation input, CancellationToken ct) =>
