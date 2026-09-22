@@ -5,7 +5,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
-using LeadsAI.Persistence.SqlServer.Projections;
 
 namespace LeadsAI.Infrastructure.Demo;
 
@@ -55,47 +54,6 @@ public sealed class DevelopmentSeedService(
             "Development seed could not continue because tenant {TenantId} did not receive an active entitlement projection. " +
             "Identity bootstrap/outbox or Platform RabbitMQ consumers must be investigated.",
             tenantId);
-    }
-
-    private async Task EnsureDevelopmentEntitlementAsync(Guid tenantId, CancellationToken cancellationToken)
-    {
-        var existing = await db.TenantEntitlements
-            .FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
-
-        if (existing is null)
-        {
-            var now = DateTime.UtcNow;
-            var plan = configuration["IdentityBootstrap:License:Plan"]?.Trim().ToLowerInvariant() ?? "enterprise";
-            var maxUsers = configuration.GetValue("IdentityBootstrap:License:MaxUsers", 100);
-            var modules = configuration
-                .GetSection("IdentityBootstrap:License:Modules")
-                .Get<string[]>()
-                ?? [];
-
-            existing = new TenantEntitlementProjection
-            {
-                TenantId = tenantId,
-                TenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "findleadsai",
-                TenantStatus = "active",
-                LicensePlan = plan,
-                LicenseStatus = "active",
-                MaxUsers = Math.Max(0, maxUsers),
-                StartsAtUtc = now.AddMinutes(-5),
-                ExpiresAtUtc = now.AddYears(1),
-                Version = 1,
-                ModulesJson = System.Text.Json.JsonSerializer.Serialize(modules),
-                LimitsJson = System.Text.Json.JsonSerializer.Serialize(
-                    new Dictionary<string, int> { ["users"] = Math.Max(0, maxUsers) }),
-                UpdatedAtUtc = now
-            };
-
-            db.TenantEntitlements.Add(existing);
-            await db.SaveChangesAsync(cancellationToken);
-
-            logger.LogWarning(
-                "Development entitlement projection was bootstrapped locally for tenant {TenantId}; Identity events will reconcile it.",
-                tenantId);
-        }
     }
 
     private async Task EnsureWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken)
