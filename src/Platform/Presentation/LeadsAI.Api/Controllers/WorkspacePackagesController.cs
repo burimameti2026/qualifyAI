@@ -12,8 +12,8 @@ namespace LeadsAI.Api.Controllers;
 
 public sealed record InstallWorkspacePackageRequest(string PackageId);
 public sealed record BuildWorkspacePackageRequest(string Prompt);
-public sealed record SaveWorkspacePackageRequest(string? Id, string Name, string Headline, string Subheadline, string Audience, string Price, string Billing, IReadOnlyList<string> Features, IReadOnlyList<string> Sections, IReadOnlyList<string> HiddenSections);
-public sealed record SavedWorkspacePackage(Guid Id, string Name, string Headline, string Subheadline, string Audience, string Price, string Billing, IReadOnlyList<string> Features, IReadOnlyList<string> Sections, IReadOnlyList<string> HiddenSections, DateTime UpdatedAtUtc);
+public sealed record SaveWorkspacePackageRequest(string? Id, string Name, string Headline, string Subheadline, string Audience, string Price, string Billing, IReadOnlyList<string> Features, IReadOnlyList<string> Sections, IReadOnlyList<string> HiddenSections, string? Language = null);
+public sealed record SavedWorkspacePackage(Guid Id, string Name, string Headline, string Subheadline, string Audience, string Price, string Billing, IReadOnlyList<string> Features, IReadOnlyList<string> Sections, IReadOnlyList<string> HiddenSections, DateTime UpdatedAtUtc, string Language = "en");
 public sealed record WorkspacePackagePreview(
     string Name,
     string Headline,
@@ -60,7 +60,7 @@ public sealed class WorkspacePackagesController(ITenantContext tenant, Workspace
             : JsonSerializer.Deserialize<List<SavedWorkspacePackage>>(setting.Value) ?? new();
 
         var id = Guid.TryParse(request.Id, out var parsed) ? parsed : Guid.NewGuid();
-        var saved = new SavedWorkspacePackage(id, request.Name.Trim(), request.Headline?.Trim() ?? "", request.Subheadline?.Trim() ?? "", request.Audience?.Trim() ?? "", request.Price?.Trim() ?? "", request.Billing?.Trim() ?? "month", request.Features ?? Array.Empty<string>(), request.Sections ?? Array.Empty<string>(), request.HiddenSections ?? Array.Empty<string>(), DateTime.UtcNow);
+        var saved = new SavedWorkspacePackage(id, request.Name.Trim(), request.Headline?.Trim() ?? "", request.Subheadline?.Trim() ?? "", request.Audience?.Trim() ?? "", request.Price?.Trim() ?? "", request.Billing?.Trim() ?? "month", request.Features ?? Array.Empty<string>(), request.Sections ?? Array.Empty<string>(), request.HiddenSections ?? Array.Empty<string>(), DateTime.UtcNow, string.IsNullOrWhiteSpace(request.Language) ? "en" : request.Language.Trim().ToLowerInvariant());
 
         var index = packages.FindIndex(x => x.Id == id);
         if (index >= 0) packages[index] = saved; else packages.Add(saved);

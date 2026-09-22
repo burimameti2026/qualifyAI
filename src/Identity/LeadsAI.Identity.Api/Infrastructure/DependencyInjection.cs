@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IClientCredentialStore, OpenIddictClientCredentialStore>();
         services.AddScoped<IAccessControlRepository, AccessControlRepository>();
         services.AddHostedService<IdentityBootstrapHostedService>();
+        services.AddHostedService<FusionFleetDemoTenantBootstrapHostedService>();
         services.AddHostedService<IdentityOutboxPublisherHostedService>();
         return services;
     }

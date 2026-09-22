@@ -11,10 +11,10 @@ public static class WorkspacePackageCatalog
 {
     public static readonly WorkspacePackageDefinition FusionFleetPromotion = new(
         "fusionfleet-promotion",
-        "FusionFleet Promotion",
+        "FusionFleet Logistics Growth",
         "1.0",
         new[] { "crm", "ai_agents", "automations" },
-        new[] { "FusionFleet ICP", "Prospecting agent", "Daily discovery workflow", "Target list", "Promotion campaign" });
+        new[] { "Logistics ICP", "AI prospecting agent", "Daily discovery workflow", "Target list", "Promotion campaign", "Automated follow-up" });
 
     public static readonly WorkspacePackageDefinition QualifyAiAcquisition = new(
         "leadsai-acquisition",

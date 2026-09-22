@@ -11,6 +11,7 @@ namespace LeadsAI.Infrastructure.Demo;
 public sealed class DevelopmentSeedService(
     AppDbContext db,
     LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService workspace,
+    LeadsAI.Infrastructure.WorkspacePackages.WorkspacePackageInstaller packageInstaller,
     IConfiguration configuration,
     ILogger<DevelopmentSeedService> logger)
 {
@@ -43,6 +44,7 @@ public sealed class DevelopmentSeedService(
                 entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
             {
                 await EnsureWorkspaceAsync(tenantId, cancellationToken);
+                await EnsureFusionFleetPackageAsync(tenantId, cancellationToken);
                 return;
             }
 
@@ -55,6 +57,60 @@ public sealed class DevelopmentSeedService(
             "Identity bootstrap/outbox or Platform RabbitMQ consumers must be investigated.",
             tenantId);
     }
+
+    private async Task EnsureFusionFleetPackageAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var packageId = configuration["DevelopmentSeed:WorkspacePackage"]?.Trim();
+        if (string.IsNullOrWhiteSpace(packageId))
+            return;
+
+        const string markerKey = "acquisition.workspace-package.seed.v1";
+        var marker = await db.TenantSettings.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId && x.Key == markerKey && x.Value == packageId, cancellationToken);
+
+        if (marker)
+            return;
+
+        await packageInstaller.InstallAsync(tenantId, packageId, cancellationToken);
+        await SeedFusionFleetPackageLocalizationsAsync(tenantId, cancellationToken);
+
+        db.TenantSettings.Add(new TenantSetting
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Key = markerKey,
+            Value = packageId
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Seeded workspace package {PackageId} for tenant {TenantId}.", packageId, tenantId);
+    }
+
+    private async Task SeedFusionFleetPackageLocalizationsAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        const string key = "acquisition.workspace-packages";
+        var packages = new[]
+        {
+            new SavedWorkspacePackageSeed("en", "FusionFleet Logistics Growth", "AI-powered customer acquisition for logistics and transport companies", "Find high-fit shippers, fleet operators and 3PL prospects, qualify them with AI and automate the follow-up.", "Logistics companies, freight operators, 3PLs and fleet businesses", "299", new[] { "AI prospect discovery", "ICP qualification", "Automated outreach", "CRM pipeline", "Logistics growth workflows", "Revenue analytics" }),
+            new SavedWorkspacePackageSeed("mk", "FusionFleet Логистички раст", "AI-платформа за пронаоѓање и освојување клиенти во логистиката", "Пронајдете компании со висок потенцијал, квалификувајте ги со AI и автоматизирајте го следењето до продажната можност.", "Логистички компании, транспортни оператори, 3PL компании и флота оператори", "299", new[] { "AI пронаоѓање потенцијални клиенти", "ICP квалификација", "Автоматизиран outreach", "CRM pipeline", "Логистички sales workflows", "Аналитика на приход" }),
+            new SavedWorkspacePackageSeed("sq", "FusionFleet Rritje për Logjistikë", "Platformë me AI për gjetjen dhe fitimin e klientëve në logjistikë", "Gjeni kompani me potencial të lartë, kualifikojini me AI dhe automatizoni ndjekjen deri te mundësia e shitjes.", "Kompani logjistike, operatorë transporti, kompani 3PL dhe operatorë flotash", "299", new[] { "Zbulim i prospekteve me AI", "Kualifikim ICP", "Kontaktim i automatizuar", "Pipeline CRM", "Workflow për rritje në logjistikë", "Analitikë e të ardhurave" })
+        };
+
+        var setting = await db.TenantSettings.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Key == key, cancellationToken);
+        var saved = packages.Select(x => new SavedWorkspacePackage(Guid.NewGuid(), x.Name, x.Headline, x.Subheadline, x.Audience, x.Price, "month", x.Features, new[] { "Hero", "Problem", "AI acquisition", "Automation", "How it works", "Pricing", "Call to action" }, Array.Empty<string>(), DateTime.UtcNow, x.Language)).ToArray();
+        var json = System.Text.Json.JsonSerializer.Serialize(saved);
+
+        if (setting is null)
+            db.TenantSettings.Add(new TenantSetting { Id = Guid.NewGuid(), TenantId = tenantId, Key = key, Value = json });
+        else
+        {
+            setting.Value = json;
+            setting.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private sealed record SavedWorkspacePackageSeed(string Language, string Name, string Headline, string Subheadline, string Audience, string Price, IReadOnlyList<string> Features);
 
     private async Task EnsureWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken)
     {
