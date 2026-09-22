@@ -63,38 +63,6 @@ services:
     networks: [leadsai]
     restart: unless-stopped
 
-  database-bootstrap:
-    image: mcr.microsoft.com/mssql/server:2025-latest
-    container_name: leadsai-database-bootstrap
-    environment:
-      ACCEPT_EULA: "Y"
-      DB_SERVER: ${DB_SERVER:?Set DB_SERVER in .env}
-      DB_USER: ${DB_USER:?Set DB_USER in .env}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-    entrypoint: ["/bin/bash", "-ec"]
-    command:
-      - |
-        echo "Waiting for SQL Server at ${DB_SERVER}..."
-        until /opt/mssql-tools18/bin/sqlcmd -S "${DB_SERVER}" -U "${DB_USER}" -P "${DB_PASSWORD}" -No -Q "SELECT 1" >/dev/null 2>&1; do
-          sleep 3
-        done
-
-        echo "SQL Server is available. Ensuring LeadsAI databases exist..."
-        for db in           LeadsAI_IdentityDb           LeadsAI_Business           LeadsAI_AutomationDb           LeadsAI_NotificationsDb           LeadsAI_KnowledgeDb           LeadsAI_AIOrchestrationDb           LeadsAI_IntegrationsDb           FindLeadsAIPromotions
-        do
-          /opt/mssql-tools18/bin/sqlcmd             -S "${DB_SERVER}"             -U "${DB_USER}"             -P "${DB_PASSWORD}"             -No -b             -Q "IF DB_ID(N'${db}') IS NULL CREATE DATABASE [${db}];"
-        done
-
-        echo "Ensuring ${DB_USER} has access to all LeadsAI databases..."
-        for db in           LeadsAI_IdentityDb           LeadsAI_Business           LeadsAI_AutomationDb           LeadsAI_NotificationsDb           LeadsAI_KnowledgeDb           LeadsAI_AIOrchestrationDb           LeadsAI_IntegrationsDb           FindLeadsAIPromotions
-        do
-          /opt/mssql-tools18/bin/sqlcmd             -S "${DB_SERVER}"             -U "${DB_USER}"             -P "${DB_PASSWORD}"             -d "${db}"             -No -b             -Q "IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${DB_USER}') CREATE USER [${DB_USER}] FOR LOGIN [${DB_USER}]; ALTER ROLE [db_owner] ADD MEMBER [${DB_USER}];"
-        done
-
-        echo "Database provisioning completed. EF migrations will run from the API startup paths."
-    networks: [leadsai]
-    restart: "no"
-
   identity-api:
     container_name: leadsai-identity-api
     build:
@@ -122,8 +90,6 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
-      database-bootstrap:
-        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -176,8 +142,6 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
-      database-bootstrap:
-        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
       rabbitmq:
