@@ -16,7 +16,6 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
         {
             try
             {
-                await ProcessDefaultDatabaseAsync(stoppingToken);
                 using var rootScope = scopes.CreateScope();
                 var resolver = rootScope.ServiceProvider.GetRequiredService<ITenantDatabaseConnectionResolver>();
                 foreach (var tenantSlug in resolver.GetConfiguredTenantDatabases().Keys)
@@ -24,6 +23,7 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
                     if (stoppingToken.IsCancellationRequested) break;
                     var tenantId = await FindTenantIdAsync(tenantSlug, stoppingToken);
                     if (tenantId is null) continue;
+                    if (!await IsTenantActiveAsync(tenantId.Value, stoppingToken)) continue;
                     await ProcessTenantDatabaseAsync(tenantId.Value, tenantSlug, stoppingToken);
                 }
             }
@@ -33,7 +33,6 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
         }
     }
 
-    private async Task ProcessDefaultDatabaseAsync(CancellationToken ct) { using var scope = scopes.CreateScope(); await ProcessScopeAsync(scope.ServiceProvider, ct); }
     private async Task ProcessTenantDatabaseAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
@@ -53,6 +52,19 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
             catch (Exception ex) { log.LogError(ex, "Autonomous acquisition run {RunId} failed", id); }
         }
     }
+    private async Task<bool> IsTenantActiveAsync(Guid tenantId, CancellationToken ct)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        return await db.TenantEntitlements.AnyAsync(x =>
+            x.TenantId == tenantId &&
+            x.TenantStatus == "active" &&
+            x.LicenseStatus == "active" &&
+            x.StartsAtUtc <= now &&
+            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
+    }
+
     private async Task<Guid?> FindTenantIdAsync(string tenantSlug, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
