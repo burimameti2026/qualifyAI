@@ -1,19 +1,22 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using LeadsAI.Identity.Application;
-using LeadsAI.Identity.Application.Licensing;
-using LeadsAI.Identity.Application.Tenants.ProvisionTenant;
-using LeadsAI.Identity.Domain.Licensing;
-using LeadsAI.Identity.Domain.Tenants;
-using LeadsAI.Identity.Persistence.SqlServer;
-using LeadsAI.Identity.Persistence.SqlServer.Identity;
+using QualifyAI.BuildingBlocks.Messaging.Outbox;
+using QualifyAI.Contracts.Identity;
+using QualifyAI.Identity.Application;
+using QualifyAI.Identity.Application.Licensing;
+using QualifyAI.Identity.Application.Tenants.ProvisionTenant;
+using QualifyAI.Identity.Domain.Licensing;
+using QualifyAI.Identity.Domain.Tenants;
+using QualifyAI.Identity.Persistence.SqlServer;
+using QualifyAI.Identity.Persistence.SqlServer.Identity;
 
-namespace LeadsAI.Identity.Infrastructure.Tenants.ProvisionTenant;
+namespace QualifyAI.Identity.Infrastructure.Tenants.ProvisionTenant;
 
 public sealed class TenantProvisioningService(
     IdentityDbContext db,
     UserManager<ApplicationUser> users,
-    RoleManager<ApplicationRole> roles) : ITenantProvisioningService
+    RoleManager<ApplicationRole> roles,
+    IOutboxWriter outbox) : ITenantProvisioningService
 {
     public async Task<ProvisionTenantResult> ProvisionAsync(ProvisionTenantCommand request, CancellationToken cancellationToken)
     {
@@ -69,6 +72,24 @@ public sealed class TenantProvisioningService(
             await users.UpdateSecurityStampAsync(owner);
 
             tenant.Activate();
+
+            var snapshotAtUtc = DateTime.UtcNow;
+            outbox.Add(new TenantCreatedIntegrationEvent(
+                Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
+            outbox.Add(new TenantLicenseChangedIntegrationEvent(
+                Guid.NewGuid(),
+                snapshotAtUtc,
+                tenant.Id,
+                tenant.Slug,
+                license.Id,
+                license.Plan,
+                license.GetEffectiveStatus(snapshotAtUtc).ToString().ToLowerInvariant(),
+                license.MaxUsers,
+                license.StartsAtUtc,
+                license.ExpiresAtUtc,
+                license.Version,
+                license.Modules.Where(x => x.Enabled).Select(x => x.Code).ToArray()));
+
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
