@@ -90,18 +90,19 @@ public sealed class IdentityEntitlementConsumer(KnowledgeDbContext db) :
             // Added tenant from a failed attempt cannot collide on the retry.
             db.ChangeTracker.Clear();
 
+            // Idempotency is checked before opening the user transaction.
+            // The InboxMessages primary key is the final concurrency guard.
+            if (await db.InboxMessages
+                    .AsNoTracking()
+                    .AnyAsync(x => x.Id == eventId && x.Consumer == ConsumerName, ct))
+            {
+                return;
+            }
+
             await using var transaction =
                 await db.Database.BeginTransactionAsync(
                     IsolationLevel.Serializable,
                     ct);
-
-            if (await db.InboxMessages.AnyAsync(
-                    x => x.Id == eventId && x.Consumer == ConsumerName,
-                    ct))
-            {
-                await transaction.CommitAsync(ct);
-                return;
-            }
 
             await mutate();
 
