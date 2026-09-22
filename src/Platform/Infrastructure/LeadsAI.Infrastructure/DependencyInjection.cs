@@ -12,7 +12,6 @@ using LeadsAI.Infrastructure.It;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Persistence.SqlServer.Repositories;
-using LeadsAI.Infrastructure.Demo;
 
 namespace LeadsAI.Infrastructure;
 
@@ -84,7 +83,6 @@ public static class DependencyInjection
         });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<TenantSerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
-        services.AddScoped<RealisticScenarioService>();
         services.AddScoped<RealWorkspaceService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
         services.AddHttpClient<BrevoEmailProvider>(c =>
