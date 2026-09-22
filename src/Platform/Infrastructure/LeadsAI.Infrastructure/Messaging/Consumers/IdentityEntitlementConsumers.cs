@@ -39,6 +39,7 @@ public sealed class IdentityEntitlementInboxProcessor(
         => ProcessOnceAsync(
             message.EventId,
             nameof(TenantCreatedConsumer),
+            message.TenantId,
             async () =>
             {
                 var tenantSlug = RequireTenantSlug(message.TenantSlug, message.TenantId);
@@ -64,6 +65,7 @@ public sealed class IdentityEntitlementInboxProcessor(
         => ProcessOnceAsync(
             message.EventId,
             nameof(TenantStatusChangedConsumer),
+            message.TenantId,
             async () =>
             {
                 var tenantSlug = RequireTenantSlug(message.TenantSlug, message.TenantId);
@@ -89,6 +91,7 @@ public sealed class IdentityEntitlementInboxProcessor(
         => ProcessOnceAsync(
             message.EventId,
             nameof(TenantLicenseChangedConsumer),
+            message.TenantId,
             async () =>
             {
                 var tenantSlug = RequireTenantSlug(message.TenantSlug, message.TenantId);
@@ -206,11 +209,18 @@ public sealed class IdentityEntitlementInboxProcessor(
                 return;
             }
 
-            // Keep the transaction limited to the entitlement projection + inbox
-            // write. Serializable protects the get-or-create projection when two
-            // different events for the same tenant arrive concurrently.
+            // Use a short ReadCommitted transaction and serialize only events for
+            // the same tenant with an application lock. Serializable caused range
+            // locks on the entitlement projection and could deadlock when Created,
+            // Status and License events arrived concurrently.
             await using var transaction = await dbContext.Database.BeginTransactionAsync(
-                System.Data.IsolationLevel.Serializable,
+                System.Data.IsolationLevel.ReadCommitted,
+                ct);
+
+            var lockResource = $"leadsai:tenant-entitlement:{consumer}:{tenantId:D}";
+            await dbContext.Database.ExecuteSqlRawAsync(
+                "EXEC sp_getapplock @Resource = {0}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000",
+                new object[] { lockResource },
                 ct);
 
             try
