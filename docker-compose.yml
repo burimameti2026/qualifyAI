@@ -94,6 +94,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      platform-api:
+        condition: service_healthy
     networks: [leadsai]
     restart: unless-stopped
 
@@ -150,6 +152,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 20
     networks: [leadsai]
     restart: unless-stopped
 
