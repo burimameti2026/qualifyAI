@@ -47,23 +47,13 @@ public sealed class DevelopmentSeedService(
                 return;
             }
 
-            // Development is intentionally self-healing on a clean database. Identity
-            // publishes the authoritative entitlement events asynchronously, but a fresh
-            // local environment must not block for two minutes when RabbitMQ delivery is
-            // delayed or a previous broker queue is stale. The next identity event will
-            // reconcile this projection with the authoritative license state.
-            if (attempt == 10)
-            {
-                await EnsureDevelopmentEntitlementAsync(tenantId, cancellationToken);
-                continue;
-            }
-
             if (attempt < 30)
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
-        logger.LogWarning(
-            "Development seed skipped because tenant {TenantId} did not reach an active entitlement state.",
+        logger.LogError(
+            "Development seed could not continue because tenant {TenantId} did not receive an active entitlement projection. " +
+            "Identity bootstrap/outbox or Platform RabbitMQ consumers must be investigated.",
             tenantId);
     }
 
