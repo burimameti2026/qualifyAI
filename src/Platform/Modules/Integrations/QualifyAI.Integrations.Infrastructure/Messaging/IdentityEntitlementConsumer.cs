@@ -48,19 +48,19 @@ public sealed class IdentityEntitlementConsumer(IntegrationsDbContext db) :
 
     private async Task<TenantEntitlementState> GetOrCreateAsync(Guid tenantId, CancellationToken ct)
     {
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            IF NOT EXISTS (
-                SELECT 1
-                FROM dbo.TenantEntitlements WITH (UPDLOCK, HOLDLOCK)
-                WHERE TenantId = {tenantId}
-            )
-            BEGIN
-                INSERT INTO dbo.TenantEntitlements (TenantId)
-                VALUES ({tenantId})
-            END
-            """, ct);
+        var state = await db.TenantEntitlements
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
 
-        return await db.TenantEntitlements.FirstAsync(x => x.TenantId == tenantId, ct);
+        if (state is not null)
+            return state;
+
+        state = new TenantEntitlementState
+        {
+            TenantId = tenantId
+        };
+
+        db.TenantEntitlements.Add(state);
+        return state;
     }
 
     private async Task ProcessAsync(
