@@ -120,7 +120,7 @@ public sealed class IdentityEntitlementConsumer(KnowledgeDbContext db) :
                 var lockResource = $"leadsai:tenant-entitlement:{ConsumerName}:{tenantId:D}";
                 await db.Database.ExecuteSqlRawAsync(
                     "EXEC sp_getapplock @Resource = {0}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000",
-                    lockResource,
+                    new object[] { lockResource },
                     ct);
 
                 try
