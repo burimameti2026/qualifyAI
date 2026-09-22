@@ -147,6 +147,8 @@ using (var scope = app.Services.CreateScope())
 
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
 
+    if (builder.Configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
+        await scope.ServiceProvider.GetRequiredService<DevelopmentSeedService>().SeedAsync();
 }
 
 app.Run();
