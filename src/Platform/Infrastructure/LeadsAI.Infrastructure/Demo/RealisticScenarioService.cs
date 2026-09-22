@@ -9,7 +9,7 @@ public sealed record ScenarioInstallResult(string Scenario, int Prospects, int C
 public sealed record ScenarioResetResult(int DeletedProspects, int DeletedLists, int DeletedAgents, int DeletedContacts, int DeletedLeads, int DeletedOpportunities, int DeletedPipelines, int DeletedMeetings, int DeletedAutomations);
 public sealed record ResetAndInstallResult(ScenarioResetResult Reset, ScenarioInstallResult Scenario);
 
-public sealed class RealisticScenarioService(RealWorkspaceService workspace, AppDbContext db)
+public sealed class RealisticScenarioService(WorkspacePackages.RealWorkspaceService workspace, AppDbContext db)
 {
     public async Task<ScenarioInstallResult> InstallAsync(Guid tenantId, CancellationToken ct = default)
     {
