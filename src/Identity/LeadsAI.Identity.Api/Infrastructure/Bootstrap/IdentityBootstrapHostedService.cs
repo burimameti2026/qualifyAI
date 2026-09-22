@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 using OpenIddict.Abstractions;
@@ -33,7 +34,7 @@ public sealed class IdentityBootstrapHostedService(
         var applicationManager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
         var outbox = scope.ServiceProvider.GetRequiredService<IOutboxWriter>();
 
-        await dbContext.Database.MigrateAsync(cancellationToken);
+        await MigrateDatabaseAsync(dbContext, cancellationToken);
         await EnsureAdminUiClientAsync(applicationManager, cancellationToken);
 
         var tenantSlug = configuration["IdentityBootstrap:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "demo";
@@ -152,6 +153,26 @@ public sealed class IdentityBootstrapHostedService(
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    private static async Task MigrateDatabaseAsync(
+        IdentityDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 5;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await dbContext.Database.MigrateAsync(cancellationToken);
+                return;
+            }
+            catch (SqlException ex) when (ex.Number == 1801 && attempt < maxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+        }
+    }
+
     private static Guid? ParseOptionalTenantId(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
@@ -159,18 +180,40 @@ public sealed class IdentityBootstrapHostedService(
         throw new InvalidOperationException($"IdentityBootstrap:Tenant:Id must be a valid GUID. Value='{value}'.");
     }
 
-    private static async Task EnsureAdminUiClientAsync(IOpenIddictApplicationManager applicationManager, CancellationToken cancellationToken)
+    private async Task EnsureAdminUiClientAsync(
+        IOpenIddictApplicationManager applicationManager,
+        CancellationToken cancellationToken)
     {
-        const string clientId = "leadsai-admin";
-        if (await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is not null) return;
-        await applicationManager.CreateAsync(new OpenIddictApplicationDescriptor
+        var clientId = configuration["IdentityBootstrap:Admin:ClientId"]?.Trim()
+            ?? "findleadsai-admin";
+
+        var descriptor = new OpenIddictApplicationDescriptor
         {
-            ClientId = clientId, DisplayName = "LeadsAI Admin UI", ClientType = ClientTypes.Public,
+            ClientId = clientId,
+            DisplayName = "LeadsAI Admin UI",
+            ClientType = ClientTypes.Public,
             ConsentType = ConsentTypes.Implicit,
-            Permissions = { Permissions.Endpoints.Token, Permissions.GrantTypes.Password, Permissions.GrantTypes.RefreshToken,
-                Permissions.Prefixes.Scope + "leadsai-api", Permissions.Prefixes.Scope + "profile",
-                Permissions.Prefixes.Scope + "email" }
-        }, cancellationToken);
+            Permissions =
+            {
+                Permissions.Endpoints.Token,
+                Permissions.GrantTypes.Password,
+                Permissions.GrantTypes.RefreshToken,
+                Permissions.Prefixes.Scope + "openid",
+                Permissions.Prefixes.Scope + "profile",
+                Permissions.Prefixes.Scope + "email",
+                Permissions.Prefixes.Scope + "offline_access",
+                Permissions.Prefixes.Scope + "leadsai-api"
+            }
+        };
+
+        var existing = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
+        if (existing is null)
+        {
+            await applicationManager.CreateAsync(descriptor, cancellationToken);
+            return;
+        }
+
+        await applicationManager.UpdateAsync(existing, descriptor, cancellationToken);
     }
 
     private static void EnsureSucceeded(IdentityResult result)
