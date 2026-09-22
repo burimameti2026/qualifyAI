@@ -96,7 +96,7 @@ public sealed class DevelopmentSeedService(
         };
 
         var setting = await db.TenantSettings.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Key == key, cancellationToken);
-        var saved = packages.Select(x => new SavedWorkspacePackage(Guid.NewGuid(), x.Name, x.Headline, x.Subheadline, x.Audience, x.Price, "month", x.Features, new[] { "Hero", "Problem", "AI acquisition", "Automation", "How it works", "Pricing", "Call to action" }, Array.Empty<string>(), DateTime.UtcNow, x.Language)).ToArray();
+        var saved = packages.Select(x => new\n        {\n            Id = Guid.NewGuid(),\n            Name = x.Name,\n            Headline = x.Headline,\n            Subheadline = x.Subheadline,\n            Audience = x.Audience,\n            Price = x.Price,\n            Billing = "month",\n            Features = x.Features,\n            Sections = new[] { "Hero", "Problem", "AI acquisition", "Automation", "How it works", "Pricing", "Call to action" },\n            HiddenSections = Array.Empty<string>(),\n            UpdatedAtUtc = DateTime.UtcNow,\n            Language = x.Language\n        }).ToArray();
         var json = System.Text.Json.JsonSerializer.Serialize(saved);
 
         if (setting is null)
