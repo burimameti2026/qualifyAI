@@ -37,6 +37,16 @@ public sealed class ProspectReplyProcessingService(AppDbContext db)
         ProcessProspectReplyRequest input,
         CancellationToken ct = default)
     {
+        var now = DateTime.UtcNow;
+        var accessible = await db.TenantEntitlements.AsNoTracking().AnyAsync(x =>
+            x.TenantId == tenantId &&
+            x.TenantStatus == "active" &&
+            x.LicenseStatus == "active" &&
+            x.StartsAtUtc <= now &&
+            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
+        if (!accessible)
+            throw new InvalidOperationException("Tenant access is inactive; prospect replies cannot be processed.");
+
         var recipient = await db.CampaignRecipients.FirstOrDefaultAsync(
             x => x.TenantId == tenantId && x.CampaignId == input.CampaignId && x.ProspectId == input.ProspectId, ct);
         var prospect = await db.Prospects.FirstOrDefaultAsync(
