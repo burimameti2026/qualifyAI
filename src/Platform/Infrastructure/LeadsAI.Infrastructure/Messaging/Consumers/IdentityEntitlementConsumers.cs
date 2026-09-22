@@ -173,53 +173,6 @@ public sealed class IdentityEntitlementInboxProcessor(
             },
             ct);
 
-    private async Task<string> ResolveSlugAsync(
-        Guid tenantId,
-        string? messageSlug,
-        CancellationToken ct)
-    {
-        if(!string.IsNullOrWhiteSpace(messageSlug))
-            return messageSlug.Trim().ToLowerInvariant();
-
-        // Legacy/in-flight license events may predate TenantSlug and the Platform tenant projection.
-        // Prefer an existing entitlement projection, then the platform tenant record, and finally
-        // use a deterministic internal slug until a TenantCreated event supplies the real slug.
-        var projectionSlug = await dbContext.TenantEntitlements
-            .AsNoTracking()
-            .Where(x => x.TenantId==tenantId&&x.TenantSlug!="")
-            .Select(x => x.TenantSlug)
-            .FirstOrDefaultAsync(ct);
-
-        if(!string.IsNullOrWhiteSpace(projectionSlug))
-            return projectionSlug.Trim().ToLowerInvariant();
-
-        var persistedSlug = await dbContext.Tenants
-            .AsNoTracking()
-            .Where(x => x.Id==tenantId)
-            .Select(x => x.Slug)
-            .FirstOrDefaultAsync(ct);
-
-        if(!string.IsNullOrWhiteSpace(persistedSlug))
-            return persistedSlug.Trim().ToLowerInvariant();
-
-        return CreateFallbackSlug(tenantId);
-    }
-
-    private static string ResolveLifecycleSlug(string? slug, Guid tenantId)
-        => !string.IsNullOrWhiteSpace(slug)
-            ? slug.Trim().ToLowerInvariant()
-            : CreateFallbackSlug(tenantId);
-
-    private static string CreateFallbackSlug(Guid tenantId)
-        => $"tenant-{tenantId:N}";
-
-    // IMPORTANT: AppDbContext is configured with EnableRetryOnFailure(), which requires the
-    // *entire* unit of work — every tracked-entity mutation, not just SaveChangesAsync — to be
-    // re-runnable inside the execution strategy. Previously only SaveChangesAsync was awaited
-    // directly, so a transient failure/retry could leave stale Added entries in the
-    // ChangeTracker from a half-completed attempt, causing spurious
-    // "instance already being tracked" exceptions on retry. Wrapping the whole apply()+save in
-    // ExecuteAsync ensures a retry redoes the tracked-entity creation from a clean state.
     private async Task ProcessOnceAsync(
         Guid eventId,
         string consumer,
@@ -227,27 +180,38 @@ public sealed class IdentityEntitlementInboxProcessor(
         CancellationToken ct)
     {
         var strategy = dbContext.Database.CreateExecutionStrategy();
+
         await strategy.ExecuteAsync(async () =>
         {
-            var inbox = dbContext.Set<InboxMessage>();
-            if(await inbox.AsNoTracking().AnyAsync(
-                    x => x.Id==eventId&&x.Consumer==consumer,
-                    ct))
-                return;
-
-            // Ensure a retry starts from a clean tracker: discard anything left tracked
-            // from a previous failed attempt within this same ExecuteAsync retry loop.
+            // Every retry must start with a clean tracker. Otherwise an Added tenant
+            // from a failed attempt can collide with the same TenantId on the retry.
             dbContext.ChangeTracker.Clear();
 
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+
+            var inbox = dbContext.Set<InboxMessage>();
+            if (await inbox.AsNoTracking().AnyAsync(
+                    x => x.Id == eventId && x.Consumer == consumer,
+                    ct))
+            {
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
             await apply();
+
             inbox.Add(new InboxMessage
             {
-                Id=eventId,
-                Consumer=consumer,
-                ReceivedAtUtc=DateTime.UtcNow,
-                ProcessedAtUtc=DateTime.UtcNow
+                Id = eventId,
+                Consumer = consumer,
+                ReceivedAtUtc = DateTime.UtcNow,
+                ProcessedAtUtc = DateTime.UtcNow
             });
+
+            // Repositories only mutate tracked state. The entitlement projection,
+            // lifecycle events and inbox record are persisted atomically here.
             await dbContext.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
         });
     }
 }
