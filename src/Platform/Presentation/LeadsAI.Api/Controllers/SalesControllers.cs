@@ -73,7 +73,17 @@ public sealed class SalesController(ISender sender, ITenantContext tenant, Sales
         var tenantId = tenant.TenantId();
         if (!await db.Pipelines.AnyAsync(x => x.TenantId == tenantId && x.Id == pipelineId, ct)) return NotFound();
         var stage = new PipelineStage { TenantId = tenantId, PipelineId = pipelineId };
-        try { stage.Configure(input.Name, input.SortOrder, input.Probability); }
+        var nextSortOrder = await db.PipelineStages
+            .Where(x => x.TenantId == tenantId && x.PipelineId == pipelineId)
+            .Select(x => (int?)x.SortOrder)
+            .MaxAsync(ct) ?? -1;
+        var requestedSortOrder = input.SortOrder < 0 ? nextSortOrder + 1 : input.SortOrder;
+        if (await db.PipelineStages.AnyAsync(x =>
+                x.TenantId == tenantId &&
+                x.PipelineId == pipelineId &&
+                x.SortOrder == requestedSortOrder, ct))
+            requestedSortOrder = nextSortOrder + 1;
+        try { stage.Configure(input.Name, requestedSortOrder, input.Probability); }
         catch (InvalidOperationException ex) { return BadRequest(new { detail = ex.Message }); }
         db.PipelineStages.Add(stage);
         await db.SaveChangesAsync(ct);
