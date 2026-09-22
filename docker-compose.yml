@@ -90,6 +90,578 @@ services:
         IF DB_ID(N'LeadsAI_AIOrchestrationDb') IS NULL CREATE DATABASE [LeadsAI_AIOrchestrationDb];
         IF DB_ID(N'LeadsAI_IntegrationsDb') IS NULL CREATE DATABASE [LeadsAI_IntegrationsDb];
         IF DB_ID(N'FindLeadsAIPromotions') IS NULL CREATE DATABASE [FindLeadsAIPromotions];
+
+        DECLARE @db sysname;
+        DECLARE @sql nvarchar(max);
+
+        DECLARE db_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT name
+        FROM sys.databases
+        WHERE name IN (
+          N'LeadsAI_IdentityDb',
+          N'LeadsAI_Business',
+          N'LeadsAI_AutomationDb',
+          N'LeadsAI_NotificationsDb',
+          N'LeadsAI_KnowledgeDb',
+          N'LeadsAI_AIOrchestrationDb',
+          N'LeadsAI_IntegrationsDb',
+          N'FindLeadsAIPromotions'
+        );
+
+        OPEN db_cursor;
+        FETCH NEXT FROM db_cursor INTO @db;
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+          SET @sql = N'USE ' + QUOTENAME(@db) + N';
+            IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N''
+        echo "Database provisioning completed. EF migrations will run from the API startup paths."
+    networks: [leadsai]
+    restart: "no"
+
+  identity-api:
+    container_name: leadsai-identity-api
+    build:
+      context: .
+      dockerfile: src/Identity/LeadsAI.Identity.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: identity-api
+      ConnectionStrings__IdentityDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IdentityDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      Identity__Issuer: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      IdentityBootstrap__Enabled: "true"
+      IdentityBootstrap__Tenant__Id: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      IdentityBootstrap__Tenant__Slug: ${FINDLEADSAI_TENANT_SLUG:-findleadsai}
+      IdentityBootstrap__Tenant__Name: ${FINDLEADSAI_TENANT_NAME:-FindLeadsAI Master}
+      IdentityBootstrap__Tenant__ContactEmail: ${FINDLEADSAI_CONTACT_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__License__Plan: ${FINDLEADSAI_LICENSE_PLAN:-Enterprise}
+      IdentityBootstrap__Admin__Email: ${FINDLEADSAI_ADMIN_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__Admin__FirstName: ${FINDLEADSAI_ADMIN_FIRST_NAME:-Master}
+      IdentityBootstrap__Admin__LastName: ${FINDLEADSAI_ADMIN_LAST_NAME:-Admin}
+      IdentityBootstrap__Admin__Password: ${FINDLEADSAI_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      IdentityBootstrap__Admin__ResetPassword: ${FINDLEADSAI_ADMIN_RESET_PASSWORD:-true}
+      Services__TenantManagement: http://platform-api:8080/internal
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  platform-api:
+    container_name: leadsai-platform-api
+    build:
+      context: .
+      dockerfile: src/Platform/Presentation/LeadsAI.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: platform-api
+      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_Business;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AutomationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_NotificationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      TenantBootstrap__FindLeadsAI__TenantId: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      TenantDatabases__findleadsai: FindLeadsAIPromotions
+      Identity__Authority: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-leadsai}:${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
+      Mongo__Database: LeadsAI_Knowledge
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
+      ProspectDiscovery__SerpApi__MonthlyLimitPath: ${SERPAPI_LIMIT:-}
+      RevenueAutomation__Enabled: "true"
+      RevenueAutomation__IntervalSeconds: "300"
+      Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
+      Email__Brevo__WebhookToken: ${BREVO_WEBHOOK_TOKEN:-}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
+      Email__SendGrid__WebhookToken: ${SENDGRID_WEBHOOK_TOKEN:-}
+      Email__SendGrid__InboundWebhookToken: ${SENDGRID_INBOUND_WEBHOOK_TOKEN:-}
+      Landing__DemoRequestRecipients: ${DEMO_REQUEST_RECIPIENTS:-}
+      Landing__DemoRequestRecipient: ${DEMO_REQUEST_RECIPIENT:-}
+      Landing__DemoRequestFromEmail: ${DEMO_REQUEST_FROM_EMAIL:-}
+      Landing__DemoRequestFromName: ${DEMO_REQUEST_FROM_NAME:-FindLeadsAI Product Team}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  api-gateway:
+    container_name: leadsai-api-gateway
+    build:
+      context: .
+      dockerfile: src/ApiGateway/LeadsAI.ApiGateway/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      SERVICE_NAME: api-gateway
+      SEQ_URL: http://seq:5341
+    depends_on:
+      identity-api:
+        condition: service_started
+      platform-api:
+        condition: service_started
+    networks: [leadsai]
+    restart: unless-stopped
+
+  portainer:
+    profiles: [tools]
+    image: portainer/portainer-ce:2.27.9
+    container_name: leadsai-portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks: [leadsai]
+    restart: unless-stopped
+
+networks:
+  leadsai:
+    name: leadsai-network
+
+volumes:
+  mongodb-data:
+  rabbitmq-data:
+  redis-data:
+  seq-data:
+  portainer-data:
+ + '{DB_USER}' + N''')
+              CREATE USER ' + QUOTENAME('
+        echo "Database provisioning completed. EF migrations will run from the API startup paths."
+    networks: [leadsai]
+    restart: "no"
+
+  identity-api:
+    container_name: leadsai-identity-api
+    build:
+      context: .
+      dockerfile: src/Identity/LeadsAI.Identity.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: identity-api
+      ConnectionStrings__IdentityDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IdentityDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      Identity__Issuer: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      IdentityBootstrap__Enabled: "true"
+      IdentityBootstrap__Tenant__Id: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      IdentityBootstrap__Tenant__Slug: ${FINDLEADSAI_TENANT_SLUG:-findleadsai}
+      IdentityBootstrap__Tenant__Name: ${FINDLEADSAI_TENANT_NAME:-FindLeadsAI Master}
+      IdentityBootstrap__Tenant__ContactEmail: ${FINDLEADSAI_CONTACT_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__License__Plan: ${FINDLEADSAI_LICENSE_PLAN:-Enterprise}
+      IdentityBootstrap__Admin__Email: ${FINDLEADSAI_ADMIN_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__Admin__FirstName: ${FINDLEADSAI_ADMIN_FIRST_NAME:-Master}
+      IdentityBootstrap__Admin__LastName: ${FINDLEADSAI_ADMIN_LAST_NAME:-Admin}
+      IdentityBootstrap__Admin__Password: ${FINDLEADSAI_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      IdentityBootstrap__Admin__ResetPassword: ${FINDLEADSAI_ADMIN_RESET_PASSWORD:-true}
+      Services__TenantManagement: http://platform-api:8080/internal
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  platform-api:
+    container_name: leadsai-platform-api
+    build:
+      context: .
+      dockerfile: src/Platform/Presentation/LeadsAI.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: platform-api
+      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_Business;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AutomationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_NotificationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      TenantBootstrap__FindLeadsAI__TenantId: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      TenantDatabases__findleadsai: FindLeadsAIPromotions
+      Identity__Authority: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-leadsai}:${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
+      Mongo__Database: LeadsAI_Knowledge
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
+      ProspectDiscovery__SerpApi__MonthlyLimitPath: ${SERPAPI_LIMIT:-}
+      RevenueAutomation__Enabled: "true"
+      RevenueAutomation__IntervalSeconds: "300"
+      Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
+      Email__Brevo__WebhookToken: ${BREVO_WEBHOOK_TOKEN:-}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
+      Email__SendGrid__WebhookToken: ${SENDGRID_WEBHOOK_TOKEN:-}
+      Email__SendGrid__InboundWebhookToken: ${SENDGRID_INBOUND_WEBHOOK_TOKEN:-}
+      Landing__DemoRequestRecipients: ${DEMO_REQUEST_RECIPIENTS:-}
+      Landing__DemoRequestRecipient: ${DEMO_REQUEST_RECIPIENT:-}
+      Landing__DemoRequestFromEmail: ${DEMO_REQUEST_FROM_EMAIL:-}
+      Landing__DemoRequestFromName: ${DEMO_REQUEST_FROM_NAME:-FindLeadsAI Product Team}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  api-gateway:
+    container_name: leadsai-api-gateway
+    build:
+      context: .
+      dockerfile: src/ApiGateway/LeadsAI.ApiGateway/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      SERVICE_NAME: api-gateway
+      SEQ_URL: http://seq:5341
+    depends_on:
+      identity-api:
+        condition: service_started
+      platform-api:
+        condition: service_started
+    networks: [leadsai]
+    restart: unless-stopped
+
+  portainer:
+    profiles: [tools]
+    image: portainer/portainer-ce:2.27.9
+    container_name: leadsai-portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks: [leadsai]
+    restart: unless-stopped
+
+networks:
+  leadsai:
+    name: leadsai-network
+
+volumes:
+  mongodb-data:
+  rabbitmq-data:
+  redis-data:
+  seq-data:
+  portainer-data:
+ + '{DB_USER}') + N' FOR LOGIN ' + QUOTENAME('
+        echo "Database provisioning completed. EF migrations will run from the API startup paths."
+    networks: [leadsai]
+    restart: "no"
+
+  identity-api:
+    container_name: leadsai-identity-api
+    build:
+      context: .
+      dockerfile: src/Identity/LeadsAI.Identity.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: identity-api
+      ConnectionStrings__IdentityDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IdentityDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      Identity__Issuer: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      IdentityBootstrap__Enabled: "true"
+      IdentityBootstrap__Tenant__Id: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      IdentityBootstrap__Tenant__Slug: ${FINDLEADSAI_TENANT_SLUG:-findleadsai}
+      IdentityBootstrap__Tenant__Name: ${FINDLEADSAI_TENANT_NAME:-FindLeadsAI Master}
+      IdentityBootstrap__Tenant__ContactEmail: ${FINDLEADSAI_CONTACT_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__License__Plan: ${FINDLEADSAI_LICENSE_PLAN:-Enterprise}
+      IdentityBootstrap__Admin__Email: ${FINDLEADSAI_ADMIN_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__Admin__FirstName: ${FINDLEADSAI_ADMIN_FIRST_NAME:-Master}
+      IdentityBootstrap__Admin__LastName: ${FINDLEADSAI_ADMIN_LAST_NAME:-Admin}
+      IdentityBootstrap__Admin__Password: ${FINDLEADSAI_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      IdentityBootstrap__Admin__ResetPassword: ${FINDLEADSAI_ADMIN_RESET_PASSWORD:-true}
+      Services__TenantManagement: http://platform-api:8080/internal
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  platform-api:
+    container_name: leadsai-platform-api
+    build:
+      context: .
+      dockerfile: src/Platform/Presentation/LeadsAI.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: platform-api
+      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_Business;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AutomationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_NotificationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      TenantBootstrap__FindLeadsAI__TenantId: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      TenantDatabases__findleadsai: FindLeadsAIPromotions
+      Identity__Authority: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-leadsai}:${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
+      Mongo__Database: LeadsAI_Knowledge
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
+      ProspectDiscovery__SerpApi__MonthlyLimitPath: ${SERPAPI_LIMIT:-}
+      RevenueAutomation__Enabled: "true"
+      RevenueAutomation__IntervalSeconds: "300"
+      Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
+      Email__Brevo__WebhookToken: ${BREVO_WEBHOOK_TOKEN:-}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
+      Email__SendGrid__WebhookToken: ${SENDGRID_WEBHOOK_TOKEN:-}
+      Email__SendGrid__InboundWebhookToken: ${SENDGRID_INBOUND_WEBHOOK_TOKEN:-}
+      Landing__DemoRequestRecipients: ${DEMO_REQUEST_RECIPIENTS:-}
+      Landing__DemoRequestRecipient: ${DEMO_REQUEST_RECIPIENT:-}
+      Landing__DemoRequestFromEmail: ${DEMO_REQUEST_FROM_EMAIL:-}
+      Landing__DemoRequestFromName: ${DEMO_REQUEST_FROM_NAME:-FindLeadsAI Product Team}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  api-gateway:
+    container_name: leadsai-api-gateway
+    build:
+      context: .
+      dockerfile: src/ApiGateway/LeadsAI.ApiGateway/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      SERVICE_NAME: api-gateway
+      SEQ_URL: http://seq:5341
+    depends_on:
+      identity-api:
+        condition: service_started
+      platform-api:
+        condition: service_started
+    networks: [leadsai]
+    restart: unless-stopped
+
+  portainer:
+    profiles: [tools]
+    image: portainer/portainer-ce:2.27.9
+    container_name: leadsai-portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks: [leadsai]
+    restart: unless-stopped
+
+networks:
+  leadsai:
+    name: leadsai-network
+
+volumes:
+  mongodb-data:
+  rabbitmq-data:
+  redis-data:
+  seq-data:
+  portainer-data:
+ + '{DB_USER}') + N';
+            ALTER ROLE [db_owner] ADD MEMBER ' + QUOTENAME('
+        echo "Database provisioning completed. EF migrations will run from the API startup paths."
+    networks: [leadsai]
+    restart: "no"
+
+  identity-api:
+    container_name: leadsai-identity-api
+    build:
+      context: .
+      dockerfile: src/Identity/LeadsAI.Identity.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: identity-api
+      ConnectionStrings__IdentityDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IdentityDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      Identity__Issuer: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      IdentityBootstrap__Enabled: "true"
+      IdentityBootstrap__Tenant__Id: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      IdentityBootstrap__Tenant__Slug: ${FINDLEADSAI_TENANT_SLUG:-findleadsai}
+      IdentityBootstrap__Tenant__Name: ${FINDLEADSAI_TENANT_NAME:-FindLeadsAI Master}
+      IdentityBootstrap__Tenant__ContactEmail: ${FINDLEADSAI_CONTACT_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__License__Plan: ${FINDLEADSAI_LICENSE_PLAN:-Enterprise}
+      IdentityBootstrap__Admin__Email: ${FINDLEADSAI_ADMIN_EMAIL:-admin@findleadsai.local}
+      IdentityBootstrap__Admin__FirstName: ${FINDLEADSAI_ADMIN_FIRST_NAME:-Master}
+      IdentityBootstrap__Admin__LastName: ${FINDLEADSAI_ADMIN_LAST_NAME:-Admin}
+      IdentityBootstrap__Admin__Password: ${FINDLEADSAI_ADMIN_PASSWORD:-Admin123!ChangeMe}
+      IdentityBootstrap__Admin__ResetPassword: ${FINDLEADSAI_ADMIN_RESET_PASSWORD:-true}
+      Services__TenantManagement: http://platform-api:8080/internal
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  platform-api:
+    container_name: leadsai-platform-api
+    build:
+      context: .
+      dockerfile: src/Platform/Presentation/LeadsAI.Api/Dockerfile
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: platform-api
+      ConnectionStrings__DefaultConnection: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_Business;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AutomationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AutomationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__NotificationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_NotificationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__KnowledgeDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_KnowledgeDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__AIOrchestrationDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_AIOrchestrationDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      ConnectionStrings__IntegrationsDb: "Server=${DB_SERVER:?Set DB_SERVER in .env};Database=LeadsAI_IntegrationsDb;User Id=${DB_USER:?Set DB_USER in .env};Password=${DB_PASSWORD:?Set DB_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+      TenantBootstrap__FindLeadsAI__TenantId: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
+      TenantDatabases__findleadsai: FindLeadsAIPromotions
+      Identity__Authority: http://identity-api:8080
+      Identity__Audience: leadsai-api
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
+      Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-leadsai}:${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
+      Mongo__Database: LeadsAI_Knowledge
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
+      ProspectDiscovery__SerpApi__MonthlyLimitPath: ${SERPAPI_LIMIT:-}
+      RevenueAutomation__Enabled: "true"
+      RevenueAutomation__IntervalSeconds: "300"
+      Email__Provider: ${EMAIL_PROVIDER:-disabled}
+      Email__DailySendLimit: ${OUTREACH_DAILY_SEND_LIMIT:-10}
+      Email__Brevo__ApiKey: ${BREVO_API_KEY:-}
+      Email__Brevo__WebhookToken: ${BREVO_WEBHOOK_TOKEN:-}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
+      Email__SendGrid__WebhookToken: ${SENDGRID_WEBHOOK_TOKEN:-}
+      Email__SendGrid__InboundWebhookToken: ${SENDGRID_INBOUND_WEBHOOK_TOKEN:-}
+      Landing__DemoRequestRecipients: ${DEMO_REQUEST_RECIPIENTS:-}
+      Landing__DemoRequestRecipient: ${DEMO_REQUEST_RECIPIENT:-}
+      Landing__DemoRequestFromEmail: ${DEMO_REQUEST_FROM_EMAIL:-}
+      Landing__DemoRequestFromName: ${DEMO_REQUEST_FROM_NAME:-FindLeadsAI Product Team}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [leadsai]
+    restart: unless-stopped
+
+  api-gateway:
+    container_name: leadsai-api-gateway
+    build:
+      context: .
+      dockerfile: src/ApiGateway/LeadsAI.ApiGateway/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      SERVICE_NAME: api-gateway
+      SEQ_URL: http://seq:5341
+    depends_on:
+      identity-api:
+        condition: service_started
+      platform-api:
+        condition: service_started
+    networks: [leadsai]
+    restart: unless-stopped
+
+  portainer:
+    profiles: [tools]
+    image: portainer/portainer-ce:2.27.9
+    container_name: leadsai-portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks: [leadsai]
+    restart: unless-stopped
+
+networks:
+  leadsai:
+    name: leadsai-network
+
+volumes:
+  mongodb-data:
+  rabbitmq-data:
+  redis-data:
+  seq-data:
+  portainer-data:
+ + '{DB_USER}') + N';';
+          EXEC sp_executesql @sql;
+          FETCH NEXT FROM db_cursor INTO @db;
+        END
+        CLOSE db_cursor;
+        DEALLOCATE db_cursor;
+
         SELECT name FROM sys.databases WHERE name IN (N'LeadsAI_IdentityDb',N'LeadsAI_Business',N'LeadsAI_AutomationDb',N'LeadsAI_NotificationsDb',N'LeadsAI_KnowledgeDb',N'LeadsAI_AIOrchestrationDb',N'LeadsAI_IntegrationsDb',N'FindLeadsAIPromotions') ORDER BY name;"
         echo "Database provisioning completed. EF migrations will run from the API startup paths."
     networks: [leadsai]
