@@ -57,8 +57,7 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyHeader().AllowAn
 
 static async Task ResetDevelopmentDatabaseAsync(DbContext db)
 {
-    if (!Environment.GetEnvironmentVariable("RESET_DATABASE_ON_STARTUP")
-        .Equals("true", StringComparison.OrdinalIgnoreCase))
+    if (!string.Equals(Environment.GetEnvironmentVariable("RESET_DATABASE_ON_STARTUP"), "true", StringComparison.OrdinalIgnoreCase))
         return;
 
     await db.Database.ExecuteSqlRawAsync("""
@@ -144,12 +143,6 @@ using (var scope = app.Services.CreateScope())
 
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
 
-    // TEMPORARY DEV RESET: also clear module databases without deleting migration history.
-    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<AutomationDbContext>());
-    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<NotificationsDbContext>());
-    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<KnowledgeDbContext>());
-    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<AIOrchestrationDbContext>());
-    await ResetDevelopmentDatabaseAsync(scope.ServiceProvider.GetRequiredService<IntegrationsDbContext>());
 }
 
 app.Run();
