@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -47,33 +48,56 @@ public sealed class IdentityEntitlementConsumer(KnowledgeDbContext db) :
 
     private async Task<TenantEntitlementState> GetOrCreateAsync(Guid tenantId, CancellationToken ct)
     {
-        var state = await db.TenantEntitlements.FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
-        if (state is not null) return state;
-        state = new TenantEntitlementState { TenantId = tenantId };
-        db.TenantEntitlements.Add(state);
-        return state;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            IF NOT EXISTS (
+                SELECT 1
+                FROM dbo.TenantEntitlements WITH (UPDLOCK, HOLDLOCK)
+                WHERE TenantId = {tenantId}
+            )
+            BEGIN
+                INSERT INTO dbo.TenantEntitlements (TenantId)
+                VALUES ({tenantId})
+            END
+            """, ct);
+
+        return await db.TenantEntitlements.FirstAsync(x => x.TenantId == tenantId, ct);
     }
 
     private async Task ProcessAsync(Guid eventId, DateTime occurredAtUtc, Func<Task> mutate, CancellationToken ct)
     {
-        if (await db.InboxMessages.AnyAsync(x => x.Id == eventId && x.Consumer == ConsumerName, ct))
-            return;
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        await mutate();
-
-        db.InboxMessages.Add(new InboxMessage
+        await strategy.ExecuteAsync(async () =>
         {
-            Id = eventId,
-            Consumer = ConsumerName,
-            ReceivedAtUtc = DateTime.UtcNow,
-            ProcessedAtUtc = DateTime.UtcNow
+            await using var transaction =
+                await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+            if (await db.InboxMessages.AnyAsync(
+                    x => x.Id == eventId && x.Consumer == ConsumerName,
+                    ct))
+            {
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            await mutate();
+
+            db.InboxMessages.Add(new InboxMessage
+            {
+                Id = eventId,
+                Consumer = ConsumerName,
+                ReceivedAtUtc = DateTime.UtcNow,
+                ProcessedAtUtc = DateTime.UtcNow
+            });
+
+            var tracked = db.ChangeTracker.Entries<TenantEntitlementState>()
+                .FirstOrDefault(x => x.State != EntityState.Unchanged)?.Entity;
+
+            if (tracked is not null)
+                tracked.UpdatedAtUtc = occurredAtUtc;
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
         });
-
-        var tracked = db.ChangeTracker.Entries<TenantEntitlementState>()
-            .FirstOrDefault(x => x.State != EntityState.Unchanged)?.Entity;
-        if (tracked is not null)
-            tracked.UpdatedAtUtc = occurredAtUtc;
-
-        await db.SaveChangesAsync(ct);
     }
 }
