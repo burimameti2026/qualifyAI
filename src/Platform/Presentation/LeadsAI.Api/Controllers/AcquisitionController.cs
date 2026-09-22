@@ -334,7 +334,7 @@ public sealed class AcquisitionController(
         if (!await db.TargetLists.AnyAsync(x => x.TenantId == tenantId && x.Id == input.TargetListId, ct))
             return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
 
-        campaign.TargetListId=input.TargetListId; campaign.OfferId=input.OfferId; campaign.Name=input.Name.Trim();
+        campaign.TargetListId=input.TargetListId; campaign.Name=input.Name.Trim();
         campaign.Goal=input.Goal.Trim(); campaign.SenderName=input.SenderName.Trim(); campaign.SenderEmail=input.SenderEmail.Trim();
         campaign.StartsAtUtc=input.StartsAtUtc;
 
