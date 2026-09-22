@@ -170,6 +170,165 @@ public sealed class IdentityBootstrapHostedService(
         }
 
         logger.LogInformation("Master identity bootstrap ready; admin {AdminEmail}; plan {Plan}.", adminEmail, license.Plan);
+
+        await EnsureFusionFleetAsync(dbContext, userManager, roleManager, outbox, cancellationToken);
+    }
+
+    private async Task EnsureFusionFleetAsync(
+        IdentityDbContext dbContext,
+        UserManager<ApplicationUser> userManager,
+        RoleManager<ApplicationRole> roleManager,
+        IOutboxWriter outbox,
+        CancellationToken cancellationToken)
+    {
+        if (!configuration.GetValue("FusionFleetSeed:Enabled", false))
+        {
+            logger.LogInformation("FusionFleet seed is disabled.");
+            return;
+        }
+
+        var tenantId = ParseOptionalTenantId(configuration["FusionFleetSeed:Tenant:Id"])
+            ?? throw new InvalidOperationException("FusionFleetSeed:Tenant:Id is required when FusionFleetSeed is enabled.");
+        var tenantSlug = configuration["FusionFleetSeed:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "fusionfleet";
+        var tenantName = configuration["FusionFleetSeed:Tenant:Name"]?.Trim() ?? "FusionFleet";
+        var contactEmail = configuration["FusionFleetSeed:Tenant:ContactEmail"]?.Trim().ToLowerInvariant()
+            ?? "admin@fusionfleet.local";
+
+        var tenant = await dbContext.Tenants.FirstOrDefaultAsync(x => x.Id == tenantId, cancellationToken)
+            ?? await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
+        var tenantCreated = false;
+
+        if (tenant is null)
+        {
+            tenant = Tenant.Create(tenantId, tenantName, tenantSlug, contactEmail);
+            await dbContext.Tenants.AddAsync(tenant, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            tenantCreated = true;
+            logger.LogInformation("Provisioned FusionFleet tenant {TenantSlug} ({TenantId}).", tenant.Slug, tenant.Id);
+        }
+
+        var license = await dbContext.Licenses
+            .Include(x => x.Modules)
+            .FirstOrDefaultAsync(x => x.TenantId == tenant.Id, cancellationToken);
+        var licenseCreated = false;
+
+        if (license is null)
+        {
+            var modules = configuration
+                .GetSection("FusionFleetSeed:License:Modules")
+                .Get<string[]>()
+                ?? QualifyAiModules.Enterprise;
+
+            license = License.Create(
+                tenant.Id,
+                configuration["FusionFleetSeed:License:Plan"] ?? "Enterprise",
+                DateTime.UtcNow.AddMinutes(-5),
+                DateTime.UtcNow.AddYears(1),
+                configuration.GetValue("FusionFleetSeed:License:MaxUsers", 100),
+                modules);
+
+            await dbContext.Licenses.AddAsync(license, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            licenseCreated = true;
+            logger.LogInformation("Provisioned FusionFleet license {LicenseId}.", license.Id);
+        }
+
+        var adminEmail = configuration["FusionFleetSeed:Admin:Email"]?.Trim().ToLowerInvariant() ?? contactEmail;
+        var adminPassword = configuration["FusionFleetSeed:Admin:Password"] ?? "FusionFleet123!ChangeMe";
+        var normalizedEmail = adminEmail.ToUpperInvariant();
+        var admin = await userManager.Users.FirstOrDefaultAsync(
+            x => x.TenantId == tenant.Id && x.NormalizedEmail == normalizedEmail, cancellationToken);
+
+        if (admin is null)
+        {
+            admin = new ApplicationUser
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant.Id,
+                TenantSlug = tenant.Slug,
+                UserName = adminEmail,
+                Email = adminEmail,
+                EmailConfirmed = true,
+                IsActive = true,
+                FirstName = configuration["FusionFleetSeed:Admin:FirstName"] ?? "FusionFleet",
+                LastName = configuration["FusionFleetSeed:Admin:LastName"] ?? "Admin"
+            };
+            EnsureSucceeded(await userManager.CreateAsync(admin, adminPassword));
+            logger.LogInformation("Provisioned FusionFleet admin {AdminEmail}.", adminEmail);
+        }
+        else if (configuration.GetValue("FusionFleetSeed:Admin:ResetPassword", false))
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(admin);
+            EnsureSucceeded(await userManager.ResetPasswordAsync(admin, token, adminPassword));
+            admin.IsActive = true;
+            EnsureSucceeded(await userManager.UpdateAsync(admin));
+        }
+
+        var roleStorageName = TenantRoleNameCodec.ToStorageName(tenant.Id, "Admin");
+        var normalizedRole = roleStorageName.ToUpperInvariant();
+        var adminRole = await roleManager.Roles.FirstOrDefaultAsync(
+            x => x.TenantId == tenant.Id && x.NormalizedName == normalizedRole, cancellationToken);
+
+        if (adminRole is null)
+        {
+            adminRole = new ApplicationRole
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant.Id,
+                Name = roleStorageName,
+                Description = "Tenant administrator"
+            };
+            EnsureSucceeded(await roleManager.CreateAsync(adminRole));
+        }
+
+        if (!await userManager.IsInRoleAsync(admin, roleStorageName))
+            EnsureSucceeded(await userManager.AddToRoleAsync(admin, roleStorageName));
+
+        var permissions = configuration.GetSection("IdentityBootstrap:Admin:Permissions").Get<string[]>()
+            ?? QualifyAiPermissions.All;
+        var existingPermissions = await dbContext.UserPermissions
+            .Where(x => x.TenantId == tenant.Id && x.UserId == admin.Id)
+            .Select(x => x.Permission)
+            .ToListAsync(cancellationToken);
+        var missingPermissions = permissions
+            .Where(x => !existingPermissions.Contains(x, StringComparer.OrdinalIgnoreCase))
+            .Select(x => new UserPermission
+            {
+                TenantId = tenant.Id,
+                UserId = admin.Id,
+                Permission = x
+            })
+            .ToArray();
+
+        if (missingPermissions.Length > 0)
+        {
+            dbContext.UserPermissions.AddRange(missingPermissions);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (tenantCreated || licenseCreated)
+        {
+            var snapshotAtUtc = DateTime.UtcNow;
+            if (tenantCreated)
+            {
+                outbox.Add(new TenantCreatedIntegrationEvent(
+                    Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
+            }
+
+            if (licenseCreated)
+            {
+                outbox.Add(new TenantLicenseChangedIntegrationEvent(
+                    Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, license.Id, license.Plan,
+                    license.Status.ToString().ToLowerInvariant(), license.MaxUsers, license.StartsAtUtc,
+                    license.ExpiresAtUtc, license.Version, license.Modules.Select(x => x.Code).ToArray()));
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        logger.LogInformation(
+            "FusionFleet identity bootstrap ready; tenant {TenantSlug} ({TenantId}); admin {AdminEmail}; plan {Plan}.",
+            tenant.Slug, tenant.Id, adminEmail, license.Plan);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
