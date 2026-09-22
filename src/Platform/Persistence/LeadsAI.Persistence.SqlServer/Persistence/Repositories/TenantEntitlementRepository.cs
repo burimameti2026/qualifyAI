@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using LeadsAI.Application.Abstractions.Persistence;
 using LeadsAI.Application.Entitlements;
 using LeadsAI.Persistence.SqlServer.Projections;
@@ -72,8 +73,21 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
             UpdatedAtUtc=now
         };
         dbContext.TenantEntitlements.Add(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return Map(entity);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Map(entity);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            Detach(entity);
+            var winner = await dbContext.TenantEntitlements.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken);
+            if (winner is null)
+                throw;
+
+            return Map(winner);
+        }
     }
 
     public async Task UpsertTenantAsync(Guid tenantId, string tenantSlug, string tenantStatus, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
@@ -83,6 +97,22 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
         entity.TenantSlug=tenantSlug.Trim().ToLowerInvariant();
         entity.TenantStatus=Normalize(tenantStatus, "pending");
         entity.UpdatedAtUtc=updatedAtUtc;
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            Detach(entity);
+            entity = await dbContext.TenantEntitlements
+                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken)
+                ?? throw;
+            entity.TenantSlug=tenantSlug.Trim().ToLowerInvariant();
+            entity.TenantStatus=Normalize(tenantStatus, "pending");
+            entity.UpdatedAtUtc=updatedAtUtc;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public async Task UpsertLicenseAsync(Guid tenantId, string plan, string licenseStatus, int maxUsers, DateTime startsAtUtc, DateTime? expiresAtUtc, long version, IReadOnlyCollection<string> modules, IReadOnlyDictionary<string, int>? limits, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
@@ -101,6 +131,32 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
         entity.ModulesJson=JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x), JsonOptions);
         entity.LimitsJson=JsonSerializer.Serialize(limits??new Dictionary<string, int> { ["users"]=Math.Max(0, maxUsers) }, JsonOptions);
         entity.UpdatedAtUtc=updatedAtUtc;
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            Detach(entity);
+            entity = await dbContext.TenantEntitlements
+                .FirstOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken)
+                ?? throw;
+
+            if(entity.Version>version)
+                return;
+
+            entity.LicensePlan=Normalize(plan, "unassigned");
+            entity.LicenseStatus=Normalize(licenseStatus, "unassigned");
+            entity.MaxUsers=Math.Max(0, maxUsers);
+            entity.StartsAtUtc=startsAtUtc;
+            entity.ExpiresAtUtc=expiresAtUtc;
+            entity.Version=version;
+            entity.ModulesJson=JsonSerializer.Serialize(modules.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x), JsonOptions);
+            entity.LimitsJson=JsonSerializer.Serialize(limits??new Dictionary<string, int> { ["users"]=Math.Max(0, maxUsers) }, JsonOptions);
+            entity.UpdatedAtUtc=updatedAtUtc;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     // Looks in the local change tracker first so repeated Upsert* calls within the same
@@ -149,6 +205,13 @@ public sealed class TenantEntitlementRepository(AppDbContext dbContext) : ITenan
             limits,
             entity.UpdatedAtUtc);
     }
+
+    private void Detach(TenantEntitlementProjection entity)
+        => dbContext.Entry(entity).State = EntityState.Detached;
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is SqlException sql
+            && (sql.Number==2601 || sql.Number==2627);
 
     private static string Normalize(string value, string fallback)
         => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().ToLowerInvariant();
