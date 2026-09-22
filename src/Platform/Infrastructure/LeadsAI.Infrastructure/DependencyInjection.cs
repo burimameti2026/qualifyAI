@@ -83,7 +83,7 @@ public static class DependencyInjection
         });
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<TenantSerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
-        services.AddScoped<RealWorkspaceService>();
+        services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
         services.AddHttpClient<BrevoEmailProvider>(c =>
         {
