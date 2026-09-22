@@ -19,6 +19,15 @@ var business = builder.AddProject<Projects.LeadsAI_Api>("platform-api")
     .WithReference(knowledgeDb)
     .WithReference(aiDb)
     .WithReference(integrationsDb)
+    // AddDatabase provisions the database asynchronously. The API runs EF migrations
+    // during startup, so it must not start until Aspire has finished provisioning
+    // every database it depends on.
+    .WaitFor(businessDb)
+    .WaitFor(automationDb)
+    .WaitFor(notificationsDb)
+    .WaitFor(knowledgeDb)
+    .WaitFor(aiDb)
+    .WaitFor(integrationsDb)
     .WithReference(redis)
     .WithReference(rabbit);
 
