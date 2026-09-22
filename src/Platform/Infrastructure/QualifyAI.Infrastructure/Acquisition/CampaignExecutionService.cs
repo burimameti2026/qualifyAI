@@ -93,7 +93,20 @@ public sealed class CampaignExecutionService(AppDbContext db)
         return true;
     }
 
-    private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);\n    private static CampaignStepRules ParseRules(string json) { try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); } catch { return new CampaignStepRules(); } }\n    private static bool Matches(Prospect p, CampaignStepRules r)\n    {\n        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;\n        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;\n        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;\n        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;\n        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;\n        return true;\n    }\n    private static bool ContainsAny(string value, string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));\n\n    private static string Render(string template, Prospect prospect) => template
+    private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+    private static CampaignStepRules ParseRules(string json) { try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); } catch { return new CampaignStepRules(); } }
+    private static bool Matches(Prospect p, CampaignStepRules r)
+    {
+        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
+        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
+        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
+        return true;
+    }
+    private static bool ContainsAny(string value, string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
+
+    private static string Render(string template, Prospect prospect) => template
         .Replace("{{company}}", prospect.CompanyName, StringComparison.OrdinalIgnoreCase)
         .Replace("{{contact}}", prospect.ContactName, StringComparison.OrdinalIgnoreCase)
         .Replace("{{industry}}", prospect.Industry, StringComparison.OrdinalIgnoreCase)
