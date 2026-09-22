@@ -1,4 +1,5 @@
 using System.Data;
+using Microsoft.Data.SqlClient;
 using System.Text.Json;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ public sealed class IdentityEntitlementConsumer(NotificationsDbContext db) :
     private const string ConsumerName = "notifications.identity-entitlements";
 
     public Task Consume(ConsumeContext<TenantCreatedIntegrationEvent> context)
-        => ProcessAsync(context.Message.EventId, context.Message.OccurredAtUtc, async () =>
+        => ProcessAsync(context.Message.EventId, context.Message.TenantId, context.Message.OccurredAtUtc, async () =>
         {
             var state = await GetOrCreateAsync(context.Message.TenantId, context.CancellationToken);
             state.TenantSlug = RequireTenantSlug(context.Message.TenantSlug, context.Message.TenantId);
@@ -78,6 +79,7 @@ public sealed class IdentityEntitlementConsumer(NotificationsDbContext db) :
 
     private async Task ProcessAsync(
         Guid eventId,
+        Guid tenantId,
         DateTime occurredAtUtc,
         Func<Task> mutate,
         CancellationToken ct)
@@ -101,8 +103,16 @@ public sealed class IdentityEntitlementConsumer(NotificationsDbContext db) :
 
             await using var transaction =
                 await db.Database.BeginTransactionAsync(
-                    IsolationLevel.Serializable,
+                    IsolationLevel.ReadCommitted,
                     ct);
+
+            var lockResource =
+                $"qualifyai:tenant-entitlement:{ConsumerName}:{tenantId:D}";
+
+            await db.Database.ExecuteSqlRawAsync(
+                "EXEC sp_getapplock @Resource = {0}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000",
+                new object[] { lockResource },
+                ct);
 
             await mutate();
 
