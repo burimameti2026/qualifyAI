@@ -94,11 +94,14 @@ public sealed class CampaignExecutionService(AppDbContext db)
     }
 
     private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
-    private static CampaignStepRules ParseRules(string json) { try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); } catch { return new CampaignStepRules(); } }
+    private static CampaignStepRules ParseRules(string json) { try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); } catch { return new CampaignStepRules(); }
+    }
     private static bool Matches(Prospect p, CampaignStepRules r)
     {
         if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
         if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
+        if (r.CompanySizeMin.HasValue && p.CompanySize < r.CompanySizeMin.Value) return false;
+        if (r.CompanySizeMax.HasValue && p.CompanySize > r.CompanySizeMax.Value) return false;
         if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
         if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
         if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
