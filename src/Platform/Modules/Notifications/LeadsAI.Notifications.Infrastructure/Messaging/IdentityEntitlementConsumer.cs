@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Notifications.Persistence.SqlServer;
@@ -88,46 +89,84 @@ public sealed class IdentityEntitlementConsumer(NotificationsDbContext db) :
 
         await strategy.ExecuteAsync(async () =>
         {
-            // A retry can reuse the same scoped DbContext. Never carry tracked
-            // Added/Modified entities from a failed attempt into the next attempt.
-            db.ChangeTracker.Clear();
-
-            // Keep the idempotency read outside the user transaction.
-            // The InboxMessages PK remains the final concurrency guard.
-            if (await db.InboxMessages
-                    .AsNoTracking()
-                    .AnyAsync(
-                        x => x.Id == eventId && x.Consumer == ConsumerName,
-                        ct))
+            // Do not use Serializable here. These consumers are independent event
+            // projections and the tenant row is protected by its primary key.
+            // Serializable turns the get-or-create read into a range-lock hotspot
+            // when Created/Status/License events arrive together.
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                return;
+                db.ChangeTracker.Clear();
+
+                // Fast idempotency check. The Inbox primary key is the final guard
+                // when two deliveries of the same event race.
+                if (await db.InboxMessages
+                        .AsNoTracking()
+                        .AnyAsync(
+                            x => x.Id == eventId && x.Consumer == ConsumerName,
+                            ct))
+                {
+                    return;
+                }
+
+                await using var transaction =
+                    await db.Database.BeginTransactionAsync(
+                        System.Data.IsolationLevel.ReadCommitted,
+                        ct);
+
+                try
+                {
+                    await mutate();
+
+                    db.InboxMessages.Add(new InboxMessage
+                    {
+                        Id = eventId,
+                        Consumer = ConsumerName,
+                        ReceivedAtUtc = DateTime.UtcNow,
+                        ProcessedAtUtc = DateTime.UtcNow
+                    });
+
+                    var tracked = db.ChangeTracker
+                        .Entries<TenantEntitlementState>()
+                        .FirstOrDefault(x => x.State != EntityState.Unchanged)
+                        ?.Entity;
+
+                    if (tracked is not null)
+                        tracked.UpdatedAtUtc = occurredAtUtc;
+
+                    await db.SaveChangesAsync(ct);
+                    await transaction.CommitAsync(ct);
+                    return;
+                }
+                catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+                {
+                    await transaction.RollbackAsync(ct);
+                    db.ChangeTracker.Clear();
+
+                    // If the inbox row now exists, another delivery completed
+                    // this exact event. A duplicate TenantEntitlements insert,
+                    // however, only means another event won the create race.
+                    if (await db.InboxMessages
+                            .AsNoTracking()
+                            .AnyAsync(
+                                x => x.Id == eventId && x.Consumer == ConsumerName,
+                                ct))
+                    {
+                        return;
+                    }
+
+                    // Another event created the tenant between our read and
+                    // insert. Reload the projection and apply this event again.
+                    if (attempt == 3)
+                        throw;
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(25 * attempt), ct);
+                }
             }
-
-            await using var transaction =
-                await db.Database.BeginTransactionAsync(
-                    System.Data.IsolationLevel.Serializable,
-                    ct);
-
-            await mutate();
-
-            db.InboxMessages.Add(new InboxMessage
-            {
-                Id = eventId,
-                Consumer = ConsumerName,
-                ReceivedAtUtc = DateTime.UtcNow,
-                ProcessedAtUtc = DateTime.UtcNow
-            });
-
-            var tracked = db.ChangeTracker
-                .Entries<TenantEntitlementState>()
-                .FirstOrDefault(x => x.State != EntityState.Unchanged)
-                ?.Entity;
-
-            if (tracked is not null)
-                tracked.UpdatedAtUtc = occurredAtUtc;
-
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
         });
     }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is SqlException sql
+            && (sql.Number == 2601 || sql.Number == 2627);
+
 }
