@@ -94,8 +94,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      platform-api:
-        condition: service_healthy
     networks: [leadsai]
     restart: unless-stopped
 
