@@ -41,11 +41,11 @@ public sealed class IdentityEntitlementInboxProcessor(
             nameof(TenantCreatedConsumer),
             async () =>
             {
-                var tenantSlug = ResolveLifecycleSlug(message.TenantSlug, message.TenantId);
+                var tenantSlug = RequireTenantSlug(message.TenantSlug, message.TenantId);
                 await entitlements.UpsertTenantAsync(
                     message.TenantId,
                     tenantSlug,
-                    "active",
+                    "pending",
                     message.OccurredAtUtc,
                     ct);
 
@@ -91,16 +91,15 @@ public sealed class IdentityEntitlementInboxProcessor(
             nameof(TenantLicenseChangedConsumer),
             async () =>
             {
-                var existing = await entitlements.GetAsync(message.TenantId, ct);
-                var tenantSlug = await ResolveSlugAsync(message.TenantId, message.TenantSlug, ct);
+                var tenantSlug = RequireTenantSlug(message.TenantSlug, message.TenantId);
 
                 var tenantStatus =
                     message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)
                         ? "active"
                         : message.Status.Equals("expired", StringComparison.OrdinalIgnoreCase)
-                          ||message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase)
+                          || message.Status.Equals("suspended", StringComparison.OrdinalIgnoreCase)
                             ? "suspended"
-                            : existing?.TenantStatus??"pending";
+                            : "pending";
 
                 await entitlements.UpsertTenantAsync(
                     message.TenantId,
@@ -172,6 +171,17 @@ public sealed class IdentityEntitlementInboxProcessor(
                 }
             },
             ct);
+
+    private static string RequireTenantSlug(string? slug, Guid tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            throw new InvalidOperationException(
+                $"Identity entitlement event for tenant {tenantId} does not contain TenantSlug.");
+        }
+
+        return slug.Trim().ToLowerInvariant();
+    }
 
     private async Task ProcessOnceAsync(
         Guid eventId,
