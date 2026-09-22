@@ -8,7 +8,7 @@ namespace LeadsAI.Infrastructure.Demo;
 
 public sealed class DevelopmentSeedService(
     AppDbContext db,
-    RealWorkspaceService workspace,
+    LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService workspace,
     IConfiguration configuration,
     ILogger<DevelopmentSeedService> logger)
 {
