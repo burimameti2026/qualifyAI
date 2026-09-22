@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using LeadsAI.Application;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
@@ -15,15 +16,22 @@ public sealed class AcquisitionCampaignWorker(
         {
             try
             {
-                await QueueForDefaultDatabaseAsync(stoppingToken);
-
                 await using var rootScope = scopeFactory.CreateAsyncScope();
                 var resolver = rootScope.ServiceProvider.GetRequiredService<ITenantDatabaseConnectionResolver>();
+
                 foreach (var tenantSlug in resolver.GetConfiguredTenantDatabases().Keys)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
+
                     var tenantId = await FindTenantIdAsync(tenantSlug, stoppingToken);
                     if (tenantId is null) continue;
+
+                    if (!await IsTenantActiveAsync(tenantId.Value, stoppingToken))
+                    {
+                        logger.LogInformation("Skipping campaign queue for inactive tenant {TenantSlug}.", tenantSlug);
+                        continue;
+                    }
+
                     await QueueForTenantAsync(tenantId.Value, tenantSlug, stoppingToken);
                 }
             }
@@ -37,32 +45,41 @@ public sealed class AcquisitionCampaignWorker(
         }
     }
 
-    private async Task QueueForDefaultDatabaseAsync(CancellationToken ct)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        await QueueForScopeAsync(scope.ServiceProvider, ct);
-    }
-
     private async Task QueueForTenantAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
         tenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
-        await QueueForScopeAsync(scope.ServiceProvider, ct);
+
+        var queued = await scope.ServiceProvider.GetRequiredService<CampaignExecutionService>()
+            .QueueDueMessagesAsync(tenantId, ct);
+
+        if (queued > 0)
+            logger.LogInformation("Tenant {TenantSlug}: queued {Count} due campaign messages.", tenantSlug, queued);
     }
 
-    private async Task QueueForScopeAsync(IServiceProvider services, CancellationToken ct)
+    private async Task<bool> IsTenantActiveAsync(Guid tenantId, CancellationToken ct)
     {
-        var queued = await services.GetRequiredService<CampaignExecutionService>()
-            .QueueDueMessagesAsync(null, ct);
-        if (queued > 0) logger.LogInformation("Queued {Count} due campaign messages.", queued);
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<LeadsAI.Persistence.SqlServer.AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        return await db.TenantEntitlements.AnyAsync(x =>
+            x.TenantId == tenantId &&
+            x.TenantStatus == "active" &&
+            x.LicenseStatus == "active" &&
+            x.StartsAtUtc <= now &&
+            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
     }
 
     private async Task<Guid?> FindTenantIdAsync(string tenantSlug, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<LeadsAI.Persistence.SqlServer.AppDbContext>();
-        return await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleOrDefaultAsync(
-            db.Tenants.Where(x => x.Slug == tenantSlug).Select(x => (Guid?)x.Id), ct);
+
+        return await db.Tenants
+            .Where(x => x.Slug == tenantSlug)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(ct);
     }
 }
