@@ -36,7 +36,6 @@ builder.Services.AddScoped<KnowledgeGapService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<WorkspacePackageInstaller>();
 builder.Services.AddScoped<FusionFleetPackageProvisioner>();
-builder.Services.AddScoped<QualifyAiAcquisitionPackageProvisioner>();
 builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>();
 builder.Services.Configure<RevenueAutomationOptions>(builder.Configuration.GetSection("RevenueAutomation"));
 builder.Services.AddHostedService<RevenueAutomationWorker>();
