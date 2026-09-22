@@ -218,7 +218,7 @@ public sealed class IdentityEntitlementInboxProcessor(
                 System.Data.IsolationLevel.ReadCommitted,
                 ct);
 
-            var lockResource = $"leadsai:tenant-entitlement:{consumer}:{tenantId:D}";
+            var lockResource = $"leadsai:tenant-entitlement:{tenantId:D}";
             await dbContext.Database.ExecuteSqlRawAsync(
                 "EXEC sp_getapplock @Resource = {0}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000",
                 new object[] { lockResource },
