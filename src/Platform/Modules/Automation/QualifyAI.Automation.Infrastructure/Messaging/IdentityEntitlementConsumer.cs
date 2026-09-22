@@ -63,14 +63,20 @@ public sealed class IdentityEntitlementConsumer(AutomationDbContext db) :
         return await db.TenantEntitlements.FirstAsync(x => x.TenantId == tenantId, ct);
     }
 
-    private async Task ProcessAsync(Guid eventId, DateTime occurredAtUtc, Func<Task> mutate, CancellationToken ct)
+    private async Task ProcessAsync(
+        Guid eventId,
+        DateTime occurredAtUtc,
+        Func<Task> mutate,
+        CancellationToken ct)
     {
         var strategy = db.Database.CreateExecutionStrategy();
 
         await strategy.ExecuteAsync(async () =>
         {
             await using var transaction =
-                await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+                await db.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable,
+                    ct);
 
             if (await db.InboxMessages.AnyAsync(
                     x => x.Id == eventId && x.Consumer == ConsumerName,
@@ -90,8 +96,10 @@ public sealed class IdentityEntitlementConsumer(AutomationDbContext db) :
                 ProcessedAtUtc = DateTime.UtcNow
             });
 
-            var tracked = db.ChangeTracker.Entries<TenantEntitlementState>()
-                .FirstOrDefault(x => x.State != EntityState.Unchanged)?.Entity;
+            var tracked = db.ChangeTracker
+                .Entries<TenantEntitlementState>()
+                .FirstOrDefault(x => x.State != EntityState.Unchanged)
+                ?.Entity;
 
             if (tracked is not null)
                 tracked.UpdatedAtUtc = occurredAtUtc;
