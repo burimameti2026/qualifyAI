@@ -66,7 +66,7 @@ public sealed class IdentityEntitlementInboxProcessor(
             nameof(TenantStatusChangedConsumer),
             async () =>
             {
-                var tenantSlug = ResolveLifecycleSlug(message.TenantSlug, message.TenantId);
+                var tenantSlug = RequireTenantSlug(message.TenantSlug, message.TenantId);
                 await entitlements.UpsertTenantAsync(
                     message.TenantId,
                     tenantSlug,
