@@ -1,5 +1,4 @@
 using MassTransit;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.AIOrchestration.Application;
 using LeadsAI.AIOrchestration.Infrastructure;
@@ -98,44 +97,15 @@ public static class ModuleRegistration
         await using var scope = services.CreateAsyncScope();
         var scopedServices = scope.ServiceProvider;
 
-        await MigrateDatabaseAsync(
-            scopedServices.GetRequiredService<AutomationDbContext>(),
-            cancellationToken);
-
-        await MigrateDatabaseAsync(
-            scopedServices.GetRequiredService<NotificationsDbContext>(),
-            cancellationToken);
-
-        await MigrateDatabaseAsync(
-            scopedServices.GetRequiredService<KnowledgeDbContext>(),
-            cancellationToken);
-
-        await MigrateDatabaseAsync(
-            scopedServices.GetRequiredService<AIOrchestrationDbContext>(),
-            cancellationToken);
-
-        await MigrateDatabaseAsync(
-            scopedServices.GetRequiredService<IntegrationsDbContext>(),
-            cancellationToken);
-    }
-
-    private static async Task MigrateDatabaseAsync(
-        DbContext db,
-        CancellationToken cancellationToken)
-    {
-        const int maxAttempts = 5;
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                await db.Database.MigrateAsync(cancellationToken);
-                return;
-            }
-            catch (SqlException ex) when (ex.Number == 1801 && attempt < maxAttempts)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
-            }
-        }
+        await scopedServices.GetRequiredService<AutomationDbContext>()
+            .Database.MigrateAsync(cancellationToken);
+        await scopedServices.GetRequiredService<NotificationsDbContext>()
+            .Database.MigrateAsync(cancellationToken);
+        await scopedServices.GetRequiredService<KnowledgeDbContext>()
+            .Database.MigrateAsync(cancellationToken);
+        await scopedServices.GetRequiredService<AIOrchestrationDbContext>()
+            .Database.MigrateAsync(cancellationToken);
+        await scopedServices.GetRequiredService<IntegrationsDbContext>()
+            .Database.MigrateAsync(cancellationToken);
     }
 }
