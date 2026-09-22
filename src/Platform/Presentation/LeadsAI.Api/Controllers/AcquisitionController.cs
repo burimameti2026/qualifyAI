@@ -267,7 +267,6 @@ public sealed class AcquisitionController(
             {
                 campaign.Id,
                 campaign.TargetListId,
-                campaign.OfferId,
                 campaign.Name,
                 campaign.Goal,
                 campaign.Status,
@@ -293,12 +292,12 @@ public sealed class AcquisitionController(
     {
         var tenantId = TenantId;
         var campaign = await db.Campaigns.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id)
-            .Select(x => new { x.Id, x.TargetListId, x.OfferId, x.Name, x.Goal, x.Status, x.SenderName, x.SenderEmail, x.StartsAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc })
+            .Select(x => new { x.Id, x.TargetListId, x.Name, x.Goal, x.Status, x.SenderName, x.SenderEmail, x.StartsAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc })
             .SingleOrDefaultAsync(ct);
         if (campaign is null) return NotFound();
         var steps = await db.CampaignSteps.AsNoTracking().Where(x => x.TenantId == tenantId && x.CampaignId == id)
             .OrderBy(x => x.StepNumber)
-            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate, x.RulesJson })
+            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate })
             .ToListAsync(ct);
         return Ok(new { campaign, steps });
     }
@@ -309,7 +308,7 @@ public sealed class AcquisitionController(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
         if (campaign is null) return NotFound();
-        try { campaign.Pause(); await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        try { campaign.Status = CampaignStatus.Paused; await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
@@ -319,7 +318,7 @@ public sealed class AcquisitionController(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
         if (campaign is null) return NotFound();
-        try { campaign.Resume(); await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        try { campaign.Status = CampaignStatus.Running; await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
@@ -337,14 +336,13 @@ public sealed class AcquisitionController(
 
         campaign.TargetListId=input.TargetListId; campaign.OfferId=input.OfferId; campaign.Name=input.Name.Trim();
         campaign.Goal=input.Goal.Trim(); campaign.SenderName=input.SenderName.Trim(); campaign.SenderEmail=input.SenderEmail.Trim();
-        campaign.StartsAtUtc=input.StartsAtUtc; campaign.Touch();
+        campaign.StartsAtUtc=input.StartsAtUtc;
 
         var existing=await db.CampaignSteps.Where(x => x.TenantId==tenantId&&x.CampaignId==id).ToListAsync(ct);
         db.CampaignSteps.RemoveRange(existing);
         db.CampaignSteps.AddRange(input.Steps.OrderBy(x=>x.StepNumber).Select(x=>new CampaignStep {
             TenantId=tenantId,CampaignId=id,StepNumber=x.StepNumber,DelayHours=x.DelayHours,Channel=x.Channel,
-            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate,
-            RulesJson=JsonSerializer.Serialize(new CampaignStepRules(x.Qualification,x.MinimumScore,x.Industry,x.Countries,x.CompanySizeMin,x.CompanySizeMax,x.ContactRoles,x.StopOnReply))
+            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate
         }));
         await db.SaveChangesAsync(ct);
         return await CampaignDetail(id, ct);
@@ -402,12 +400,11 @@ public sealed class AcquisitionController(
     {
         if (input.Steps is null || input.Steps.Length == 0) return BadRequest(new { detail = "At least one campaign message is required." });
         if (!await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == input.TargetListId, ct)) return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
-        var campaign = new Campaign { TenantId=TenantId, TargetListId=input.TargetListId, OfferId=input.OfferId, Name=input.Name.Trim(), Goal=input.Goal.Trim(), SenderName=input.SenderName.Trim(), SenderEmail=input.SenderEmail.Trim(), StartsAtUtc=input.StartsAtUtc };
+        var campaign = new Campaign { TenantId=TenantId, TargetListId=input.TargetListId, Name=input.Name.Trim(), Goal=input.Goal.Trim(), SenderName=input.SenderName.Trim(), SenderEmail=input.SenderEmail.Trim(), StartsAtUtc=input.StartsAtUtc };
         db.Campaigns.Add(campaign);
         db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep {
             TenantId=TenantId, CampaignId=campaign.Id, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel,
-            SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate,
-            RulesJson=JsonSerializer.Serialize(new CampaignStepRules(x.Qualification,x.MinimumScore,x.Industry,x.Countries,x.CompanySizeMin,x.CompanySizeMax,x.ContactRoles,x.StopOnReply))
+            SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate
         }));
         await db.SaveChangesAsync(ct); return Created($"/api/acquisition/campaigns/{campaign.Id}", campaign);
     }
@@ -422,7 +419,7 @@ public sealed class AcquisitionController(
         var prospectIds = await db.TargetListMembers.Where(x => x.TenantId==TenantId&&x.TargetListId==campaign.TargetListId).Select(x => x.ProspectId).ToListAsync(ct);
         var firstStep = await db.CampaignSteps.Where(x => x.TenantId==TenantId&&x.CampaignId==id&&x.StepNumber==1).FirstOrDefaultAsync(ct);
         if (firstStep is null) return BadRequest(new { detail = "Campaign must contain Message 1." });
-        var firstRules = ParseRules(firstStep.RulesJson);
+        var firstRules = new CampaignStepRules();
         var prospects = await db.Prospects.Where(x => x.TenantId==TenantId).ToListAsync(ct);
         prospectIds = prospects.Where(x => prospectIds.Contains(x.Id) && Matches(x, firstRules)).Select(x => x.Id).ToList();
         var existing = await db.CampaignRecipients.Where(x => x.TenantId==TenantId&&x.CampaignId==id).Select(x => x.ProspectId).ToListAsync(ct);
