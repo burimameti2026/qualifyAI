@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
-using QualifyAI.Persistence.SqlServer;
+using LeadsAI.Domain;
+using LeadsAI.Persistence.SqlServer;
 using Microsoft.AspNetCore.Mvc;
 using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
