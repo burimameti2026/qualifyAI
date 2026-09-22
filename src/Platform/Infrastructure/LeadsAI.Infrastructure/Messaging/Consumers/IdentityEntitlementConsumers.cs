@@ -193,35 +193,69 @@ public sealed class IdentityEntitlementInboxProcessor(
 
         await strategy.ExecuteAsync(async () =>
         {
-            // Every retry must start with a clean tracker. Otherwise an Added tenant
-            // from a failed attempt can collide with the same TenantId on the retry.
+            // A retry must start from a clean tracker. More importantly, the inbox
+            // pre-check must NOT run inside the write transaction: doing so lets
+            // concurrent consumers block each other before any actual mutation.
             dbContext.ChangeTracker.Clear();
-
-            await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
 
             var inbox = dbContext.Set<InboxMessage>();
             if (await inbox.AsNoTracking().AnyAsync(
                     x => x.Id == eventId && x.Consumer == consumer,
                     ct))
             {
-                await transaction.CommitAsync(ct);
                 return;
             }
 
-            await apply();
+            // Keep the transaction limited to the entitlement projection + inbox
+            // write. Serializable protects the get-or-create projection when two
+            // different events for the same tenant arrive concurrently.
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                System.Data.IsolationLevel.Serializable,
+                ct);
 
-            inbox.Add(new InboxMessage
+            try
             {
-                Id = eventId,
-                Consumer = consumer,
-                ReceivedAtUtc = DateTime.UtcNow,
-                ProcessedAtUtc = DateTime.UtcNow
-            });
+                // The pre-check above is intentionally only an optimization.
+                // The unique (Id, Consumer) key on InboxMessages is the final
+                // idempotency guard for concurrent duplicate deliveries.
+                await apply();
 
-            // Repositories only mutate tracked state. The entitlement projection,
-            // lifecycle events and inbox record are persisted atomically here.
-            await dbContext.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
+                inbox.Add(new InboxMessage
+                {
+                    Id = eventId,
+                    Consumer = consumer,
+                    ReceivedAtUtc = DateTime.UtcNow,
+                    ProcessedAtUtc = DateTime.UtcNow
+                });
+
+                // Repositories only mutate tracked state. The entitlement
+                // projection, lifecycle events and inbox record are persisted
+                // atomically here.
+                await dbContext.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+            {
+                await transaction.RollbackAsync(ct);
+
+                // A concurrent delivery may have inserted the same inbox row
+                // after our pre-check. Treat that exact case as already processed.
+                if (await inbox.AsNoTracking().AnyAsync(
+                        x => x.Id == eventId && x.Consumer == consumer,
+                        ct))
+                {
+                    return;
+                }
+
+                // A duplicate key on TenantEntitlements (rather than InboxMessages)
+                // is a real concurrency/data-integrity failure and must be retried
+                // or surfaced instead of being silently swallowed.
+                throw;
+            }
         });
     }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is Microsoft.Data.SqlClient.SqlException sql
+            && (sql.Number == 2601 || sql.Number == 2627);
 }
