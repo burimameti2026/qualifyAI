@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
         services.AddScoped<DevelopmentSeedService>();
+        services.AddHostedService<DevelopmentSeedHostedService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
         services.AddHttpClient<BrevoEmailProvider>(c =>
         {
