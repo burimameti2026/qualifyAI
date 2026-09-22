@@ -225,4 +225,3 @@ volumes:
   redis-data:
   seq-data:
   portainer-data:
-  portainer-data:
