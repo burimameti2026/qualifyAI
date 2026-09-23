@@ -48,6 +48,7 @@ public interface IProspectDiscoveryProvider
     {
         get;
     }
+    Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default);
     string Description
     {
         get;
@@ -62,7 +63,8 @@ public interface IProspectDiscoveryProvider
 /// </summary>
 public sealed class SerpApiProspectDiscoveryProvider(
     HttpClient http,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    AppDbContext db)
     : IProspectDiscoveryProvider
 {
     private const string ApiKeyPath =
@@ -81,6 +83,9 @@ public sealed class SerpApiProspectDiscoveryProvider(
 
     public string Description =>
         "Public company website discovery through SerpAPI.";
+
+    public async Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default) =>
+        !string.IsNullOrWhiteSpace(await ResolveSettingAsync(tenantId, ApiKeyPath, "SERPAPI_API_KEY", ct));
 
     public async Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(
         IcpProfile icp,
