@@ -112,11 +112,12 @@ public sealed class SerpApiProspectDiscoveryProvider(
 
         var account = await GetAccountUsageAsync(apiKey, ct);
 
-        var safetyLimit =
-            configuration.GetValue<int?>(MonthlyLimitPath)
-            ?? configuration.GetValue<int?>("ProspectDiscovery__SerpApi__MonthlySafetyLimit")
-            ?? ParseEnvironmentLimit()
-            ?? 200;
+        var safetyLimit = await ResolveIntSettingAsync(
+            options.TenantId,
+            MonthlyLimitPath,
+            "SERPAPI_LIMIT",
+            200,
+            ct);
 
         // Never allow our configured limit to exceed
         // the actual SerpAPI plan limit.
