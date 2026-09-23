@@ -1,4 +1,9 @@
 using System.Security.Claims;
+using LeadsAI.BuildingBlocks.Security.Claims;
+using LeadsAI.Identity.Application.Authentication;
+using LeadsAI.Identity.Application.Authentication.ResolveClientAccess;
+using LeadsAI.Identity.Application.Authentication.ResolveTenantAccess;
+using LeadsAI.Identity.Persistence.SqlServer.Identity;
 using MediatR;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
@@ -6,14 +11,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
-using QualifyAI.BuildingBlocks.Security.Claims;
-using QualifyAI.Identity.Application.Authentication;
-using QualifyAI.Identity.Application.Authentication.ResolveClientAccess;
-using QualifyAI.Identity.Application.Authentication.ResolveTenantAccess;
-using QualifyAI.Identity.Persistence.SqlServer.Identity;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-namespace QualifyAI.Identity.Api.Endpoints.Authentication;
+namespace LeadsAi.Identity.Api.Endpoints.Authentication;
 
 public static class TokenEndpoint
 {

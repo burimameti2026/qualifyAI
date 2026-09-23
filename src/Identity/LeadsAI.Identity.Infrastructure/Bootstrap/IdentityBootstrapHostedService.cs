@@ -1,3 +1,10 @@
+using LeadsAI.BuildingBlocks.Messaging.Outbox;
+using LeadsAI.BuildingBlocks.Security.Access;
+using LeadsAI.Contracts.Identity;
+using LeadsAI.Identity.Domain.Licensing;
+using LeadsAI.Identity.Domain.Tenants;
+using LeadsAI.Identity.Persistence.SqlServer;
+using LeadsAI.Identity.Persistence.SqlServer.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -5,16 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenIddict.Abstractions;
-using QualifyAI.BuildingBlocks.Messaging.Outbox;
-using QualifyAI.BuildingBlocks.Security.Access;
-using QualifyAI.Contracts.Identity;
-using QualifyAI.Identity.Domain.Licensing;
-using QualifyAI.Identity.Domain.Tenants;
-using QualifyAI.Identity.Persistence.SqlServer.Identity;
-using QualifyAI.Identity.Persistence.SqlServer;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-namespace QualifyAI.Identity.Infrastructure.Bootstrap;
+namespace LeadsAI.Identity.Infrastructure.Bootstrap;
 
 public sealed class IdentityBootstrapHostedService(
     IServiceScopeFactory scopeFactory,

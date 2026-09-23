@@ -1,11 +1,10 @@
 using LeadsAI.BuildingBlocks.Messaging.MassTransit;
 using MediatR;
-
 using LeadsAI.Identity.Api;
-using LeadsAI.Identity.Api.Endpoints.Authentication;
 using LeadsAI.Identity.Application;
 using LeadsAI.Identity.Infrastructure;
 using LeadsAI.BuildingBlocks.Application.Behaviors;
+using LeadsAi.Identity.Api.Endpoints.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
