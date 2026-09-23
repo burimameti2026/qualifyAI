@@ -5,13 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenIddict.Abstractions;
-using QualifyAI.BuildingBlocks.Messaging.Outbox;
-using QualifyAI.BuildingBlocks.Security.Access;
-using QualifyAI.Contracts.Identity;
-using QualifyAI.Identity.Domain.Licensing;
-using QualifyAI.Identity.Domain.Tenants;
-using QualifyAI.Identity.Persistence.SqlServer.Identity;
-using QualifyAI.Identity.Persistence.SqlServer;
+using LeadsAI.BuildingBlocks.Messaging.Outbox;
+using LeadsAI.BuildingBlocks.Security.Access;
+using LeadsAI.Contracts.Identity;
+using LeadsAI.Identity.Domain.Licensing;
+using LeadsAI.Identity.Domain.Tenants;
+using LeadsAI.Identity.Persistence.SqlServer.Identity;
+using LeadsAI.Identity.Persistence.SqlServer;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace QualifyAI.Identity.Infrastructure.Bootstrap;
@@ -342,11 +342,11 @@ public sealed class IdentityBootstrapHostedService(
 
     private static async Task EnsureAdminUiClientAsync(IOpenIddictApplicationManager applicationManager, CancellationToken cancellationToken)
     {
-        const string clientId = "findleadsai-admin";
+        const string clientId = "leadsai-admin";
         var descriptor = new OpenIddictApplicationDescriptor
         {
             ClientId = clientId,
-            DisplayName = "FindLeadsAI Admin UI",
+            DisplayName = "LeadsAI Admin UI",
             ClientType = ClientTypes.Public,
             ConsentType = ConsentTypes.Implicit,
             Permissions =
