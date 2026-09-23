@@ -27,6 +27,14 @@ public sealed class TenantSerpApiProspectDiscoveryProvider(
         db.TenantSettings.Any(x => x.TenantId == tenant.Current.Id && x.Key == ApiKeySetting && !string.IsNullOrWhiteSpace(x.Value));
 
     public string Description => "Public company website discovery through the tenant's SerpAPI account.";
+    public async Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default)
+    {
+        if (!tenantId.HasValue || tenantId.Value == Guid.Empty) return false;
+        return await db.TenantSettings.AsNoTracking().AnyAsync(x =>
+            x.TenantId == tenantId.Value &&
+            x.Key == ApiKeySetting &&
+            !string.IsNullOrWhiteSpace(x.Value), ct);
+    }
 
     public async Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(IcpProfile icp, DiscoveryRunOptions options, CancellationToken ct = default)
     {
