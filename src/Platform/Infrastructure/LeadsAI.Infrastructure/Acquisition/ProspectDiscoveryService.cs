@@ -287,7 +287,7 @@ public sealed class SerpApiProspectDiscoveryProvider(
         }
 
         return configuration[key]
-            ?? configuration[key.Replace(':', '__')]
+            ?? configuration[key.Replace(':', "__")]
             ?? configuration[environmentKey]
             ?? Environment.GetEnvironmentVariable(environmentKey);
     }
