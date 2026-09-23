@@ -342,11 +342,11 @@ public sealed class IdentityBootstrapHostedService(
 
     private static async Task EnsureAdminUiClientAsync(IOpenIddictApplicationManager applicationManager, CancellationToken cancellationToken)
     {
-        const string clientId = "findleadsai-admin";
+        const string clientId = "leadsai-admin";
         var descriptor = new OpenIddictApplicationDescriptor
         {
             ClientId = clientId,
-            DisplayName = "FindLeadsAI Admin UI",
+            DisplayName = "LeadsAI Admin UI",
             ClientType = ClientTypes.Public,
             ConsentType = ConsentTypes.Implicit,
             Permissions =
