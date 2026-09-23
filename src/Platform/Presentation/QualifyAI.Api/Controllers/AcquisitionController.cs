@@ -54,7 +54,7 @@ public sealed class AcquisitionController(
 
     [HttpGet("discovery/providers")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
+    public async Task<IActionResult> DiscoveryProviders(CancellationToken ct) => Ok(await discovery.ProviderStatusAsync(TenantId, ct));
 
     [HttpPost("icp/{id:guid}/discover")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
@@ -65,7 +65,7 @@ public sealed class AcquisitionController(
             var request = input??new DiscoveryRequest();
             var result = await discovery.DiscoverAsync(TenantId, id, new DiscoveryRunOptions(
                 request.Source, request.Region, request.MaximumResults, request.MinimumScore,
-                request.TargetListName, request.CreateTargetList), ct);
+                request.TargetListName, request.CreateTargetList, TenantId), ct);
             return Ok(result);
         }
         catch(InvalidOperationException exception)

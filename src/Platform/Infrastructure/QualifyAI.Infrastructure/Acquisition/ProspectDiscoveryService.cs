@@ -13,7 +13,8 @@ public sealed record DiscoveryRunOptions(
     int MaximumResults = 50,
     int MinimumScore = 70,
     string? TargetListName = null,
-    bool CreateTargetList = true);
+    bool CreateTargetList = true,
+    Guid? TenantId = null);
 
 public sealed record DiscoveryProviderStatus(string Name, bool Configured, string Description);
 
@@ -51,6 +52,7 @@ public interface IProspectDiscoveryProvider
     {
         get;
     }
+    Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(IcpProfile icp, DiscoveryRunOptions options, CancellationToken ct = default);
 }
 
@@ -61,7 +63,8 @@ public interface IProspectDiscoveryProvider
 /// </summary>
 public sealed class SerpApiProspectDiscoveryProvider(
     HttpClient http,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    AppDbContext db)
     : IProspectDiscoveryProvider
 {
     private const string ApiKeyPath =
@@ -84,6 +87,9 @@ public sealed class SerpApiProspectDiscoveryProvider(
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(ApiKey);
 
+    public async Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default)
+        => !string.IsNullOrWhiteSpace(await ResolveSettingAsync(tenantId, ApiKeyPath, "SERPAPI_API_KEY", ct));
+
     public string Description =>
         "Public company website discovery through SerpAPI.";
 
@@ -92,7 +98,7 @@ public sealed class SerpApiProspectDiscoveryProvider(
         DiscoveryRunOptions options,
         CancellationToken ct = default)
     {
-        var apiKey = ApiKey;
+        var apiKey = await ResolveSettingAsync(options.TenantId, ApiKeyPath, "SERPAPI_API_KEY", ct);
 
         if(string.IsNullOrWhiteSpace(apiKey))
         {
@@ -280,6 +286,22 @@ public sealed class SerpApiProspectDiscoveryProvider(
         };
     }
 
+    private async Task<string?> ResolveSettingAsync(Guid? tenantId, string key, string environmentKey, CancellationToken ct)
+    {
+        if(tenantId.HasValue)
+        {
+            var tenantValue = await db.TenantSettings.AsNoTracking().Where(x => x.TenantId == tenantId.Value && x.Key == key).Select(x => x.Value).FirstOrDefaultAsync(ct);
+            if(!string.IsNullOrWhiteSpace(tenantValue)) return tenantValue.Trim();
+        }
+        return configuration[key] ?? configuration[key.Replace(':', '__')] ?? configuration[environmentKey] ?? Environment.GetEnvironmentVariable(environmentKey);
+    }
+
+    private async Task<int> ResolveIntSettingAsync(Guid? tenantId, string key, string environmentKey, int fallback, CancellationToken ct)
+    {
+        var value = await ResolveSettingAsync(tenantId, key, environmentKey, ct);
+        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+    }
+
     private static int GetInt(
         JsonElement root,
         string property)
@@ -416,10 +438,13 @@ public sealed class SerpApiAccountUsage
 
 public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProspectDiscoveryProvider> providers)
 {
-    public IReadOnlyList<DiscoveryProviderStatus> ProviderStatus() => providers
-        .Select(x => new DiscoveryProviderStatus(x.Name, x.IsConfigured, x.Description))
-        .OrderBy(x => x.Name)
-        .ToList();
+    public async Task<IReadOnlyList<DiscoveryProviderStatus>> ProviderStatusAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var rows = new List<DiscoveryProviderStatus>();
+        foreach(var provider in providers)
+            rows.Add(new DiscoveryProviderStatus(provider.Name, await provider.IsConfiguredForTenantAsync(tenantId, ct), provider.Description));
+        return rows.OrderBy(x => x.Name).ToList();
+    }
 
     public async Task<ProspectDiscoveryResult> DiscoverAsync(Guid tenantId, Guid icpId, DiscoveryRunOptions options, CancellationToken ct = default)
     {
@@ -428,7 +453,7 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
         var providerName = string.IsNullOrWhiteSpace(options.Source) ? "serpapi" : options.Source.Trim();
         var provider = providers.FirstOrDefault(x => string.Equals(x.Name, providerName, StringComparison.OrdinalIgnoreCase))
             ??throw new InvalidOperationException($"Discovery provider '{providerName}' is not available.");
-        if(!provider.IsConfigured)
+        if(!await provider.IsConfiguredForTenantAsync(options.TenantId, ct))
             throw new InvalidOperationException($"Discovery provider '{provider.Name}' is not configured. {provider.Description}");
 
         var candidates = await provider.SearchAsync(icp, options, ct);
