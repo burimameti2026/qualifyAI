@@ -13,7 +13,8 @@ public sealed record DiscoveryRunOptions(
     int MaximumResults = 50,
     int MinimumScore = 70,
     string? TargetListName = null,
-    bool CreateTargetList = true);
+    bool CreateTargetList = true,
+    Guid? TenantId = null);
 
 public sealed record DiscoveryProviderStatus(string Name, bool Configured, string Description);
 
@@ -86,7 +87,7 @@ public sealed class SerpApiProspectDiscoveryProvider(
         DiscoveryRunOptions options,
         CancellationToken ct = default)
     {
-        var apiKey = configuration[ApiKeyPath];
+        var apiKey = await ResolveSettingAsync(options.TenantId, ApiKeyPath, "SERPAPI_API_KEY", ct);
 
         if(string.IsNullOrWhiteSpace(apiKey))
         {
@@ -100,8 +101,12 @@ public sealed class SerpApiProspectDiscoveryProvider(
 
         var account = await GetAccountUsageAsync(apiKey, ct);
 
-        var safetyLimit =
-            configuration.GetValue<int?>(MonthlyLimitPath)??200;
+        var safetyLimit = await ResolveIntSettingAsync(
+            options.TenantId,
+            MonthlyLimitPath,
+            "SERPAPI_LIMIT",
+            200,
+            ct);
 
         // Never allow our configured limit to exceed
         // the actual SerpAPI plan limit.
@@ -262,6 +267,30 @@ public sealed class SerpApiProspectDiscoveryProvider(
             AccountRateLimitPerHour=
                 GetInt(root, "account_rate_limit_per_hour")
         };
+    }
+
+    private async Task<string?> ResolveSettingAsync(Guid? tenantId, string key, string environmentKey, CancellationToken ct)
+    {
+        if(tenantId.HasValue)
+        {
+            var tenantValue = await db.TenantSettings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId.Value && x.Key == key)
+                .Select(x => x.Value)
+                .FirstOrDefaultAsync(ct);
+            if(!string.IsNullOrWhiteSpace(tenantValue))
+                return tenantValue.Trim();
+        }
+
+        return configuration[key]
+            ?? configuration[key.Replace(':', '__')]
+            ?? configuration[environmentKey]
+            ?? Environment.GetEnvironmentVariable(environmentKey);
+    }
+
+    private async Task<int> ResolveIntSettingAsync(Guid? tenantId, string key, string environmentKey, int fallback, CancellationToken ct)
+    {
+        var value = await ResolveSettingAsync(tenantId, key, environmentKey, ct);
+        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
     }
 
     private static int GetInt(
