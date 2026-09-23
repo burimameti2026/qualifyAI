@@ -286,8 +286,9 @@ public sealed class SerpApiProspectDiscoveryProvider(
                 return tenantValue.Trim();
         }
 
+        // Fix: Use string.Replace(char, char) instead of string.Replace(string, string)
         return configuration[key]
-            ?? configuration[key.Replace(':', "__")]
+            ?? configuration[key.Replace(':', '_')]
             ?? configuration[environmentKey]
             ?? Environment.GetEnvironmentVariable(environmentKey);
     }
