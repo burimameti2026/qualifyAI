@@ -12,6 +12,7 @@ public sealed class RenovaDemoProspectDiscoveryProvider : IProspectDiscoveryProv
     public string Name => "renova-demo";
     public bool IsConfigured => true;
     public string Description => "Safe deterministic Renova demo discovery using reserved .test domains.";
+    public Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default) => Task.FromResult(true);
 
     public Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(IcpProfile icp, DiscoveryRunOptions options, CancellationToken ct = default)
     {
