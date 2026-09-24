@@ -20,6 +20,7 @@ public sealed class WorkspacePackageInstaller(
             "fusionfleet-promotion" => InstallFusionFleetPackageAsync(tenantId, ct),
             "leadsai-acquisition" => InstallQualifyAiAcquisitionPackageAsync(tenantId, ct),
             "blank" => SnapshotAsync(tenantId, package.Id, "Blank workspace", ct),
+            _ when package.ProvisioningMode.Equals("profile", StringComparison.OrdinalIgnoreCase) => InstallProfileAsync(tenantId, package, ct),
             _ => throw new InvalidOperationException($"Unsupported workspace package '{packageId}'.")
         };
     }
@@ -34,6 +35,34 @@ public sealed class WorkspacePackageInstaller(
     {
         var result = await qualifyAi.ProvisionAsync(tenantId, ct);
         return new WorkspacePackageInstallResult("leadsai-acquisition", "LeadsAI Acquisition", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
+    }
+
+
+    private async Task<WorkspacePackageInstallResult> InstallProfileAsync(Guid tenantId, WorkspacePackageDefinition package, CancellationToken ct)
+    {
+        const string key = "workspace.installed-package";
+        var existing = await db.TenantSettings.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Key == key, ct);
+
+        var value = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            packageId = package.Id,
+            package.Name,
+            package.Version,
+            installedAtUtc = DateTime.UtcNow,
+            included = package.Included
+        });
+
+        if (existing is null)
+            db.TenantSettings.Add(new TenantSetting { Id = Guid.NewGuid(), TenantId = tenantId, Key = key, Value = value });
+        else
+        {
+            existing.Value = value;
+            existing.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return await SnapshotAsync(tenantId, package.Id, $"{package.Name} profile", ct);
     }
 
     private async Task<WorkspacePackageInstallResult> SnapshotAsync(Guid tenantId, string packageId, string scenario, CancellationToken ct)
