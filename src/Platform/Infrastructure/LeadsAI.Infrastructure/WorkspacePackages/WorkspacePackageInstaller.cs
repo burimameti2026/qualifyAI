@@ -9,7 +9,8 @@ public sealed record WorkspacePackageInstallResult(string PackageId, string Scen
 public sealed class WorkspacePackageInstaller(
     AppDbContext db,
     FusionFleetPackageProvisioner fusionFleet,
-    QualifyAiAcquisitionPackageProvisioner qualifyAi)
+    QualifyAiAcquisitionPackageProvisioner qualifyAi,
+    IModuleProvisioningOrchestrator moduleProvisioning)
 {
     public Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
     {
@@ -20,7 +21,7 @@ public sealed class WorkspacePackageInstaller(
         {
             "fusionfleet-promotion" => InstallFusionFleetPackageAsync(tenantId, ct),
             "leadsai-acquisition" => InstallQualifyAiAcquisitionPackageAsync(tenantId, ct),
-            "blank" => SnapshotAsync(tenantId, package.Id, "Blank workspace", ct),
+            "blank" => InstallProfileAsync(tenantId, package, ct),
             _ when package.ProvisioningMode.Equals("profile", StringComparison.OrdinalIgnoreCase) => InstallProfileAsync(tenantId, package, ct),
             _ => throw new InvalidOperationException($"Unsupported workspace package '{packageId}'.")
         };
@@ -41,6 +42,8 @@ public sealed class WorkspacePackageInstaller(
 
     private async Task<WorkspacePackageInstallResult> InstallProfileAsync(Guid tenantId, WorkspacePackageDefinition package, CancellationToken ct)
     {
+        await moduleProvisioning.ProvisionAsync(tenantId, package.RequiredModules, ct);
+
         const string key = "workspace.installed-package";
         var existing = await db.TenantSettings.SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.Key == key, ct);
