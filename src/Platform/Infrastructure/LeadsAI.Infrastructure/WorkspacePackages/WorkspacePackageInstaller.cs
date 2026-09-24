@@ -10,7 +10,8 @@ public sealed class WorkspacePackageInstaller(
     AppDbContext db,
     FusionFleetPackageProvisioner fusionFleet,
     QualifyAiAcquisitionPackageProvisioner qualifyAi,
-    IModuleProvisioningOrchestrator moduleProvisioning)
+    IModuleProvisioningOrchestrator moduleProvisioning,
+    IModuleRegistry moduleRegistry)
 {
     public Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
     {
@@ -42,7 +43,14 @@ public sealed class WorkspacePackageInstaller(
 
     private async Task<WorkspacePackageInstallResult> InstallProfileAsync(Guid tenantId, WorkspacePackageDefinition package, CancellationToken ct)
     {
-        await moduleProvisioning.ProvisionAsync(tenantId, package.RequiredModules, ct);
+        var resolvedModules = moduleRegistry.Resolve(package.RequiredModules);
+        var unsupported = package.RequiredModules
+            .Where(code => !resolvedModules.Contains(code, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (unsupported.Length > 0)
+            throw new InvalidOperationException($"Package '{package.Id}' requires unsupported modules: {string.Join(", ", unsupported)}.");
+
+        await moduleProvisioning.ProvisionAsync(tenantId, resolvedModules, ct);
 
         const string key = "workspace.installed-package";
         var existing = await db.TenantSettings.SingleOrDefaultAsync(
