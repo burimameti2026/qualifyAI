@@ -113,7 +113,7 @@ public static class WorkspacePackageCatalog
 
     public static IReadOnlyCollection<WorkspacePackageDefinition> All { get; } =
     [
-        Manufacturing, Logistics, Warehouse, Distribution, Delivery, ThreePl, Retail, Construction,
+        Manufacturing, Logistics, Warehouse, Distribution, Delivery, ThreePl, Retail, Construction, FoodBeverage,
         FusionFleetPromotion, QualifyAiAcquisition, Blank
     ];
 
