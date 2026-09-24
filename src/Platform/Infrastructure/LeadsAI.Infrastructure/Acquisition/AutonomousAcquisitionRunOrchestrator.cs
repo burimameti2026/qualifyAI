@@ -18,7 +18,8 @@ public sealed class AutonomousAcquisitionRunOrchestrator(AppDbContext db, IAuton
         var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(x => x.Id==run.AgentId&&x.TenantId==run.TenantId, ct)??throw new InvalidOperationException("Agent was not found.");
         if(agent.Status is AutonomousAgentStatus.Paused or AutonomousAgentStatus.Stopped)
             throw new InvalidOperationException("Agent is not allowed to run."); 
-        tenantContext.Set(new CurrentTenant(run.TenantId, run.TenantId.ToString()));
+        if (tenantContext.Current?.Id != run.TenantId)
+    throw new InvalidOperationException("Autonomous acquisition run must execute inside its tenant context.");
         run.Status=AutonomousAgentRunStatus.Running; run.StartedAtUtc=DateTime.UtcNow; await db.SaveChangesAsync(ct);
         try { 
             var template = templates.Apply(agent); 
