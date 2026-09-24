@@ -49,6 +49,10 @@ public sealed class WorkspacePackageInstaller(
             packageId = package.Id,
             package.Name,
             package.Version,
+            category = package.Category,
+            capabilities = package.Capabilities ?? Array.Empty<string>(),
+            workflows = package.Workflows ?? Array.Empty<string>(),
+            agents = package.Agents ?? Array.Empty<string>(),
             installedAtUtc = DateTime.UtcNow,
             included = package.Included
         });
