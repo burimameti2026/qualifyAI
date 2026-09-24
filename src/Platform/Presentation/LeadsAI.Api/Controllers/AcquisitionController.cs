@@ -234,6 +234,63 @@ public sealed class AcquisitionController(
         await db.SaveChangesAsync(ct); return Ok(prospect);
     }
 
+    [HttpGet("templates")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> Templates(CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var templates = await db.OutreachTemplates.Where(x => x.TenantId == tenantId && x.IsActive).OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
+        if (templates.Count == 0)
+        {
+            templates = CreateDefaultTemplates(tenantId);
+            db.OutreachTemplates.AddRange(templates);
+            await db.SaveChangesAsync(ct);
+        }
+        return Ok(templates.Select(x => new { x.Id, x.Name, x.Description, x.SubjectTemplate, x.BodyTemplate, x.IsActive }));
+    }
+
+    [HttpPost("templates")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> CreateTemplate(OutreachTemplateInput input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name) || string.IsNullOrWhiteSpace(input.SubjectTemplate) || string.IsNullOrWhiteSpace(input.BodyTemplate))
+            return BadRequest(new { detail = "Template name, subject and body are required." });
+        var name = input.Name.Trim();
+        if (await db.OutreachTemplates.AnyAsync(x => x.TenantId == TenantId && x.Name == name, ct))
+            return Conflict(new { detail = "A template with this name already exists." });
+        var template = new OutreachTemplate { TenantId = TenantId, Name = name, Description = input.Description?.Trim() ?? string.Empty, SubjectTemplate = input.SubjectTemplate.Trim(), BodyTemplate = input.BodyTemplate.Trim(), IsActive = true };
+        db.OutreachTemplates.Add(template);
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/acquisition/templates/{template.Id}", template);
+    }
+
+    [HttpPut("templates/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateTemplate(Guid id, OutreachTemplateInput input, CancellationToken ct)
+    {
+        var template = await db.OutreachTemplates.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (template is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(input.Name) || string.IsNullOrWhiteSpace(input.SubjectTemplate) || string.IsNullOrWhiteSpace(input.BodyTemplate))
+            return BadRequest(new { detail = "Template name, subject and body are required." });
+        var name = input.Name.Trim();
+        if (await db.OutreachTemplates.AnyAsync(x => x.TenantId == TenantId && x.Id != id && x.Name == name, ct))
+            return Conflict(new { detail = "A template with this name already exists." });
+        template.Name = name; template.Description = input.Description?.Trim() ?? string.Empty; template.SubjectTemplate = input.SubjectTemplate.Trim(); template.BodyTemplate = input.BodyTemplate.Trim(); template.IsActive = true;
+        await db.SaveChangesAsync(ct);
+        return Ok(template);
+    }
+
+    [HttpDelete("templates/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> DeleteTemplate(Guid id, CancellationToken ct)
+    {
+        var template = await db.OutreachTemplates.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (template is null) return NotFound();
+        template.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return Ok(new { template.Id, template.IsActive });
+    }
+
     [HttpGet("target-lists")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<List<TargetList>> TargetLists(CancellationToken ct) => db.TargetLists.Where(x => x.TenantId==TenantId).OrderBy(x => x.Name).ToListAsync(ct);
@@ -297,7 +354,7 @@ public sealed class AcquisitionController(
         if (campaign is null) return NotFound();
         var steps = await db.CampaignSteps.AsNoTracking().Where(x => x.TenantId == tenantId && x.CampaignId == id)
             .OrderBy(x => x.StepNumber)
-            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate })
+            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate, x.TemplateId, templateName = db.OutreachTemplates.Where(t => t.TenantId == tenantId && t.Id == x.TemplateId).Select(t => t.Name).FirstOrDefault() })
             .ToListAsync(ct);
         return Ok(new { campaign, steps });
     }
@@ -342,7 +399,7 @@ public sealed class AcquisitionController(
         db.CampaignSteps.RemoveRange(existing);
         db.CampaignSteps.AddRange(input.Steps.OrderBy(x=>x.StepNumber).Select(x=>new CampaignStep {
             TenantId=tenantId,CampaignId=id,StepNumber=x.StepNumber,DelayHours=x.DelayHours,Channel=x.Channel,
-            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate
+            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate,TemplateId=x.TemplateId
         }));
         await db.SaveChangesAsync(ct);
         return await CampaignDetail(id, ct);
@@ -404,7 +461,7 @@ public sealed class AcquisitionController(
         db.Campaigns.Add(campaign);
         db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep {
             TenantId=TenantId, CampaignId=campaign.Id, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel,
-            SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate
+            SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate, TemplateId=x.TemplateId
         }));
         await db.SaveChangesAsync(ct); return Created($"/api/acquisition/campaigns/{campaign.Id}", campaign);
     }
@@ -450,6 +507,13 @@ public sealed class AcquisitionController(
             return BadRequest(new { detail = exception.Message });
         }
     }
+
+    private static List<OutreachTemplate> CreateDefaultTemplates(Guid tenantId) =>
+    [
+        new OutreachTemplate { TenantId = tenantId, Name = "Logistics operational benchmark", Description = "Message 1 — initial outreach", SubjectTemplate = "{{company}}: reduce dispatch and delivery exceptions", BodyTemplate = "Hi {{contact}}, I noticed current growth signals at {{company}}. We help {{industry}} teams automate dispatch, warehouse and customer operations. Would a 25-minute operational demo be useful?" },
+        new OutreachTemplate { TenantId = tenantId, Name = "Operational benchmark follow-up", Description = "Message 2 — follow-up", SubjectTemplate = "Operational benchmark for {{company}}", BodyTemplate = "Hi {{contact}}, I prepared a short benchmark for teams operating across {{country}}. I can tailor the demo to your fleet, warehouse and delivery workflow." },
+        new OutreachTemplate { TenantId = tenantId, Name = "Close the loop", Description = "Message 3 — final follow-up", SubjectTemplate = "Should I close the loop on {{company}}?", BodyTemplate = "Hi {{contact}}, I don't want to keep filling your inbox if this isn't a priority. If improving dispatch, warehouse or delivery operations is on your roadmap, I'm happy to send a short example. Otherwise, I'll close the loop here." }
+    ];
 
     private static void MergeImportedProspect(Prospect prospect, ProspectImportRow row, string domain, string email, string batchSource, DateTime now)
     {
@@ -540,7 +604,8 @@ public sealed record ProspectImportRow(
     string? VerificationStatus = null,
     string? OutreachStatus = null,
     string? DatasetOrigin = null);
-public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, Guid? TemplateId = null, string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+public sealed record OutreachTemplateInput(string Name, string? Description, string SubjectTemplate, string BodyTemplate);
 public sealed record CampaignInput(Guid TargetListId, Guid? OfferId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 internal sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
 
