@@ -1,15 +1,15 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using LeadsAI.BuildingBlocks.Security.Access;
-using LeadsAI.BuildingBlocks.Security.Authorization;
-using LeadsAI.Domain;
-using LeadsAI.Infrastructure;
-using LeadsAI.Infrastructure.Acquisition;
+using QualifyAI.BuildingBlocks.Security.Access;
+using QualifyAI.BuildingBlocks.Security.Authorization;
+using QualifyAI.Domain;
+using QualifyAI.Infrastructure;
+using QualifyAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Email;
-using LeadsAI.Persistence.SqlServer;
+using QualifyAI.Persistence.SqlServer;
 
-namespace LeadsAI.Api.Controllers;
+namespace QualifyAI.Api.Controllers;
 
 [ApiController, Authorize, RequireModule(QualifyAiModules.Integrations)]
 [Route("api/email-operations")]
