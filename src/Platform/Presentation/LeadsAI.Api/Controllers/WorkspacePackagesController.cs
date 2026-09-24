@@ -30,6 +30,31 @@ public sealed record WorkspacePackagePreview(
 [Route("api/workspace-packages")]
 public sealed class WorkspacePackagesController(ITenantContext tenant, WorkspacePackageInstaller installer, AppDbContext db) : ControllerBase
 {
+    [HttpGet("catalog")]
+    public IActionResult Catalog()
+        => Ok(WorkspacePackageCatalog.All);
+
+    [HttpGet("installed")]
+    public async Task<IActionResult> Installed(CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var setting = await db.TenantSettings.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Key == "workspace.installed-package", ct);
+
+        if (setting is null || string.IsNullOrWhiteSpace(setting.Value))
+            return Ok(new { installed = false, packageId = (string?)null });
+
+        try
+        {
+            using var document = JsonDocument.Parse(setting.Value);
+            return Ok(new { installed = true, package = document.RootElement });
+        }
+        catch (JsonException)
+        {
+            return Ok(new { installed = false, packageId = (string?)null });
+        }
+    }
+
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
     {
