@@ -99,6 +99,7 @@ public static class DependencyInjection
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.FusionFleetPackageProvisioner>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.QualifyAiAcquisitionPackageProvisioner>();
+        services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.OperationalPackageProvisioner>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.WorkspacePackageInstaller>();
         services.AddScoped<DevelopmentSeedService>();
         services.AddHostedService<DevelopmentSeedHostedService>();
