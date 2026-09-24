@@ -301,4 +301,3 @@ public sealed class AdminEmailTestController(
 
 public sealed record TestEmailInput(Guid ProspectId, Guid TemplateId, string RecipientEmail);
 
-public sealed record OutreachTemplateInput(string Name, string? Description, string SubjectTemplate, string BodyTemplate);
