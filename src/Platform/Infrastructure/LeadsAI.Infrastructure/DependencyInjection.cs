@@ -8,10 +8,9 @@ using LeadsAI.Infrastructure.Messaging.Consumers;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Automation;
 using LeadsAI.Infrastructure.Email;
-using LeadsAI.Infrastructure.It;
-using LeadsAI.Infrastructure.WorkspacePackages;
+
 using LeadsAI.Infrastructure.Demo;
-using LeadsAI.Persistence.SqlServer;
+
 using LeadsAI.Persistence.SqlServer.Repositories;
 
 
