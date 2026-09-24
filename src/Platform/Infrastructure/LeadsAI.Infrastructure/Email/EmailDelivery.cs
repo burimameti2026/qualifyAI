@@ -89,6 +89,8 @@ public sealed class EmailDeliveryService(
         var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == message.ProspectId, ct);
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == message.CampaignId, ct);
         if (prospect is null || campaign is null) return new(false, null, "Campaign recipient data is incomplete.");
+        if (prospect.Status != ProspectStatus.Qualified) return new(false, null, "Only currently qualified prospects can receive outreach.");
+        if (campaign.Status != CampaignStatus.Running) return new(false, null, "The campaign is not running.");
         if (prospect.Email.EndsWith(".example", StringComparison.OrdinalIgnoreCase)) return new(false, null, "Safety block: .example recipients cannot receive real email.");
         if (await IsSuppressedAsync(tenantId, prospect, ct)) return new(false, null, "Recipient is suppressed or has withdrawn marketing consent.");
         var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
