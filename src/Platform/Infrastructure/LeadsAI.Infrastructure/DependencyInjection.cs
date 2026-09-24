@@ -8,12 +8,8 @@ using LeadsAI.Infrastructure.Messaging.Consumers;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Automation;
 using LeadsAI.Infrastructure.Email;
-
 using LeadsAI.Infrastructure.Demo;
-
 using LeadsAI.Persistence.SqlServer.Repositories;
-
-
 
 namespace LeadsAI.Infrastructure;
 
@@ -64,6 +60,7 @@ public static class DependencyInjection
         services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
         services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
         services.AddHostedService<AutonomousAcquisitionEnrichmentWorker>();
+        services.AddHostedService<CampaignExecutionWorker>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
         services.AddScoped<IAiProvider, LocalAiProvider>();
