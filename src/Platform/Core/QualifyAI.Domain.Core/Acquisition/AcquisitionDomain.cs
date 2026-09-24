@@ -20,6 +20,7 @@ public sealed class Prospect : TenantEntity
     public string ContactReadiness { get; set; } = string.Empty;
     public string SuggestedBuyer { get; set; } = string.Empty;
     public string SizeBand { get; set; } = string.Empty;
+    public int CompanySize { get; set; }
     public string PainHypothesis { get; set; } = string.Empty;
     public string Offer { get; set; } = string.Empty;
     public string SourceUrl { get; set; } = string.Empty;
