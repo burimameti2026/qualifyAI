@@ -32,8 +32,7 @@ public sealed record TenantLicenseChangedIntegrationEvent(
     DateTime? ExpiresAtUtc,
     long Version,
     IReadOnlyCollection<string> Modules,
-    string? PackageId = null)
-    : IntegrationEvent(EventId, TenantId, OccurredAtUtc, EventId);
+    string? PackageId = null);
 
 public sealed record UserAccessChangedIntegrationEvent(
     Guid EventId,

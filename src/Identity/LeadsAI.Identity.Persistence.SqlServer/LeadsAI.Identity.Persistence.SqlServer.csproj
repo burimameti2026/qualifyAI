@@ -13,6 +13,5 @@
     <ProjectReference Include="..\..\Shared\LeadsAI.BuildingBlocks.Messaging\LeadsAI.BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\Shared\LeadsAI.BuildingBlocks.Security\LeadsAI.BuildingBlocks.Security.csproj" />
     <ProjectReference Include="..\LeadsAI.Identity.Application\LeadsAI.Identity.Application.csproj" />
-    <ProjectReference Include="..\LeadsAI.Identity.Domain\LeadsAI.Identity.Domain.csproj" />
   </ItemGroup>
 </Project>
