@@ -48,6 +48,19 @@ public static class DependencyInjection
         services.AddScoped<IdentityEntitlementInboxProcessor>();
         services.AddScoped<IGoldenPipelineProvisioner, GoldenPipelineProvisioner>();
         services.AddScoped<IModuleProvisioner, GoldenPipelineModuleProvisioner>();
+        foreach (var moduleCode in new[]
+        {
+            "crm", "production", "bom", "quality", "maintenance", "suppliers",
+            "shipments", "routes", "fleet", "drivers", "dispatch",
+            "inventory", "receiving", "putaway", "picking", "packing", "cycle_counts",
+            "orders", "inventory_allocation", "replenishment", "pricing",
+            "delivery_orders", "stops", "proof_of_delivery", "returns",
+            "multi_client", "slas", "billing", "carrier_management",
+            "products", "fulfillment", "customers",
+            "projects", "work_orders", "materials", "technicians", "scheduling", "service_slas",
+            "traceability", "ai_agents", "automations"
+        })
+            services.AddScoped<IModuleProvisioner>(_ => new RegisteredModuleProvisioner(moduleCode));
         services.AddScoped<IModuleLifecycleHandler, GoldenPipelineModuleLifecycleHandler>();
         services.AddScoped<IModuleRegistry, ModuleRegistry>();
         services.AddScoped<IModuleProvisioningOrchestrator, ModuleProvisioningOrchestrator>();
