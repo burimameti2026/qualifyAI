@@ -78,17 +78,6 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
         }
     }
 
-    private static Task<bool> IsTenantActiveAsync(AppDbContext db, Guid tenantId, CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        return db.TenantEntitlements.AnyAsync(x =>
-            x.TenantId == tenantId &&
-            x.TenantStatus == "active" &&
-            x.LicenseStatus == "active" &&
-            x.StartsAtUtc <= now &&
-            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
-    }
-}
 
 public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionSchedulerWorker> log) : BackgroundService
 {
@@ -204,14 +193,85 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         return TimeZoneInfo.Utc;
     }
 
-    private static Task<bool> IsTenantActiveAsync(AppDbContext db, Guid tenantId, CancellationToken ct)
+
+
+public sealed class AutonomousAcquisitionEnrichmentWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionEnrichmentWorker> log) : BackgroundService
+{
+    private const int BatchSize = 25;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var now = DateTime.UtcNow;
-        return db.TenantEntitlements.AnyAsync(x =>
-            x.TenantId == tenantId &&
-            x.TenantStatus == "active" &&
-            x.LicenseStatus == "active" &&
-            x.StartsAtUtc <= now &&
-            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var rootScope = scopes.CreateScope();
+                var db = rootScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                var tenants = await db.TenantEntitlements
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.TenantId != Guid.Empty &&
+                        !string.IsNullOrWhiteSpace(x.TenantSlug) &&
+                        x.TenantStatus == "active" &&
+                        x.LicenseStatus == "active" &&
+                        x.StartsAtUtc <= DateTime.UtcNow &&
+                        (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > DateTime.UtcNow))
+                    .Select(x => new { x.TenantId, x.TenantSlug })
+                    .ToListAsync(stoppingToken);
+
+                foreach (var tenant in tenants)
+                {
+                    if (stoppingToken.IsCancellationRequested) break;
+                    await EnrichTenantAsync(tenant.TenantId, tenant.TenantSlug, stoppingToken);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Autonomous acquisition enrichment worker iteration failed");
+            }
+
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        }
+    }
+
+    private async Task EnrichTenantAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
+    {
+        using var scope = scopes.CreateScope();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+        tenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var backend = scope.ServiceProvider.GetRequiredService<IAutonomousAcquisitionBackendService>();
+
+        var prospects = await db.Prospects
+            .Where(x => x.TenantId == tenantId && x.Status == ProspectStatus.Discovered)
+            .OrderBy(x => x.CreatedAtUtc)
+            .Take(BatchSize)
+            .ToListAsync(ct);
+
+        foreach (var prospect in prospects)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            try
+            {
+                var agentId = await db.AutonomousAcquisitionAgents
+                    .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentStatus.Active)
+                    .OrderBy(x => x.UpdatedAtUtc)
+                    .Select(x => x.Id)
+                    .FirstOrDefaultAsync(ct);
+
+                if (agentId == Guid.Empty)
+                    continue;
+
+                await backend.ResearchAsync(tenantId, agentId, prospect, 0, ct);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Enrichment failed for prospect {ProspectId} in tenant {TenantId}", prospect.Id, tenantId);
+            }
+        }
     }
 }
