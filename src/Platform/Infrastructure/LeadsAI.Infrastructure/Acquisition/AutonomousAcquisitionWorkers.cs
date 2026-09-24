@@ -257,16 +257,16 @@ public sealed class AutonomousAcquisitionEnrichmentWorker(IServiceScopeFactory s
 
             try
             {
-                var agentId = await db.AutonomousAcquisitionAgents
+                var agent = await db.AutonomousAcquisitionAgents
                     .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentStatus.Active)
                     .OrderBy(x => x.UpdatedAtUtc)
-                    .Select(x => x.Id)
+                    .Select(x => new { x.Id, x.MinimumScore })
                     .FirstOrDefaultAsync(ct);
 
-                if (agentId == Guid.Empty)
+                if (agent is null)
                     continue;
 
-                await backend.ResearchAsync(tenantId, agentId, prospect, 0, ct);
+                await backend.ResearchAsync(tenantId, agent.Id, prospect, agent.MinimumScore, ct);
             }
             catch (Exception ex)
             {
