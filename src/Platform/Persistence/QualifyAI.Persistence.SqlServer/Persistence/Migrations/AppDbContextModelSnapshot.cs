@@ -2919,6 +2919,9 @@ namespace QualifyAI.Persistence.SqlServer.Migrations
                     b.Property<Guid>("ContactId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("CompanySize")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
