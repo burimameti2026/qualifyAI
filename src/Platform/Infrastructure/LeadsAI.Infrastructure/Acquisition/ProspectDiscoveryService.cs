@@ -18,6 +18,13 @@ public sealed record DiscoveryRunOptions(
 
 public sealed record DiscoveryProviderStatus(string Name, bool Configured, string Description);
 
+public sealed record DiscoveryVerificationResult(
+    bool Verified,
+    string? Error,
+    string? PlanName = null,
+    int? PlanSearchesLeft = null,
+    int? ThisMonthUsage = null);
+
 public sealed record DiscoveryCandidate(
     string CompanyName,
     string Domain,
@@ -49,6 +56,7 @@ public interface IProspectDiscoveryProvider
         get;
     }
     Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default);
+    Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default);
     string Description
     {
         get;
@@ -440,6 +448,17 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
         .OrderBy(x => x.Name)
         .ToList();
 
+    public async Task<DiscoveryVerificationResult> VerifyProviderAsync(
+        string name,
+        CancellationToken ct = default)
+    {
+        var provider = providers.FirstOrDefault(x =>
+            string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException(
+                $"Discovery provider '{name}' is not available.");
+
+        return await provider.VerifyAsync(ct);
+    }
     public async Task<ProspectDiscoveryResult> DiscoverAsync(Guid tenantId, Guid icpId, DiscoveryRunOptions options, CancellationToken ct = default)
     {
         var icp = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId==tenantId&&x.Id==icpId&&x.Active, ct)
