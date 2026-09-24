@@ -89,9 +89,19 @@ public sealed class Campaign : TenantEntity
     }
 }
 
+public sealed class OutreachTemplate : TenantEntity
+{
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string SubjectTemplate { get; set; } = string.Empty;
+    public string BodyTemplate { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+}
+
 public sealed class CampaignStep : TenantEntity
 {
     public Guid CampaignId { get; set; }
+    public Guid? TemplateId { get; set; }
     public int StepNumber { get; set; }
     public int DelayHours { get; set; }
     public string Channel { get; set; } = "email";
