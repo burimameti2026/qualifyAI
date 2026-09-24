@@ -383,10 +383,45 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> CreateCampaign(CampaignInput input, CancellationToken ct)
     {
-        var campaign = new Campaign { TenantId=TenantId, TargetListId=input.TargetListId, Name=input.Name.Trim(), Goal=input.Goal, SenderName=input.SenderName, SenderEmail=input.SenderEmail, StartsAtUtc=input.StartsAtUtc };
+        if (string.IsNullOrWhiteSpace(input.Name) || input.Steps is null || input.Steps.Length == 0)
+            return BadRequest(new { detail = "Campaign name and at least one message step are required." });
+        var tenantId = TenantId;
+        if (!await db.TargetLists.AnyAsync(x => x.TenantId == tenantId && x.Id == input.TargetListId, ct))
+            return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
+        var templateIds = input.Steps.Where(x => x.TemplateId.HasValue).Select(x => x.TemplateId!.Value).Distinct().ToArray();
+        var validTemplateIds = await db.OutreachTemplates.Where(x => x.TenantId == tenantId && x.IsActive && templateIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(ct);
+        if (validTemplateIds.Count != templateIds.Length)
+            return BadRequest(new { detail = "One or more selected outreach templates are invalid for this tenant." });
+        var campaign = new Campaign { TenantId=tenantId, TargetListId=input.TargetListId, Name=input.Name.Trim(), Goal=input.Goal?.Trim() ?? "book-demo", SenderName=input.SenderName?.Trim() ?? string.Empty, SenderEmail=input.SenderEmail?.Trim() ?? string.Empty, StartsAtUtc=input.StartsAtUtc };
         db.Campaigns.Add(campaign);
-        db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep { TenantId=TenantId, CampaignId=campaign.Id, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel, SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate }));
-        await db.SaveChangesAsync(ct); return Created($"/api/acquisition/campaigns/{campaign.Id}", campaign);
+        db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep { TenantId=tenantId, CampaignId=campaign.Id, TemplateId=x.TemplateId, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel?.Trim() ?? "email", SubjectTemplate=x.SubjectTemplate?.Trim() ?? string.Empty, BodyTemplate=x.BodyTemplate?.Trim() ?? string.Empty }));
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/acquisition/campaigns/{campaign.Id}", campaign);
+    }
+
+    [HttpPut("campaigns/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateCampaign(Guid id, CampaignInput input, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+        if (campaign.Status is CampaignStatus.Running or CampaignStatus.Completed)
+            return Conflict(new { detail = "Running or completed campaigns cannot be edited." });
+        if (string.IsNullOrWhiteSpace(input.Name) || input.Steps is null || input.Steps.Length == 0)
+            return BadRequest(new { detail = "Campaign name and at least one message step are required." });
+        if (!await db.TargetLists.AnyAsync(x => x.TenantId == tenantId && x.Id == input.TargetListId, ct))
+            return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
+        var templateIds = input.Steps.Where(x => x.TemplateId.HasValue).Select(x => x.TemplateId!.Value).Distinct().ToArray();
+        var validTemplateIds = await db.OutreachTemplates.Where(x => x.TenantId == tenantId && x.IsActive && templateIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(ct);
+        if (validTemplateIds.Count != templateIds.Length)
+            return BadRequest(new { detail = "One or more selected outreach templates are invalid for this tenant." });
+        campaign.TargetListId=input.TargetListId; campaign.Name=input.Name.Trim(); campaign.Goal=input.Goal?.Trim() ?? "book-demo"; campaign.SenderName=input.SenderName?.Trim() ?? string.Empty; campaign.SenderEmail=input.SenderEmail?.Trim() ?? string.Empty; campaign.StartsAtUtc=input.StartsAtUtc; campaign.Touch();
+        var oldSteps = await db.CampaignSteps.Where(x => x.TenantId == tenantId && x.CampaignId == id).ToListAsync(ct);
+        db.CampaignSteps.RemoveRange(oldSteps);
+        db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep { TenantId=tenantId, CampaignId=id, TemplateId=x.TemplateId, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel?.Trim() ?? "email", SubjectTemplate=x.SubjectTemplate?.Trim() ?? string.Empty, BodyTemplate=x.BodyTemplate?.Trim() ?? string.Empty }));
+        await db.SaveChangesAsync(ct);
+        return Ok(campaign);
     }
 
     [HttpPost("campaigns/{id:guid}/start")]
@@ -495,7 +530,8 @@ public sealed record ProspectImportRow(
     string? VerificationStatus = null,
     string? OutreachStatus = null,
     string? DatasetOrigin = null);
-public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
+public sealed record OutreachTemplateInput(string Name, string? Description, string SubjectTemplate, string BodyTemplate);
+public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, Guid? TemplateId = null);
 public sealed record CampaignInput(Guid TargetListId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
 public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
