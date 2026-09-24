@@ -13,7 +13,48 @@ public sealed class ModuleRegistry : IModuleRegistry
 {
     private readonly Dictionary<string, ModuleDefinition> _modules = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["crm"] = new("crm", Array.Empty<string>()), ["golden_pipeline"] = new("golden_pipeline", new[] { "crm" })
+        ["crm"] = new("crm", Array.Empty<string>()),
+        ["golden_pipeline"] = new("golden_pipeline", new[] { "crm" }),
+        ["production"] = new("production", new[] { "crm" }),
+        ["bom"] = new("bom", new[] { "production" }),
+        ["quality"] = new("quality", new[] { "production" }),
+        ["maintenance"] = new("maintenance", new[] { "production" }),
+        ["suppliers"] = new("suppliers", new[] { "crm" }),
+        ["shipments"] = new("shipments", new[] { "crm" }),
+        ["routes"] = new("routes", new[] { "crm" }),
+        ["fleet"] = new("fleet", new[] { "crm" }),
+        ["drivers"] = new("drivers", new[] { "fleet" }),
+        ["dispatch"] = new("dispatch", new[] { "routes", "drivers" }),
+        ["inventory"] = new("inventory", Array.Empty<string>()),
+        ["receiving"] = new("receiving", new[] { "inventory" }),
+        ["putaway"] = new("putaway", new[] { "receiving", "inventory" }),
+        ["picking"] = new("picking", new[] { "inventory" }),
+        ["packing"] = new("packing", new[] { "picking" }),
+        ["cycle_counts"] = new("cycle_counts", new[] { "inventory" }),
+        ["orders"] = new("orders", new[] { "crm" }),
+        ["inventory_allocation"] = new("inventory_allocation", new[] { "orders", "inventory" }),
+        ["replenishment"] = new("replenishment", new[] { "inventory" }),
+        ["pricing"] = new("pricing", new[] { "orders" }),
+        ["delivery_orders"] = new("delivery_orders", new[] { "orders", "routes" }),
+        ["stops"] = new("stops", new[] { "delivery_orders", "routes" }),
+        ["proof_of_delivery"] = new("proof_of_delivery", new[] { "stops" }),
+        ["returns"] = new("returns", new[] { "orders" }),
+        ["multi_client"] = new("multi_client", new[] { "crm" }),
+        ["slas"] = new("slas", new[] { "multi_client" }),
+        ["billing"] = new("billing", new[] { "orders" }),
+        ["carrier_management"] = new("carrier_management", new[] { "shipments" }),
+        ["products"] = new("products", new[] { "inventory" }),
+        ["fulfillment"] = new("fulfillment", new[] { "orders", "inventory" }),
+        ["customers"] = new("customers", new[] { "crm" }),
+        ["projects"] = new("projects", new[] { "crm" }),
+        ["work_orders"] = new("work_orders", new[] { "projects" }),
+        ["materials"] = new("materials", new[] { "inventory" }),
+        ["technicians"] = new("technicians", new[] { "work_orders" }),
+        ["scheduling"] = new("scheduling", new[] { "work_orders" }),
+        ["service_slas"] = new("service_slas", new[] { "work_orders" }),
+        ["traceability"] = new("traceability", new[] { "inventory", "quality" }),
+        ["ai_agents"] = new("ai_agents", Array.Empty<string>()),
+        ["automations"] = new("automations", Array.Empty<string>())
     };
     public IReadOnlyCollection<ModuleDefinition> Modules => _modules.Values.ToArray();
     public IReadOnlyCollection<string> Resolve(IReadOnlyCollection<string> requestedModules)
@@ -67,3 +108,9 @@ public sealed class ModuleDeactivationOrchestrator(IEnumerable<IModuleLifecycleH
 
 public sealed class GoldenPipelineModuleProvisioner(IGoldenPipelineProvisioner goldenPipeline) : IModuleProvisioner { public string ModuleCode => "golden_pipeline"; public Task ProvisionAsync(Guid tenantId, CancellationToken cancellationToken = default) => goldenPipeline.EnsureProvisionedAsync(tenantId, cancellationToken); }
 public sealed class GoldenPipelineModuleLifecycleHandler : IModuleLifecycleHandler { public string ModuleCode => "golden_pipeline"; public Task DeactivateAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.CompletedTask; }
+
+public sealed class RegisteredModuleProvisioner(string moduleCode) : IModuleProvisioner
+{
+    public string ModuleCode => moduleCode;
+    public Task ProvisionAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
