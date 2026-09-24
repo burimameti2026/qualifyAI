@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using LeadsAI.Application.Abstractions.Persistence;
 using LeadsAI.BuildingBlocks.Messaging.Inbox;
 using LeadsAI.Contracts.Identity;
+using LeadsAI.Infrastructure.WorkspacePackages;
 
 namespace LeadsAI.Infrastructure.Messaging.Consumers;
 
@@ -31,6 +32,7 @@ public sealed class IdentityEntitlementInboxProcessor(
     AppDbContext dbContext,
     ITenantEntitlementRepository entitlements,
     ILicenseChangeOrchestrator licenseChanges,
+    WorkspacePackageInstaller packageInstaller,
     ITenantLifecycleEventStore events)
 {
     public Task ProcessTenantCreatedAsync(
@@ -126,6 +128,12 @@ public sealed class IdentityEntitlementInboxProcessor(
                     },
                     message.OccurredAtUtc,
                     ct);
+
+                if (message.Status.Equals("active", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(message.PackageId))
+                {
+                    await packageInstaller.InstallAsync(message.TenantId, message.PackageId, ct);
+                }
 
                 if(message.Status.Equals("active", StringComparison.OrdinalIgnoreCase))
                 {
