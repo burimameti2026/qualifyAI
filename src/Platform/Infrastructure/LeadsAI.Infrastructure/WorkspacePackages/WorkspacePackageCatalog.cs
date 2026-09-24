@@ -84,6 +84,9 @@ public static class WorkspacePackageCatalog
         "1.0",
         new[] { "crm", "ai_agents", "automations" },
         new[] { "Logistics ICP", "AI prospecting agent", "Daily discovery workflow", "Target list", "Promotion campaign", "Automated follow-up" },
+        new[] { "CRM", "Acquisition", "Campaigns" },
+        new[] { "Daily discovery", "Enrichment", "Qualification", "Promotion" },
+        new[] { "Acquisition Agent", "Qualification Agent" },
         "customer-scenario", "workspace");
 
     public static readonly WorkspacePackageDefinition QualifyAiAcquisition = new(
@@ -92,10 +95,13 @@ public static class WorkspacePackageCatalog
         "1.0",
         new[] { "crm", "ai_agents", "automations" },
         new[] { "Revenue ICP", "Qualification agent", "Revenue workflow", "Target list", "Pilot campaign" },
+        new[] { "CRM", "Acquisition", "Campaigns" },
+        new[] { "Discovery", "Enrichment", "Qualification", "Campaign approval" },
+        new[] { "Acquisition Agent", "Qualification Agent" },
         "customer-scenario", "workspace");
 
     public static readonly WorkspacePackageDefinition Blank = new(
-        "blank", "Blank Workspace", "1.0", Array.Empty<string>(), Array.Empty<string>(), "system", "workspace");
+        "blank", "Blank Workspace", "1.0", Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), "system", "workspace");
 
     public static IReadOnlyCollection<WorkspacePackageDefinition> All { get; } =
     [
