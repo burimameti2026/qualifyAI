@@ -71,21 +71,112 @@ public sealed class AdminEmailTestController(
     [HttpGet("templates")]
     public async Task<IActionResult> Templates(CancellationToken ct)
     {
-        var templates = await db.OutreachTemplates.AsNoTracking()
-            .Where(x => x.TenantId == TenantId && x.IsActive)
+        var tenantId = TenantId;
+        var templates = await db.OutreachTemplates
+            .Where(x => x.TenantId == tenantId && x.IsActive)
             .OrderBy(x => x.CreatedAtUtc)
-            .Select(x => new
-            {
-                x.Id,
-                x.Name,
-                x.Description,
-                x.SubjectTemplate,
-                x.BodyTemplate
-            })
             .ToListAsync(ct);
 
-        return Ok(templates);
+        if (templates.Count == 0)
+        {
+            templates = CreateDefaultTemplates(tenantId);
+            db.OutreachTemplates.AddRange(templates);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Ok(templates.Select(x => new
+        {
+            x.Id,
+            x.Name,
+            x.Description,
+            x.SubjectTemplate,
+            x.BodyTemplate
+        }));
     }
+
+    [HttpPost("templates")]
+    public async Task<IActionResult> CreateTemplate(OutreachTemplateInput input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name) ||
+            string.IsNullOrWhiteSpace(input.SubjectTemplate) ||
+            string.IsNullOrWhiteSpace(input.BodyTemplate))
+            return BadRequest(new { detail = "Template name, subject and body are required." });
+
+        var name = input.Name.Trim();
+        if (await db.OutreachTemplates.AnyAsync(x => x.TenantId == TenantId && x.Name == name, ct))
+            return Conflict(new { detail = "A template with this name already exists." });
+
+        var template = new OutreachTemplate
+        {
+            TenantId = TenantId,
+            Name = name,
+            Description = input.Description?.Trim() ?? string.Empty,
+            SubjectTemplate = input.SubjectTemplate.Trim(),
+            BodyTemplate = input.BodyTemplate.Trim(),
+            IsActive = true
+        };
+
+        db.OutreachTemplates.Add(template);
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/admin/email-test/templates/{template.Id}", template);
+    }
+
+    [HttpPut("templates/{id:guid}")]
+    public async Task<IActionResult> UpdateTemplate(Guid id, OutreachTemplateInput input, CancellationToken ct)
+    {
+        var template = await db.OutreachTemplates
+            .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+
+        if (template is null)
+            return NotFound();
+
+        if (string.IsNullOrWhiteSpace(input.Name) ||
+            string.IsNullOrWhiteSpace(input.SubjectTemplate) ||
+            string.IsNullOrWhiteSpace(input.BodyTemplate))
+            return BadRequest(new { detail = "Template name, subject and body are required." });
+
+        var name = input.Name.Trim();
+        if (await db.OutreachTemplates.AnyAsync(
+                x => x.TenantId == TenantId && x.Id != id && x.Name == name, ct))
+            return Conflict(new { detail = "A template with this name already exists." });
+
+        template.Name = name;
+        template.Description = input.Description?.Trim() ?? string.Empty;
+        template.SubjectTemplate = input.SubjectTemplate.Trim();
+        template.BodyTemplate = input.BodyTemplate.Trim();
+        template.IsActive = true;
+
+        await db.SaveChangesAsync(ct);
+        return Ok(template);
+    }
+
+    private static List<OutreachTemplate> CreateDefaultTemplates(Guid tenantId) =>
+    [
+        new OutreachTemplate
+        {
+            TenantId = tenantId,
+            Name = "Logistics operational benchmark",
+            Description = "Message 1 — initial outreach",
+            SubjectTemplate = "{{company}}: reduce dispatch and delivery exceptions",
+            BodyTemplate = "Hi {{contact}}, I noticed current growth signals at {{company}}. We help {{industry}} teams automate dispatch, warehouse and customer operations. Would a 25-minute operational demo be useful?"
+        },
+        new OutreachTemplate
+        {
+            TenantId = tenantId,
+            Name = "Operational benchmark follow-up",
+            Description = "Message 2 — follow-up",
+            SubjectTemplate = "Operational benchmark for {{company}}",
+            BodyTemplate = "Hi {{contact}}, I prepared a short benchmark for teams operating across {{country}}. I can tailor the demo to your fleet, warehouse and delivery workflow."
+        },
+        new OutreachTemplate
+        {
+            TenantId = tenantId,
+            Name = "Close the loop",
+            Description = "Message 3 — final follow-up",
+            SubjectTemplate = "Should I close the loop on {{company}}?",
+            BodyTemplate = "Hi {{contact}}, I don't want to keep filling your inbox if this isn't a priority. If improving dispatch, warehouse or delivery operations is on your roadmap, I'm happy to send a short example. Otherwise, I'll close the loop here."
+        }
+    ];
 
     [HttpPost("send")]
     public async Task<IActionResult> Send(TestEmailInput input, CancellationToken ct)
@@ -209,3 +300,5 @@ public sealed class AdminEmailTestController(
 }
 
 public sealed record TestEmailInput(Guid ProspectId, Guid TemplateId, string RecipientEmail);
+
+public sealed record OutreachTemplateInput(string Name, string? Description, string SubjectTemplate, string BodyTemplate);
