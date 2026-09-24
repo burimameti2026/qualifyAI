@@ -3,12 +3,15 @@ using LeadsAI.AIOrchestration.Persistence.SqlServer;
 using LeadsAI.Automation.Domain.AutomationDefinitions;
 using LeadsAI.Automation.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
+using LeadsAI.Domain;
+using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Infrastructure.WorkspacePackages;
 
 public sealed class OperationalPackageProvisioner(
     AIOrchestrationDbContext aiDb,
-    AutomationDbContext automationDb)
+    AutomationDbContext automationDb,
+    AppDbContext db)
 {
     public async Task ProvisionAsync(
         Guid tenantId,
@@ -37,7 +40,10 @@ public sealed class OperationalPackageProvisioner(
                     AutomationDefinition.Create(tenantId, workflowName));
         }
 
+        await ProvisionWorkflowDefinitionsAsync(tenantId, package, ct);
+
         await aiDb.SaveChangesAsync(ct);
         await automationDb.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct);
     }
 }
