@@ -438,7 +438,7 @@ public sealed class AcquisitionController(
 
     private static bool Matches(Prospect p, CampaignStepRules r)
     {
-        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
+        if (p.Status != ProspectStatus.Qualified) return false;
         if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
         if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
         if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
