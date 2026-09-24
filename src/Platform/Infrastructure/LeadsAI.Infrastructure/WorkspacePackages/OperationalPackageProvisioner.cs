@@ -41,6 +41,7 @@ public sealed class OperationalPackageProvisioner(
         }
 
         await ProvisionWorkflowDefinitionsAsync(tenantId, package, ct);
+        ProvisionAutomationRules(tenantId, package);
 
         await aiDb.SaveChangesAsync(ct);
         await automationDb.SaveChangesAsync(ct);
@@ -171,4 +172,61 @@ public sealed class OperationalPackageProvisioner(
             nodes.Skip(1),
             (from, to) => WorkflowEdge.Create(
                 tenantId, flowId, from.NodeKey, to.NodeKey, "{}")).ToArray();
+
+    private void ProvisionAutomationRules(Guid tenantId, WorkspacePackageDefinition package)
+    {
+        foreach (var workflowName in package.Workflows ?? Array.Empty<string>())
+        {
+            var ruleName = $"package:{package.Id}:{workflowName}";
+            if (db.AutomationRules.Any(x => x.TenantId == tenantId && x.Name == ruleName))
+                continue;
+
+            var normalized = workflowName.ToLowerInvariant();
+            string actions;
+
+            if (normalized.Contains("supplier") || normalized.Contains("carrier") ||
+                normalized.Contains("acquisition") || normalized.Contains("qualification"))
+            {
+                actions = """
+                [
+                  {"type":"discover_prospects","source":"serpapi","minimumScore":60,"maximumResults":50,"createTargetList":false},
+                  {"type":"deduplicate"},
+                  {"type":"enrich_company","maximumResults":100},
+                  {"type":"qualify","minimumScore":70},
+                  {"type":"add_to_target_list"}
+                ]
+                """;
+            }
+            else if (normalized.Contains("follow"))
+            {
+                actions = """
+                [
+                  {"type":"enrich_company","maximumResults":100},
+                  {"type":"qualify","minimumScore":70},
+                  {"type":"personalize"},
+                  {"type":"request_approval","title":"Review automated follow-up"}
+                ]
+                """;
+            }
+            else
+            {
+                actions = """
+                [
+                  {"type":"enrich_company","maximumResults":100},
+                  {"type":"qualify","minimumScore":70},
+                  {"type":"add_to_target_list"}
+                ]
+                """;
+            }
+
+            db.AutomationRules.Add(AutomationRule.Create(
+                tenantId,
+                ruleName,
+                "schedule.weekday",
+                "[]",
+                actions,
+                active: true));
+        }
+    }
+
 }
