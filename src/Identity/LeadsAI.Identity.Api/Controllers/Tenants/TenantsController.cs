@@ -34,7 +34,7 @@ public sealed class TenantsController(ISender sender) : ControllerBase
     public async Task<ActionResult<ProvisionTenantResult>> Provision([FromBody] ProvisionTenantRequest request, CancellationToken cancellationToken)
     {
         if (!IsSystemAdmin()) return Forbid();
-        var result = await sender.Send(new ProvisionTenantCommand(request.Name, request.Slug, request.ContactEmail, request.Plan, request.StartsAtUtc, request.ExpiresAtUtc, request.GracePeriodEndsAtUtc, request.MaxUsers, request.Modules, request.OwnerEmail, request.OwnerPassword, request.OwnerFirstName, request.OwnerLastName), cancellationToken);
+        var result = await sender.Send(new ProvisionTenantCommand(request.Name, request.Slug, request.ContactEmail, request.Plan, request.StartsAtUtc, request.ExpiresAtUtc, request.GracePeriodEndsAtUtc, request.MaxUsers, request.Modules, request.PackageId, request.OwnerEmail, request.OwnerPassword, request.OwnerFirstName, request.OwnerLastName), cancellationToken);
         return CreatedAtAction(nameof(GetById), new { tenantId = result.TenantId }, result);
     }
 
