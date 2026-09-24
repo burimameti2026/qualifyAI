@@ -56,6 +56,27 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
 
+    [HttpPost("discovery/providers/{name}/verify")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> VerifyDiscoveryProvider(string name, CancellationToken ct)
+    {
+        try
+        {
+            var result = await discovery.VerifyProviderAsync(name, ct);
+            return result.Verified
+                ? Ok(result)
+                : BadRequest(result);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return NotFound(new
+            {
+                code = "discovery_provider_not_found",
+                detail = exception.Message
+            });
+        }
+    }
+
     [HttpPost("icp/{id:guid}/discover")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Discover(Guid id, [FromBody] DiscoveryRequest? input, CancellationToken ct)
