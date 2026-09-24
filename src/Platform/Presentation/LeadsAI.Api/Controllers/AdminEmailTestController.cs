@@ -46,12 +46,14 @@ public sealed class AdminEmailTestController(
     [HttpGet("prospects")]
     public async Task<IActionResult> Prospects(CancellationToken ct)
     {
+        // Keep this query limited to mapped Prospect properties. PriorityScore is
+        // currently not mapped for EF translation, so it must not be used in SQL.
         var prospects = await db.Prospects.AsNoTracking()
             .Where(x => x.TenantId == TenantId &&
                         x.Status == ProspectStatus.Qualified &&
                         !string.IsNullOrWhiteSpace(x.Email) &&
                         !x.Email.EndsWith(".example"))
-            .OrderByDescending(x => x.PriorityScore)
+            .OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new
             {
                 x.Id,
@@ -59,9 +61,7 @@ public sealed class AdminEmailTestController(
                 x.ContactName,
                 x.Email,
                 x.Industry,
-                x.Country,
-                x.JobTitle,
-                x.PriorityScore
+                x.Country
             })
             .ToListAsync(ct);
 
@@ -300,4 +300,3 @@ public sealed class AdminEmailTestController(
 }
 
 public sealed record TestEmailInput(Guid ProspectId, Guid TemplateId, string RecipientEmail);
-
