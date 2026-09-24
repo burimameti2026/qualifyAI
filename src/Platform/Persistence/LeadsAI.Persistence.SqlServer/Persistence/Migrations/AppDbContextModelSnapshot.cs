@@ -826,6 +826,50 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.ToTable("CampaignRecipients");
                 });
 
+            modelBuilder.Entity("LeadsAI.Domain.OutreachTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("BodyTemplate")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SubjectTemplate")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("OutreachTemplates");
+                });
+
             modelBuilder.Entity("LeadsAI.Domain.CampaignStep", b =>
                 {
                     b.Property<Guid>("Id")
@@ -860,6 +904,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -870,6 +917,8 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 
                     b.HasIndex("TenantId", "CampaignId", "StepNumber")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "TemplateId");
 
                     b.ToTable("CampaignSteps");
                 });
