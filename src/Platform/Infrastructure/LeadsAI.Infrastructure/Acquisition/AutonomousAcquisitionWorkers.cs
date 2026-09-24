@@ -78,7 +78,7 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
         }
     }
 
-
+}
 public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionSchedulerWorker> log) : BackgroundService
 {
     private const string TimeZoneSetting = "acquisition.schedule.timeZoneId";
@@ -193,7 +193,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         return TimeZoneInfo.Utc;
     }
 
-
+}
 
 public sealed class AutonomousAcquisitionEnrichmentWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionEnrichmentWorker> log) : BackgroundService
 {
