@@ -84,6 +84,9 @@ public static class DependencyInjection
         services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<TenantSerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
+        services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.FusionFleetPackageProvisioner>();
+        services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.QualifyAiAcquisitionPackageProvisioner>();
+        services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.WorkspacePackageInstaller>();
         services.AddScoped<DevelopmentSeedService>();
         services.AddHostedService<DevelopmentSeedHostedService>();
         services.AddScoped<IEmailDeliveryProvider, SmtpEmailProvider>();
