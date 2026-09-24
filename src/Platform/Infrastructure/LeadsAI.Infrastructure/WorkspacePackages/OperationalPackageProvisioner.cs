@@ -87,40 +87,77 @@ public sealed class OperationalPackageProvisioner(
         Guid flowId,
         string workflowName)
     {
-        var nodes = new List<WorkflowNode>
-        {
-            WorkflowNode.Create(
-                tenantId, flowId, "discover", "discoverprospects",
-                "{\"source\":\"package\"}", 0, 0),
-
-            WorkflowNode.Create(
-                tenantId, flowId, "enrich", "enrichcompany",
-                "{\"required\":true}", 240, 0),
-
-            WorkflowNode.Create(
-                tenantId, flowId, "qualify", "qualify",
-                "{\"threshold\":70}", 480, 0)
-        };
-
         var normalized = workflowName.ToLowerInvariant();
+
+        static WorkflowNode Node(
+            Guid tenantId,
+            Guid flowId,
+            string key,
+            string type,
+            string config,
+            int x,
+            int y = 0)
+            => WorkflowNode.Create(tenantId, flowId, key, type, config, x, y);
+
+        var nodes = new List<WorkflowNode>();
 
         if (normalized.Contains("supplier"))
         {
-            nodes.Add(WorkflowNode.Create(
-                tenantId, flowId, "target", "addtotargetlist",
-                "{\"listType\":\"supplier\"}", 720, 0));
+            nodes.Add(Node(tenantId, flowId, "discover", "discoverprospects",
+                "{\"source\":\"serpapi\",\"minimumScore\":60}", 0));
+            nodes.Add(Node(tenantId, flowId, "deduplicate", "deduplicate", "{}", 240));
+            nodes.Add(Node(tenantId, flowId, "enrich", "enrichcompany",
+                "{\"maximumResults\":100}", 480));
+            nodes.Add(Node(tenantId, flowId, "qualify", "qualify",
+                "{\"minimumScore\":70}", 720));
+            nodes.Add(Node(tenantId, flowId, "target", "addtotargetlist",
+                "{\"listType\":\"supplier\"}", 960));
         }
-        else if (normalized.Contains("follow") || normalized.Contains("acquisition"))
+        else if (normalized.Contains("carrier"))
         {
-            nodes.Add(WorkflowNode.Create(
-                tenantId, flowId, "outreach", "addtocampaign",
-                "{\"approvalRequired\":true}", 720, 0));
+            nodes.Add(Node(tenantId, flowId, "discover", "discoverprospects",
+                "{\"source\":\"serpapi\",\"minimumScore\":60}", 0));
+            nodes.Add(Node(tenantId, flowId, "deduplicate", "deduplicate", "{}", 240));
+            nodes.Add(Node(tenantId, flowId, "enrich", "enrichcompany",
+                "{\"maximumResults\":100}", 480));
+            nodes.Add(Node(tenantId, flowId, "qualify", "qualify",
+                "{\"minimumScore\":70}", 720));
+            nodes.Add(Node(tenantId, flowId, "target", "addtotargetlist",
+                "{\"listType\":\"carrier\"}", 960));
+        }
+        else if (normalized.Contains("follow"))
+        {
+            nodes.Add(Node(tenantId, flowId, "enrich", "enrichcompany",
+                "{\"maximumResults\":100}", 0));
+            nodes.Add(Node(tenantId, flowId, "qualify", "qualify",
+                "{\"minimumScore\":70}", 240));
+            nodes.Add(Node(tenantId, flowId, "personalize", "personalize",
+                "{\"required\":true}", 480));
+            nodes.Add(Node(tenantId, flowId, "approval", "requestapproval",
+                "{\"approvalRequired\":true}", 720));
+            nodes.Add(Node(tenantId, flowId, "campaign", "addtocampaign",
+                "{\"approvalRequired\":true}", 960));
+        }
+        else if (normalized.Contains("acquisition"))
+        {
+            nodes.Add(Node(tenantId, flowId, "discover", "discoverprospects",
+                "{\"source\":\"serpapi\",\"minimumScore\":60}", 0));
+            nodes.Add(Node(tenantId, flowId, "deduplicate", "deduplicate", "{}", 240));
+            nodes.Add(Node(tenantId, flowId, "enrich", "enrichcompany",
+                "{\"maximumResults\":100}", 480));
+            nodes.Add(Node(tenantId, flowId, "qualify", "qualify",
+                "{\"minimumScore\":70}", 720));
+            nodes.Add(Node(tenantId, flowId, "target", "addtotargetlist",
+                "{\"listType\":\"qualified\"}", 960));
         }
         else
         {
-            nodes.Add(WorkflowNode.Create(
-                tenantId, flowId, "target", "addtotargetlist",
-                "{\"listType\":\"qualified\"}", 720, 0));
+            nodes.Add(Node(tenantId, flowId, "enrich", "enrichcompany",
+                "{\"maximumResults\":100}", 0));
+            nodes.Add(Node(tenantId, flowId, "qualify", "qualify",
+                "{\"minimumScore\":70}", 240));
+            nodes.Add(Node(tenantId, flowId, "target", "addtotargetlist",
+                "{\"listType\":\"qualified\"}", 480));
         }
 
         return nodes;
