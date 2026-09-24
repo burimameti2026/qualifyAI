@@ -2,8 +2,4 @@
   <ItemGroup>
     <ProjectReference Include="../../Shared/LeadsAI.BuildingBlocks.Domain/LeadsAI.BuildingBlocks.Domain.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="../LeadsAI.Identity.Api/Domain/**/*.cs" Link="Domain/%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
 </Project>

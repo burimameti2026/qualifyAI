@@ -6,11 +6,6 @@
     <ProjectReference Include="../../Shared/LeadsAI.BuildingBlocks.Security/LeadsAI.BuildingBlocks.Security.csproj" />
     <ProjectReference Include="../../Platform/Application/LeadsAI.Contracts/LeadsAI.Contracts.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="../LeadsAI.Identity.Api/Application/**/*.cs" Link="Application/%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
-
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="MediatR" />
