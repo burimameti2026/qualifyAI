@@ -30,16 +30,16 @@ public partial class AddPersistentOutreachTemplates : Migration
             columns: new[] { "TenantId", "Name" },
             unique: true);
 
-        migrationBuilder.CreateIndex(
-            name: "IX_CampaignSteps_TenantId_TemplateId",
-            table: "CampaignSteps",
-            columns: new[] { "TenantId", "TemplateId" });
-
         migrationBuilder.AddColumn<Guid>(
             name: "TemplateId",
             table: "CampaignSteps",
             type: "uniqueidentifier",
             nullable: true);
+
+        migrationBuilder.CreateIndex(
+            name: "IX_CampaignSteps_TenantId_TemplateId",
+            table: "CampaignSteps",
+            columns: new[] { "TenantId", "TemplateId" });
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
