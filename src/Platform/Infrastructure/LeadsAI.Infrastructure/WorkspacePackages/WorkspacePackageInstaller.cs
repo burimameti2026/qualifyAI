@@ -23,7 +23,7 @@ public sealed class WorkspacePackageInstaller(
             "fusionfleet-promotion" => InstallFusionFleetPackageAsync(tenantId, ct),
             "leadsai-acquisition" => InstallQualifyAiAcquisitionPackageAsync(tenantId, ct),
             "blank" => InstallProfileAsync(tenantId, package, ct),
-            _ when package.ProvisioningMode.Equals("profile", StringComparison.OrdinalIgnoreCase) => InstallProfileAsync(tenantId, package, ct),
+            _ when package.ProvisioningMode.Equals("operational", StringComparison.OrdinalIgnoreCase) => InstallProfileAsync(tenantId, package, ct),
             _ => throw new InvalidOperationException($"Unsupported workspace package '{packageId}'.")
         };
     }
@@ -62,6 +62,8 @@ public sealed class WorkspacePackageInstaller(
             package.Name,
             package.Version,
             category = package.Category,
+            provisioningMode = package.ProvisioningMode,
+            modules = resolvedModules,
             capabilities = package.Capabilities ?? Array.Empty<string>(),
             workflows = package.Workflows ?? Array.Empty<string>(),
             agents = package.Agents ?? Array.Empty<string>(),
