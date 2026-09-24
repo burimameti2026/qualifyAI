@@ -178,7 +178,7 @@ public sealed class AdminEmailTestController(
             TestRecipient,
             string.IsNullOrWhiteSpace(prospect.ContactName) ? prospect.CompanyName : prospect.ContactName,
             subject,
-            WebUtility.HtmlEncode(body).Replace("\\n", "<br>"),
+            WebUtility.HtmlEncode(body).Replace("\n", "<br>"),
             body,
             $"email-test:{Guid.NewGuid():N}"), ct);
 
