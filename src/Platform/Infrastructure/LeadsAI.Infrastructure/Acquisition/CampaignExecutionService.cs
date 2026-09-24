@@ -59,8 +59,8 @@ public sealed class CampaignExecutionService(AppDbContext db)
                 ProspectId = prospect.Id,
                 CampaignStepId = step.Id,
                 Channel = step.Channel,
-                Subject = Render(step.SubjectTemplate, prospect),
-                Body = Render(step.BodyTemplate, prospect),
+                Subject = RenderTemplate(step.SubjectTemplate, prospect),
+                Body = RenderTemplate(step.BodyTemplate, prospect),
                 Status = OutreachStatus.Queued
             });
             recipient.CurrentStep = step.StepNumber;
@@ -122,7 +122,7 @@ public sealed class CampaignExecutionService(AppDbContext db)
 
     private static bool ContainsAny(string value, string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
 
-    private static string Render(string template, Prospect prospect) => template
+    public static string RenderTemplate(string template, Prospect prospect) => template
         .Replace("{{company}}", prospect.CompanyName, StringComparison.OrdinalIgnoreCase)
         .Replace("{{contact}}", prospect.ContactName, StringComparison.OrdinalIgnoreCase)
         .Replace("{{contactName}}", prospect.ContactName, StringComparison.OrdinalIgnoreCase)
