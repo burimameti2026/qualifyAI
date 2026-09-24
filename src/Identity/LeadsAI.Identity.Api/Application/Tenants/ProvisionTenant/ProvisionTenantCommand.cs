@@ -13,6 +13,7 @@ public sealed record ProvisionTenantCommand(
     DateTime? GracePeriodEndsAtUtc,
     int? MaxUsers,
     IReadOnlyCollection<string>? Modules,
+    string? PackageId,
     string OwnerEmail,
     string OwnerPassword,
     string OwnerFirstName,
@@ -36,6 +37,7 @@ public sealed class ProvisionTenantCommandValidator : AbstractValidator<Provisio
         RuleFor(x => x.Slug).NotEmpty().MaximumLength(100).Matches("^[a-zA-Z0-9-]+$");
         RuleFor(x => x.ContactEmail).NotEmpty().EmailAddress().MaximumLength(320);
         RuleFor(x => x.Plan).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.PackageId).MaximumLength(100).Matches("^[a-zA-Z0-9-]+$").When(x => !string.IsNullOrWhiteSpace(x.PackageId));
         RuleFor(x => x.OwnerEmail).NotEmpty().EmailAddress().MaximumLength(320);
         RuleFor(x => x.OwnerPassword).NotEmpty().MinimumLength(10);
         RuleFor(x => x.OwnerFirstName).NotEmpty().MaximumLength(100);
