@@ -843,6 +843,10 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2465,6 +2469,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                         .IsRequired()
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("CompanySize")
+                        .HasColumnType("int");
 
                     b.Property<Guid?>("ContactId")
                         .HasColumnType("uniqueidentifier");
