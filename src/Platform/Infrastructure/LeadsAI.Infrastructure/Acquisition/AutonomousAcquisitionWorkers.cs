@@ -19,18 +19,24 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
                 using var rootScope = scopes.CreateScope();
                 var db = rootScope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                // TenantDatabases is optional routing configuration. It is not the tenant registry
-                // and may contain the master FindLeadsAI database.
-                var tenants = await db.Tenants
+                // TenantEntitlements is the authoritative business tenant registry.
+                // TenantDatabases is only connection-routing configuration and may contain
+                // the master FindLeadsAI database rather than customer tenants.
+                var tenants = await db.TenantEntitlements
                     .AsNoTracking()
-                    .Select(x => new { x.Id, x.Slug })
-                    .Where(x => x.Id != Guid.Empty && x.Slug != null && x.Slug != "")
+                    .Where(x =>
+                        x.TenantId != Guid.Empty &&
+                        !string.IsNullOrWhiteSpace(x.TenantSlug) &&
+                        x.TenantStatus == "active" &&
+                        x.LicenseStatus == "active" &&
+                        x.StartsAtUtc <= DateTime.UtcNow &&
+                        (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > DateTime.UtcNow))
+                    .Select(x => new { Id = x.TenantId, Slug = x.TenantSlug })
                     .ToListAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-                    if (!await IsTenantActiveAsync(db, tenant.Id, stoppingToken)) continue;
                     await ProcessTenantDatabaseAsync(tenant.Id, tenant.Slug, stoppingToken);
                 }
             }
@@ -97,18 +103,24 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
                 using var rootScope = scopes.CreateScope();
                 var db = rootScope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                // Discover tenants from the business tenant registry. TenantDatabases is only
-                // a connection-routing map and must not be mistaken for the tenant list.
-                var tenants = await db.Tenants
+                // TenantEntitlements is the authoritative business tenant registry.
+                // TenantDatabases is only a connection-routing map and must not be mistaken
+                // for the tenant list.
+                var tenants = await db.TenantEntitlements
                     .AsNoTracking()
-                    .Select(x => new { x.Id, x.Slug })
-                    .Where(x => x.Id != Guid.Empty && x.Slug != null && x.Slug != "")
+                    .Where(x =>
+                        x.TenantId != Guid.Empty &&
+                        !string.IsNullOrWhiteSpace(x.TenantSlug) &&
+                        x.TenantStatus == "active" &&
+                        x.LicenseStatus == "active" &&
+                        x.StartsAtUtc <= DateTime.UtcNow &&
+                        (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > DateTime.UtcNow))
+                    .Select(x => new { Id = x.TenantId, Slug = x.TenantSlug })
                     .ToListAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-                    if (!await IsTenantActiveAsync(db, tenant.Id, stoppingToken)) continue;
                     await ScheduleTenantDatabaseAsync(tenant.Id, tenant.Slug, stoppingToken);
                 }
             }
