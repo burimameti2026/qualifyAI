@@ -11,7 +11,8 @@ public sealed class WorkspacePackageInstaller(
     FusionFleetPackageProvisioner fusionFleet,
     QualifyAiAcquisitionPackageProvisioner qualifyAi,
     IModuleProvisioningOrchestrator moduleProvisioning,
-    IModuleRegistry moduleRegistry)
+    IModuleRegistry moduleRegistry,
+    OperationalPackageProvisioner operationalProvisioner)
 {
     public Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
     {
@@ -51,6 +52,7 @@ public sealed class WorkspacePackageInstaller(
             throw new InvalidOperationException($"Package '{package.Id}' requires unsupported modules: {string.Join(", ", unsupported)}.");
 
         await moduleProvisioning.ProvisionAsync(tenantId, resolvedModules, ct);
+        await operationalProvisioner.ProvisionAsync(tenantId, package, ct);
 
         const string key = "workspace.installed-package";
         var existing = await db.TenantSettings.SingleOrDefaultAsync(
