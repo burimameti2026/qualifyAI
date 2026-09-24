@@ -52,7 +52,7 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
     private async Task ProcessScopeAsync(IServiceProvider services, CancellationToken ct)
     {
         var db = services.GetRequiredService<AppDbContext>();
-        var tenantId = services.GetRequiredService<ITenantContext>().TenantId();
+        var tenantId = services.GetRequiredService<ITenantContext>().Current?.Id ?? throw new InvalidOperationException("Tenant context is not set.");
 
         var ids = await db.AutonomousAcquisitionAgentRuns
             .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentRunStatus.Queued)
