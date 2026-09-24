@@ -84,7 +84,7 @@ public sealed class ModuleProvisioningOrchestrator(IEnumerable<IModuleProvisione
             events.Record(new(tenantId, "module", "provisioning", $"Provisioning started for {module}", row.UpdatedAtUtc, new Dictionary<string,string>{{"module",module}}));
             await dbContext.SaveChangesAsync(cancellationToken);
             try { await provisioner.ProvisionAsync(tenantId, cancellationToken); row.Status = "completed"; row.CompletedAtUtc = DateTime.UtcNow; row.UpdatedAtUtc = DateTime.UtcNow; events.Record(new(tenantId, "module", "completed", $"Provisioning completed for {module}", row.UpdatedAtUtc, new Dictionary<string,string>{{"module",module}})); }
-            catch (Exception ex) { row.Status = "failed"; row.LastError = ex.ToString(); row.NextRetryAtUtc = DateTime.UtcNow.AddMinutes(Math.Min(60, Math.Pow(2, Math.Min(row.AttemptCount, 6)))); row.UpdatedAtUtc = DateTime.UtcNow; events.Record(new(tenantId, "module", "failed", $"Provisioning failed for {module}", row.UpdatedAtUtc, new Dictionary<string,string>{{"module",module}})); }
+            catch (Exception ex) { row.Status = "failed"; row.LastError = ex.ToString(); row.NextRetryAtUtc = DateTime.UtcNow.AddMinutes(Math.Min(60, Math.Pow(2, Math.Min(row.AttemptCount, 6)))); row.UpdatedAtUtc = DateTime.UtcNow; events.Record(new(tenantId, "module", "failed", $"Provisioning failed for {module}", row.UpdatedAtUtc, new Dictionary<string,string>{{"module",module}})); await dbContext.SaveChangesAsync(cancellationToken); throw new InvalidOperationException($"Module provisioning failed for tenant {tenantId}: {module}", ex); }
             await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
