@@ -1,20 +1,21 @@
-using MediatR;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.OpenApi.Models;
 using LeadsAI.Api;
-using LeadsAI.Api.Security;
 using LeadsAI.Api.Modules;
+using LeadsAI.Api.Security;
 using LeadsAI.BuildingBlocks.Application.Behaviors;
 using LeadsAI.BuildingBlocks.Application.Security;
 using LeadsAI.BuildingBlocks.Security;
+using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.Infrastructure;
+using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Demo;
 using LeadsAI.Infrastructure.It;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Persistence.SqlServer.Queries;
-using LeadsAI.BuildingBlocks.Security.Access;
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,6 +49,10 @@ builder.Services.Configure<AutomationSchedulerOptions>(builder.Configuration.Get
 builder.Services.AddHostedService<AutomationSchedulerWorker>();
 builder.Services.Configure<AutomationRetryOptions>(builder.Configuration.GetSection("AutomationRetry"));
 builder.Services.AddHostedService<AutomationRetryWorker>();
+// Autonomous Acquisition
+// Autonomous Acquisition
+builder.Services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
+builder.Services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
