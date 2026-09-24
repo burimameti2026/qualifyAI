@@ -1,3 +1,4 @@
+using LeadsAI.Domain;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Persistence.SqlServer;
 
