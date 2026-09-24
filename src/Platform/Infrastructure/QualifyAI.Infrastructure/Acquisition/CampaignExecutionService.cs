@@ -28,9 +28,14 @@ public sealed class CampaignExecutionService(AppDbContext db)
             var prospect = await db.Prospects.FirstOrDefaultAsync(
                 x => x.Id == recipient.ProspectId && x.TenantId == recipient.TenantId,
                 cancellationToken);
-            if (prospect is null || prospect.Status == ProspectStatus.Suppressed)
+            if (prospect is null ||
+                prospect.Status != ProspectStatus.Qualified ||
+                prospect.Status == ProspectStatus.Suppressed ||
+                string.IsNullOrWhiteSpace(prospect.Email) ||
+                prospect.Email.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
             {
-                recipient.Status = "suppressed";
+                recipient.Status = prospect?.Status == ProspectStatus.Suppressed ? "suppressed" : "completed";
+                recipient.NextRunAtUtc = null;
                 continue;
             }
 
@@ -42,6 +47,7 @@ public sealed class CampaignExecutionService(AppDbContext db)
             if (step is null)
             {
                 recipient.Status = "completed";
+                recipient.NextRunAtUtc = null;
                 continue;
             }
 
@@ -94,11 +100,17 @@ public sealed class CampaignExecutionService(AppDbContext db)
     }
 
     private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
-    private static CampaignStepRules ParseRules(string json) { try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); } catch { return new CampaignStepRules(); }
+
+    private static CampaignStepRules ParseRules(string json)
+    {
+        try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); }
+        catch { return new CampaignStepRules(); }
     }
+
     private static bool Matches(Prospect p, CampaignStepRules r)
     {
-        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
+        // Outreach is a post-qualification stage. Every campaign step must remain Qualified-only.
+        if (p.Status != ProspectStatus.Qualified) return false;
         if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
         if (r.CompanySizeMin.HasValue && p.CompanySize < r.CompanySizeMin.Value) return false;
         if (r.CompanySizeMax.HasValue && p.CompanySize > r.CompanySizeMax.Value) return false;
@@ -107,6 +119,7 @@ public sealed class CampaignExecutionService(AppDbContext db)
         if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
         return true;
     }
+
     private static bool ContainsAny(string value, string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
 
     private static string Render(string template, Prospect prospect) => template
