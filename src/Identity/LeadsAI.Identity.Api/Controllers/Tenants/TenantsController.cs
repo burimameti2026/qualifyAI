@@ -84,5 +84,5 @@ public sealed class TenantsController(ISender sender) : ControllerBase
 }
 
 public sealed record CreateTenantRequest(string Name, string Slug, string ContactEmail);
-public sealed record ProvisionTenantRequest(string Name, string Slug, string ContactEmail, string Plan, DateTime StartsAtUtc, DateTime? ExpiresAtUtc, DateTime? GracePeriodEndsAtUtc, int? MaxUsers, IReadOnlyCollection<string>? Modules, string OwnerEmail, string OwnerPassword, string OwnerFirstName, string OwnerLastName);
+public sealed record ProvisionTenantRequest(string Name, string Slug, string ContactEmail, string Plan, DateTime StartsAtUtc, DateTime? ExpiresAtUtc, DateTime? GracePeriodEndsAtUtc, int? MaxUsers, IReadOnlyCollection<string>? Modules, string? PackageId, string OwnerEmail, string OwnerPassword, string OwnerFirstName, string OwnerLastName);
 public sealed record CreateTenantAdminRequest(string Email, string Password, string FirstName, string LastName);
