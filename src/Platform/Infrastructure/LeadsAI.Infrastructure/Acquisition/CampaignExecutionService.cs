@@ -33,13 +33,22 @@ public sealed class CampaignExecutionService(AppDbContext db)
                 continue;
             }
 
-            var step = await db.CampaignSteps
+            if (prospect.Status != ProspectStatus.Qualified || string.IsNullOrWhiteSpace(prospect.Email) || prospect.Email.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
+            {
+                recipient.Status = prospect.Status == ProspectStatus.Suppressed ? "suppressed" : "not-ready";
+                recipient.NextRunAtUtc = null;
+                continue;
+            }
+
+            var steps = await db.CampaignSteps
                 .Where(x => x.TenantId == recipient.TenantId && x.CampaignId == campaign.Id && x.StepNumber > recipient.CurrentStep)
                 .OrderBy(x => x.StepNumber)
-                .FirstOrDefaultAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
+            var step = steps.FirstOrDefault(x => Matches(prospect, ParseRules(x.RulesJson)));
             if (step is null)
             {
                 recipient.Status = "completed";
+                recipient.NextRunAtUtc = null;
                 continue;
             }
 
@@ -77,10 +86,12 @@ public sealed class CampaignExecutionService(AppDbContext db)
             cancellationToken);
         if (recipient is not null)
         {
-            var next = await db.CampaignSteps
+            var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == recipient.ProspectId, cancellationToken);
+            var steps = await db.CampaignSteps
                 .Where(x => x.TenantId == tenantId && x.CampaignId == message.CampaignId && x.StepNumber > recipient.CurrentStep)
                 .OrderBy(x => x.StepNumber)
-                .FirstOrDefaultAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
+            var next = prospect is null ? null : steps.FirstOrDefault(x => Matches(prospect, ParseRules(x.RulesJson)));
             recipient.Status = next is null ? "completed" : "active";
             recipient.NextRunAtUtc = next is null ? null : DateTime.UtcNow.AddHours(next.DelayHours);
         }
@@ -88,6 +99,28 @@ public sealed class CampaignExecutionService(AppDbContext db)
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    private sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
+
+    private static CampaignStepRules ParseRules(string json)
+    {
+        try { return System.Text.Json.JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); }
+        catch { return new CampaignStepRules(); }
+    }
+
+    private static bool Matches(Prospect p, CampaignStepRules r)
+    {
+        if (p.Status != ProspectStatus.Qualified) return false;
+        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
+        if (r.CompanySizeMin.HasValue && p.CompanySize < r.CompanySizeMin.Value) return false;
+        if (r.CompanySizeMax.HasValue && p.CompanySize > r.CompanySizeMax.Value) return false;
+        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
+        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
+        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
+        return true;
+    }
+
+    private static bool ContainsAny(string value, string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
 
     private static string Render(string template, Prospect prospect) => template
         .Replace("{{company}}", prospect.CompanyName, StringComparison.OrdinalIgnoreCase)
