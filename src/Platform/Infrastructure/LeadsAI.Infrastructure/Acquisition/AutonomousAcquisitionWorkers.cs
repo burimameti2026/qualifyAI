@@ -30,7 +30,6 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
                 foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-                    if (!await HasQueuedRunAsync(db, tenant.Id, stoppingToken)) continue;
                     if (!await IsTenantActiveAsync(db, tenant.Id, stoppingToken)) continue;
                     await ProcessTenantDatabaseAsync(tenant.Id, tenant.Slug, stoppingToken);
                 }
@@ -41,10 +40,6 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
             await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }
-
-    private static Task<bool> HasQueuedRunAsync(AppDbContext db, Guid tenantId, CancellationToken ct) =>
-        db.AutonomousAcquisitionAgentRuns.AsNoTracking()
-            .AnyAsync(x => x.TenantId == tenantId && x.Status == AutonomousAgentRunStatus.Queued, ct);
 
     private async Task ProcessTenantDatabaseAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
     {
