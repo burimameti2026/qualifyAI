@@ -51,8 +51,7 @@ public sealed class AdminEmailTestController(
         var prospects = await db.Prospects.AsNoTracking()
             .Where(x => x.TenantId == TenantId &&
                         x.Status == ProspectStatus.Qualified &&
-                        !string.IsNullOrWhiteSpace(x.Email) &&
-                        !x.Email.EndsWith(".example"))
+                        !string.IsNullOrWhiteSpace(x.Email))
             .OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new
             {
