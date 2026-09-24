@@ -49,10 +49,6 @@ builder.Services.Configure<AutomationSchedulerOptions>(builder.Configuration.Get
 builder.Services.AddHostedService<AutomationSchedulerWorker>();
 builder.Services.Configure<AutomationRetryOptions>(builder.Configuration.GetSection("AutomationRetry"));
 builder.Services.AddHostedService<AutomationRetryWorker>();
-// Autonomous Acquisition
-// Autonomous Acquisition
-builder.Services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
-builder.Services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
