@@ -6,6 +6,9 @@ public sealed record WorkspacePackageDefinition(
     string Version,
     IReadOnlyList<string> RequiredModules,
     IReadOnlyList<string> Included,
+    IReadOnlyList<string>? Capabilities = null,
+    IReadOnlyList<string>? Workflows = null,
+    IReadOnlyList<string>? Agents = null,
     string Category = "industry",
     string ProvisioningMode = "profile");
 
@@ -14,42 +17,66 @@ public static class WorkspacePackageCatalog
     public static readonly WorkspacePackageDefinition Manufacturing = new(
         "manufacturing", "Manufacturing & Production", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Production", "BOM & materials", "Quality", "Maintenance", "Suppliers", "Production planning" });
+        new[] { "Production", "BOM & materials", "Quality", "Maintenance", "Suppliers", "Production planning" },
+        new[] { "CRM", "Golden Pipeline", "Production Operations", "Supplier Management" },
+        new[] { "Lead qualification", "Supplier follow-up", "Customer acquisition" },
+        new[] { "Qualification Agent", "Sales Agent" });
 
     public static readonly WorkspacePackageDefinition Logistics = new(
         "logistics", "Logistics & Transportation", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Shipments", "Routes", "Fleet", "Drivers", "Dispatch", "Carrier management" });
+        new[] { "Shipments", "Routes", "Fleet", "Drivers", "Dispatch", "Carrier management" },
+        new[] { "CRM", "Golden Pipeline", "Fleet Operations", "Dispatch" },
+        new[] { "Lead qualification", "Carrier acquisition", "Customer follow-up" },
+        new[] { "Acquisition Agent", "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition Warehouse = new(
         "warehouse", "Warehouse Management", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Receiving", "Put-away", "Inventory", "Picking", "Packing", "Cycle counts" });
+        new[] { "Receiving", "Put-away", "Inventory", "Picking", "Packing", "Cycle counts" },
+        new[] { "CRM", "Golden Pipeline", "Inventory Operations", "Supplier Management" },
+        new[] { "Supplier acquisition", "Account qualification", "Customer follow-up" },
+        new[] { "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition Distribution = new(
         "distribution", "Distribution & Wholesale", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Orders", "Inventory allocation", "Replenishment", "Pricing", "Suppliers", "Dispatch" });
+        new[] { "Orders", "Inventory allocation", "Replenishment", "Pricing", "Suppliers", "Dispatch" },
+        new[] { "CRM", "Golden Pipeline", "Order Management", "Supplier Management" },
+        new[] { "Account qualification", "Supplier acquisition", "Customer follow-up" },
+        new[] { "Acquisition Agent", "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition Delivery = new(
         "delivery", "Delivery & Last Mile", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Delivery orders", "Drivers", "Routes", "Stops", "Proof of delivery", "Returns" });
+        new[] { "Delivery orders", "Drivers", "Routes", "Stops", "Proof of delivery", "Returns" },
+        new[] { "CRM", "Golden Pipeline", "Delivery Operations", "Customer Management" },
+        new[] { "Customer acquisition", "Account qualification", "Follow-up" },
+        new[] { "Acquisition Agent", "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition ThreePl = new(
         "3pl", "3PL & Contract Logistics", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Multi-client operations", "Warehouse", "Inventory", "SLAs", "Billing", "Carrier management" });
+        new[] { "Multi-client operations", "Warehouse", "Inventory", "SLAs", "Billing", "Carrier management" },
+        new[] { "CRM", "Golden Pipeline", "Multi-client Operations", "Carrier Management" },
+        new[] { "Customer acquisition", "Account qualification", "Customer follow-up" },
+        new[] { "Acquisition Agent", "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition Retail = new(
         "retail-ecommerce", "Retail & E-commerce", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Products", "Orders", "Inventory", "Fulfillment", "Customers", "Returns" });
+        new[] { "Products", "Orders", "Inventory", "Fulfillment", "Customers", "Returns" },
+        new[] { "CRM", "Golden Pipeline", "Customer Management", "Fulfillment" },
+        new[] { "Partner acquisition", "Account qualification", "Customer follow-up" },
+        new[] { "Acquisition Agent", "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition Construction = new(
         "construction-field-service", "Construction & Field Service", "1.0",
         new[] { "crm", "golden_pipeline" },
-        new[] { "Projects", "Work orders", "Materials", "Technicians", "Scheduling", "Service SLAs" });
+        new[] { "Projects", "Work orders", "Materials", "Technicians", "Scheduling", "Service SLAs" },
+        new[] { "CRM", "Golden Pipeline", "Service Operations", "Customer Management" },
+        new[] { "Account acquisition", "Lead qualification", "Service follow-up" },
+        new[] { "Acquisition Agent", "Qualification Agent" });
 
     public static readonly WorkspacePackageDefinition FusionFleetPromotion = new(
         "fusionfleet-promotion",
