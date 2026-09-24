@@ -130,7 +130,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
     private static async Task ScheduleScopeAsync(IServiceProvider services, CancellationToken ct)
     {
         var db = services.GetRequiredService<AppDbContext>();
-        var tenantId = services.GetRequiredService<ITenantContext>().TenantId();
+        var tenantId = services.GetRequiredService<ITenantContext>().Current?.Id ?? throw new InvalidOperationException("Tenant context is not set.");
 
         var agents = await db.AutonomousAcquisitionAgents
             .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentStatus.Active)
