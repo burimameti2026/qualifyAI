@@ -3,7 +3,7 @@
   <PropertyGroup Label="Globals">
     <ProjectVersion>2.1</ProjectVersion>
     <DockerTargetOS>Linux</DockerTargetOS>
-    <DockerLaunchAction>LaunchBrowser</DockerLaunchAction>
+    <DockerLaunchAction>None</DockerLaunchAction>
     <DockerServiceName>api-gateway</DockerServiceName>
     <DockerServiceUrl>http://localhost:10000</DockerServiceUrl>
     <DockerComposeProjectName>leadsai</DockerComposeProjectName>
