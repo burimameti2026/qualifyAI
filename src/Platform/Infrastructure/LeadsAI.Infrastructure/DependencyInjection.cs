@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddHostedService<TenantLifecycleReconciliationWorker>();
         services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
         services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
+        services.AddHostedService<AutonomousAcquisitionEnrichmentWorker>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
         services.AddScoped<IAiProvider, LocalAiProvider>();
