@@ -114,7 +114,6 @@ services:
       TenantBootstrap__FindLeadsAI__TenantId: ${FINDLEADSAI_TENANT_ID:-2f0c6e75-4df1-4bd5-bb49-6ef8ea0e3f1a}
       DevelopmentSeed__Enabled: "true"
       DevelopmentSeed__TenantId: ${FUSIONFLEET_TENANT_ID:-6a4d6f9c-3b8f-4a71-9c21-5f2e8b7d1046}
-      TenantDatabases__findleadsai: FindLeadsAIPromotions
       Identity__Authority: http://identity-api:8080
       Identity__Audience: leadsai-api
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
