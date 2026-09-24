@@ -42,7 +42,7 @@ public sealed class OperationalPackageProvisioner(
         }
 
         await ProvisionWorkflowDefinitionsAsync(tenantId, package, ct);
-        ProvisionAutonomousAcquisitionAsync(tenantId, package, ct);
+        ProvisionAutonomousAcquisition(tenantId, package);
 
         await aiDb.SaveChangesAsync(ct);
         await automationDb.SaveChangesAsync(ct);
@@ -175,10 +175,9 @@ public sealed class OperationalPackageProvisioner(
                 tenantId, flowId, from.NodeKey, to.NodeKey, "{}")).ToArray();
 
 
-    private void ProvisionAutonomousAcquisitionAsync(
+    private void ProvisionAutonomousAcquisition(
         Guid tenantId,
-        WorkspacePackageDefinition package,
-        CancellationToken ct)
+        WorkspacePackageDefinition package)
     {
         if (!(package.Agents ?? Array.Empty<string>())
             .Any(x => x.Equals("Acquisition Agent", StringComparison.OrdinalIgnoreCase)))
