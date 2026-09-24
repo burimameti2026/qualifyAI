@@ -17,22 +17,25 @@ public sealed class AcquisitionCampaignWorker(
             try
             {
                 await using var rootScope = scopeFactory.CreateAsyncScope();
-                var resolver = rootScope.ServiceProvider.GetRequiredService<ITenantDatabaseConnectionResolver>();
+                var db = rootScope.ServiceProvider.GetRequiredService<LeadsAI.Persistence.SqlServer.AppDbContext>();
+                var now = DateTime.UtcNow;
 
-                foreach (var tenantSlug in resolver.GetConfiguredTenantDatabases().Keys)
+                var tenants = await db.TenantEntitlements
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.TenantId != Guid.Empty &&
+                        !string.IsNullOrWhiteSpace(x.TenantSlug) &&
+                        x.TenantStatus == "active" &&
+                        x.LicenseStatus == "active" &&
+                        x.StartsAtUtc <= now &&
+                        (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now))
+                    .Select(x => new { x.TenantId, x.TenantSlug })
+                    .ToListAsync(stoppingToken);
+
+                foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-
-                    var tenantId = await FindTenantIdAsync(tenantSlug, stoppingToken);
-                    if (tenantId is null) continue;
-
-                    if (!await IsTenantActiveAsync(tenantId.Value, stoppingToken))
-                    {
-                        logger.LogInformation("Skipping campaign queue for inactive tenant {TenantSlug}.", tenantSlug);
-                        continue;
-                    }
-
-                    await QueueForTenantAsync(tenantId.Value, tenantSlug, stoppingToken);
+                    await QueueForTenantAsync(tenant.TenantId, tenant.TenantSlug, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
@@ -58,28 +61,4 @@ public sealed class AcquisitionCampaignWorker(
             logger.LogInformation("Tenant {TenantSlug}: queued {Count} due campaign messages.", tenantSlug, queued);
     }
 
-    private async Task<bool> IsTenantActiveAsync(Guid tenantId, CancellationToken ct)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<LeadsAI.Persistence.SqlServer.AppDbContext>();
-        var now = DateTime.UtcNow;
-
-        return await db.TenantEntitlements.AnyAsync(x =>
-            x.TenantId == tenantId &&
-            x.TenantStatus == "active" &&
-            x.LicenseStatus == "active" &&
-            x.StartsAtUtc <= now &&
-            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
-    }
-
-    private async Task<Guid?> FindTenantIdAsync(string tenantSlug, CancellationToken ct)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<LeadsAI.Persistence.SqlServer.AppDbContext>();
-
-        return await db.Tenants
-            .Where(x => x.Slug == tenantSlug)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync(ct);
-    }
 }
