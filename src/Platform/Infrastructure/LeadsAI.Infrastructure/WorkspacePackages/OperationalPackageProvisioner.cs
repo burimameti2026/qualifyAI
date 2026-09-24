@@ -5,6 +5,7 @@ using LeadsAI.Automation.Persistence.SqlServer;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
+using QualifyAI.Domain;
 
 namespace LeadsAI.Infrastructure.WorkspacePackages;
 
@@ -41,7 +42,7 @@ public sealed class OperationalPackageProvisioner(
         }
 
         await ProvisionWorkflowDefinitionsAsync(tenantId, package, ct);
-        ProvisionAutomationRules(tenantId, package);
+        ProvisionAutonomousAcquisitionAsync(tenantId, package, ct);
 
         await aiDb.SaveChangesAsync(ct);
         await automationDb.SaveChangesAsync(ct);
@@ -173,60 +174,64 @@ public sealed class OperationalPackageProvisioner(
             (from, to) => WorkflowEdge.Create(
                 tenantId, flowId, from.NodeKey, to.NodeKey, "{}")).ToArray();
 
-    private void ProvisionAutomationRules(Guid tenantId, WorkspacePackageDefinition package)
+
+    private void ProvisionAutonomousAcquisitionAsync(
+        Guid tenantId,
+        WorkspacePackageDefinition package,
+        CancellationToken ct)
     {
-        foreach (var workflowName in package.Workflows ?? Array.Empty<string>())
+        if (!(package.Agents ?? Array.Empty<string>())
+            .Any(x => x.Equals("Acquisition Agent", StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var existing = db.AutonomousAcquisitionAgents
+            .SingleOrDefault(x => x.TenantId == tenantId && x.Name == $"{package.Name} Acquisition Agent");
+
+        if (existing is not null)
         {
-            var ruleName = $"package:{package.Id}:{workflowName}";
-            if (db.AutomationRules.Any(x => x.TenantId == tenantId && x.Name == ruleName))
-                continue;
-
-            var normalized = workflowName.ToLowerInvariant();
-            string actions;
-
-            if (normalized.Contains("supplier") || normalized.Contains("carrier") ||
-                normalized.Contains("acquisition") || normalized.Contains("qualification"))
-            {
-                actions = """
-                [
-                  {"type":"discover_prospects","source":"serpapi","minimumScore":60,"maximumResults":50,"createTargetList":false},
-                  {"type":"deduplicate"},
-                  {"type":"enrich_company","maximumResults":100},
-                  {"type":"qualify","minimumScore":70},
-                  {"type":"add_to_target_list"}
-                ]
-                """;
-            }
-            else if (normalized.Contains("follow"))
-            {
-                actions = """
-                [
-                  {"type":"enrich_company","maximumResults":100},
-                  {"type":"qualify","minimumScore":70},
-                  {"type":"personalize"},
-                  {"type":"request_approval","title":"Review automated follow-up"}
-                ]
-                """;
-            }
-            else
-            {
-                actions = """
-                [
-                  {"type":"enrich_company","maximumResults":100},
-                  {"type":"qualify","minimumScore":70},
-                  {"type":"add_to_target_list"}
-                ]
-                """;
-            }
-
-            db.AutomationRules.Add(AutomationRule.Create(
-                tenantId,
-                ruleName,
-                "schedule.weekday",
-                "[]",
-                actions,
-                active: true));
+            if (existing.Status == AutonomousAgentStatus.Draft)
+                existing.Status = AutonomousAgentStatus.Active;
+            existing.UpdatedAtUtc = DateTime.UtcNow;
+            return;
         }
-    }
 
+        var templateCode = package.Id switch
+        {
+            "logistics" or "3pl" or "distribution" or "warehouse" => "logistics",
+            "delivery" => "fleet",
+            "manufacturing" or "food-beverage" => "logistics",
+            "retail-ecommerce" => "logistics",
+            "construction-field-service" => "logistics",
+            _ => "logistics"
+        };
+
+        var industry = package.Id switch
+        {
+            "manufacturing" => "Manufacturing & Production",
+            "logistics" or "3pl" or "distribution" or "warehouse" => "Logistics & Transportation",
+            "delivery" => "Delivery & Last Mile",
+            "retail-ecommerce" => "Retail & E-commerce",
+            "construction-field-service" => "Construction & Field Service",
+            "food-beverage" => "Food & Beverage",
+            _ => package.Name
+        };
+
+        db.AutonomousAcquisitionAgents.Add(new AutonomousAcquisitionAgent
+        {
+            TenantId = tenantId,
+            Name = $"{package.Name} Acquisition Agent",
+            TemplateCode = templateCode,
+            Industry = industry,
+            Region = "Europe",
+            CountriesJson = "[]",
+            IcpJson = "{}",
+            MinimumScore = 70,
+            DailyDiscoveryLimit = 50,
+            DailyEmailLimit = 10,
+            RunTimeUtc = new TimeOnly(8, 0),
+            Status = AutonomousAgentStatus.Active,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+    }
 }
