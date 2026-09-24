@@ -5,7 +5,6 @@ using LeadsAI.Automation.Persistence.SqlServer;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
 
 namespace LeadsAI.Infrastructure.WorkspacePackages;
 
