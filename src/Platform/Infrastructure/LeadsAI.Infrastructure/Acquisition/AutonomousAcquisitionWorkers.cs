@@ -17,21 +17,34 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
             try
             {
                 using var rootScope = scopes.CreateScope();
-                var resolver = rootScope.ServiceProvider.GetRequiredService<ITenantDatabaseConnectionResolver>();
-                foreach (var tenantSlug in resolver.GetConfiguredTenantDatabases().Keys)
+                var db = rootScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                // TenantDatabases is optional routing configuration. It is not the tenant registry
+                // and may contain the master FindLeadsAI database.
+                var tenants = await db.Tenants
+                    .AsNoTracking()
+                    .Select(x => new { x.Id, x.Slug })
+                    .Where(x => x.Id != Guid.Empty && x.Slug != null && x.Slug != "")
+                    .ToListAsync(stoppingToken);
+
+                foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-                    var tenantId = await FindTenantIdAsync(tenantSlug, stoppingToken);
-                    if (tenantId is null) continue;
-                    if (!await IsTenantActiveAsync(tenantId.Value, stoppingToken)) continue;
-                    await ProcessTenantDatabaseAsync(tenantId.Value, tenantSlug, stoppingToken);
+                    if (!await HasQueuedRunAsync(db, tenant.Id, stoppingToken)) continue;
+                    if (!await IsTenantActiveAsync(db, tenant.Id, stoppingToken)) continue;
+                    await ProcessTenantDatabaseAsync(tenant.Id, tenant.Slug, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception ex) { log.LogError(ex, "Autonomous acquisition queue worker iteration failed"); }
+
             await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }
+
+    private static Task<bool> HasQueuedRunAsync(AppDbContext db, Guid tenantId, CancellationToken ct) =>
+        db.AutonomousAcquisitionAgentRuns.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId && x.Status == AutonomousAgentRunStatus.Queued, ct);
 
     private async Task ProcessTenantDatabaseAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
     {
@@ -40,36 +53,39 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
         tenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
         await ProcessScopeAsync(scope.ServiceProvider, ct);
     }
+
     private async Task ProcessScopeAsync(IServiceProvider services, CancellationToken ct)
     {
         var db = services.GetRequiredService<AppDbContext>();
-        var ids = await db.AutonomousAcquisitionAgentRuns.Where(x => x.Status == AutonomousAgentRunStatus.Queued).OrderBy(x => x.ScheduledAtUtc).Take(10).Select(x => x.Id).ToListAsync(ct);
+        var tenantId = services.GetRequiredService<ITenantContext>().TenantId();
+
+        var ids = await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentRunStatus.Queued)
+            .OrderBy(x => x.ScheduledAtUtc)
+            .Take(10)
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
         var orchestrator = services.GetRequiredService<IAutonomousAcquisitionRunOrchestrator>();
+
         foreach (var id in ids)
         {
             if (ct.IsCancellationRequested) break;
+
             try { await orchestrator.ExecuteAsync(id, ct); }
             catch (Exception ex) { log.LogError(ex, "Autonomous acquisition run {RunId} failed", id); }
         }
     }
-    private async Task<bool> IsTenantActiveAsync(Guid tenantId, CancellationToken ct)
+
+    private static Task<bool> IsTenantActiveAsync(AppDbContext db, Guid tenantId, CancellationToken ct)
     {
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = DateTime.UtcNow;
-        return await db.TenantEntitlements.AnyAsync(x =>
+        return db.TenantEntitlements.AnyAsync(x =>
             x.TenantId == tenantId &&
             x.TenantStatus == "active" &&
             x.LicenseStatus == "active" &&
             x.StartsAtUtc <= now &&
             (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
-    }
-
-    private async Task<Guid?> FindTenantIdAsync(string tenantSlug, CancellationToken ct)
-    {
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.Tenants.Where(x => x.Slug == tenantSlug).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct);
     }
 }
 
@@ -83,24 +99,31 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         {
             try
             {
-                await ScheduleDefaultDatabaseAsync(stoppingToken);
                 using var rootScope = scopes.CreateScope();
-                var resolver = rootScope.ServiceProvider.GetRequiredService<ITenantDatabaseConnectionResolver>();
-                foreach (var tenantSlug in resolver.GetConfiguredTenantDatabases().Keys)
+                var db = rootScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                // Discover tenants from the business tenant registry. TenantDatabases is only
+                // a connection-routing map and must not be mistaken for the tenant list.
+                var tenants = await db.Tenants
+                    .AsNoTracking()
+                    .Select(x => new { x.Id, x.Slug })
+                    .Where(x => x.Id != Guid.Empty && x.Slug != null && x.Slug != "")
+                    .ToListAsync(stoppingToken);
+
+                foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-                    var tenantId = await FindTenantIdAsync(tenantSlug, stoppingToken);
-                    if (tenantId is null) continue;
-                    await ScheduleTenantDatabaseAsync(tenantId.Value, tenantSlug, stoppingToken);
+                    if (!await IsTenantActiveAsync(db, tenant.Id, stoppingToken)) continue;
+                    await ScheduleTenantDatabaseAsync(tenant.Id, tenant.Slug, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception ex) { log.LogError(ex, "Autonomous acquisition scheduler iteration failed"); }
+
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
     }
 
-    private async Task ScheduleDefaultDatabaseAsync(CancellationToken ct) { using var scope = scopes.CreateScope(); await ScheduleScopeAsync(scope.ServiceProvider, ct); }
     private async Task ScheduleTenantDatabaseAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
@@ -112,34 +135,53 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
     private static async Task ScheduleScopeAsync(IServiceProvider services, CancellationToken ct)
     {
         var db = services.GetRequiredService<AppDbContext>();
-        var agents = await db.AutonomousAcquisitionAgents.Where(x => x.Status == AutonomousAgentStatus.Active).ToListAsync(ct);
-        var tenantIds = agents.Select(x => x.TenantId).Distinct().ToList();
-        var timeZones = await db.TenantSettings.Where(x => tenantIds.Contains(x.TenantId) && x.Key == TimeZoneSetting).ToDictionaryAsync(x => x.TenantId, x => x.Value, ct);
-        var pendingAgentIds = await db.AutonomousAcquisitionAgentRuns.Where(x => x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running).Select(x => x.AgentId).Distinct().ToListAsync(ct);
+        var tenantId = services.GetRequiredService<ITenantContext>().TenantId();
+
+        var agents = await db.AutonomousAcquisitionAgents
+            .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentStatus.Active)
+            .ToListAsync(ct);
+
+        var timeZoneId = await db.TenantSettings
+            .Where(x => x.TenantId == tenantId && x.Key == TimeZoneSetting)
+            .Select(x => x.Value)
+            .FirstOrDefaultAsync(ct);
+
+        var timeZone = ResolveTimeZone(timeZoneId);
+        var pendingAgentIds = await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == tenantId &&
+                        (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running))
+            .Select(x => x.AgentId)
+            .Distinct()
+            .ToListAsync(ct);
+
         var pending = pendingAgentIds.ToHashSet();
         var nowUtc = DateTime.UtcNow;
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
+        var localToday = DateOnly.FromDateTime(localNow);
 
         foreach (var agent in agents)
         {
             if (pending.Contains(agent.Id)) continue;
-            var timeZone = ResolveTimeZone(timeZones.TryGetValue(agent.TenantId, out var configured) ? configured : null);
-            var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
-            var localToday = DateOnly.FromDateTime(localNow);
+
             var due = localNow.TimeOfDay >= agent.RunTimeUtc.ToTimeSpan();
-            var already = agent.LastRunAtUtc.HasValue && DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(agent.LastRunAtUtc.Value, timeZone)) == localToday;
+            var already = agent.LastRunAtUtc.HasValue &&
+                          DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(agent.LastRunAtUtc.Value, timeZone)) == localToday;
+
             if (!due || already) continue;
 
             db.AutonomousAcquisitionAgentRuns.Add(new AutonomousAcquisitionAgentRun
             {
-                TenantId = agent.TenantId,
+                TenantId = tenantId,
                 AgentId = agent.Id,
                 IsManual = false,
                 Status = AutonomousAgentRunStatus.Queued,
                 ScheduledAtUtc = nowUtc
             });
+
             pending.Add(agent.Id);
             agent.UpdatedAtUtc = nowUtc;
         }
+
         await db.SaveChangesAsync(ct);
     }
 
@@ -147,16 +189,22 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
     {
         if (!string.IsNullOrWhiteSpace(id))
         {
-            try { return TimeZoneInfo.FindSystemTimeZoneById(id); } catch (TimeZoneNotFoundException) { }
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch (TimeZoneNotFoundException) { }
             catch (InvalidTimeZoneException) { }
         }
+
         return TimeZoneInfo.Utc;
     }
 
-    private async Task<Guid?> FindTenantIdAsync(string tenantSlug, CancellationToken ct)
+    private static Task<bool> IsTenantActiveAsync(AppDbContext db, Guid tenantId, CancellationToken ct)
     {
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.Tenants.Where(x => x.Slug == tenantSlug).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct);
+        var now = DateTime.UtcNow;
+        return db.TenantEntitlements.AnyAsync(x =>
+            x.TenantId == tenantId &&
+            x.TenantStatus == "active" &&
+            x.LicenseStatus == "active" &&
+            x.StartsAtUtc <= now &&
+            (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now), ct);
     }
 }
