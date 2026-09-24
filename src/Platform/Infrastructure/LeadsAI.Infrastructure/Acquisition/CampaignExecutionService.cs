@@ -125,6 +125,7 @@ public sealed class CampaignExecutionService(AppDbContext db)
     private static string Render(string template, Prospect prospect) => template
         .Replace("{{company}}", prospect.CompanyName, StringComparison.OrdinalIgnoreCase)
         .Replace("{{contact}}", prospect.ContactName, StringComparison.OrdinalIgnoreCase)
+        .Replace("{{contactName}}", prospect.ContactName, StringComparison.OrdinalIgnoreCase)
         .Replace("{{industry}}", prospect.Industry, StringComparison.OrdinalIgnoreCase)
         .Replace("{{country}}", prospect.Country, StringComparison.OrdinalIgnoreCase);
 }
