@@ -1,16 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using LeadsAI.Identity.Persistence.SqlServer;
 
 namespace LeadsAI.Identity.Persistence.SqlServer;
 
-public sealed class IdentityDbContextDesignTimeFactory : IDesignTimeDbContextFactory<IdentityDbContext>
+public sealed class IdentityDbContextDesignTimeFactory
+    : IDesignTimeDbContextFactory<IdentityDbContext>
 {
     public IdentityDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<IdentityDbContext>();
+
         optionsBuilder.UseSqlServer(DesignConnectionString);
         optionsBuilder.UseOpenIddict();
+
         return new IdentityDbContext(optionsBuilder.Options);
     }
 
