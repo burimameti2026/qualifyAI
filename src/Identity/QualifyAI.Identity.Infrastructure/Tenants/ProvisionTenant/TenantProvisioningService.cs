@@ -88,7 +88,8 @@ public sealed class TenantProvisioningService(
                 license.StartsAtUtc,
                 license.ExpiresAtUtc,
                 license.Version,
-                license.Modules.Where(x => x.Enabled).Select(x => x.Code).ToArray()));
+                license.Modules.Where(x => x.Enabled).Select(x => x.Code).ToArray(),
+                string.IsNullOrWhiteSpace(request.PackageId) ? null : request.PackageId.Trim().ToLowerInvariant()));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
