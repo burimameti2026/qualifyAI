@@ -50,7 +50,7 @@ public sealed class AdminEmailTestController(
         // currently not mapped for EF translation, so it must not be used in SQL.
         var prospects = await db.Prospects.AsNoTracking()
             .Where(x => x.TenantId == TenantId &&
-                        x.Status == ProspectStatus.Qualified &&
+                        x.Status == ProspectStatus.Discovered &&
                         !string.IsNullOrWhiteSpace(x.Email))
             .OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new
@@ -195,7 +195,7 @@ public sealed class AdminEmailTestController(
             return BadRequest(new { detail = "For this test, the recipient must be the verified sender mailbox." });
 
         var prospect = await db.Prospects.FirstOrDefaultAsync(
-            x => x.TenantId == TenantId && x.Id == input.ProspectId && x.Status == ProspectStatus.Qualified,
+            x => x.TenantId == TenantId && x.Id == input.ProspectId && x.Status == ProspectStatus.Discovered,
             ct);
         if (prospect is null)
             return BadRequest(new { detail = "The selected prospect is not a qualified prospect in this tenant." });
