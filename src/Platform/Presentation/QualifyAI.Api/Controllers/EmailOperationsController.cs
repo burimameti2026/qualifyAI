@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using LeadsAI.Application;
 using QualifyAI.BuildingBlocks.Security.Access;
 using QualifyAI.BuildingBlocks.Security.Authorization;
 using QualifyAI.Domain;
-using QualifyAI.Infrastructure;
 using QualifyAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Email;
 using QualifyAI.Persistence.SqlServer;
