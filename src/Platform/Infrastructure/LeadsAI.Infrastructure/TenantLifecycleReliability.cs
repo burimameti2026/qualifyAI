@@ -23,24 +23,52 @@ public sealed class TenantLifecycleReconciliationWorker(IServiceScopeFactory sco
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(10));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             try
             {
-                using var scope = scopeFactory.CreateScope();
+                await using var scope = scopeFactory.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var orchestrator = scope.ServiceProvider.GetRequiredService<ILicenseChangeOrchestrator>();
                 var events = scope.ServiceProvider.GetRequiredService<ITenantLifecycleEventStore>();
                 var alerts = scope.ServiceProvider.GetRequiredService<ITenantAlertService>();
-                var tenantIds = await db.TenantEntitlements.Where(x => x.LicenseStatus == "active" && x.TenantStatus == "active").Select(x => x.TenantId).ToListAsync(stoppingToken);
+                var now = DateTime.UtcNow;
+
+                // Lifecycle changes are already handled by event-driven commands. The
+                // reconciliation worker only needs to revisit tenants with unfinished or
+                // failed module provisioning/deactivation work.
+                var tenantIds = await db.TenantModuleProvisionings
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.TenantId != Guid.Empty &&
+                        (x.Status == "provisioning" ||
+                         x.Status == "failed" ||
+                         x.Status == "deactivation_failed" ||
+                         (x.NextRetryAtUtc.HasValue && x.NextRetryAtUtc <= now)))
+                    .Select(x => x.TenantId)
+                    .Distinct()
+                    .ToListAsync(stoppingToken);
+
                 foreach (var tenantId in tenantIds)
                 {
-                    try { await orchestrator.ReconcileAsync(tenantId, stoppingToken); events.Record(new(tenantId, "reconciliation", "completed", "Tenant lifecycle reconciliation completed", DateTime.UtcNow)); }
-                    catch (Exception ex) { logger.LogError(ex, "Tenant lifecycle reconciliation failed for {TenantId}", tenantId); events.Record(new(tenantId, "reconciliation", "failed", "Tenant lifecycle reconciliation failed", DateTime.UtcNow)); alerts.Raise(tenantId, "critical", "reconciliation_failed", "Tenant lifecycle reconciliation failed"); }
+                    if (stoppingToken.IsCancellationRequested) break;
+
+                    try
+                    {
+                        await orchestrator.ReconcileAsync(tenantId, stoppingToken);
+                        events.Record(new(tenantId, "reconciliation", "completed", "Tenant lifecycle reconciliation completed", DateTime.UtcNow));
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Tenant lifecycle reconciliation failed for {TenantId}", tenantId);
+                        events.Record(new(tenantId, "reconciliation", "failed", "Tenant lifecycle reconciliation failed", DateTime.UtcNow));
+                        alerts.Raise(tenantId, "critical", "reconciliation_failed", "Tenant lifecycle reconciliation failed");
+                    }
                 }
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception ex) { logger.LogError(ex, "Tenant lifecycle reconciliation worker iteration failed"); }
-            await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
         }
     }
 }
