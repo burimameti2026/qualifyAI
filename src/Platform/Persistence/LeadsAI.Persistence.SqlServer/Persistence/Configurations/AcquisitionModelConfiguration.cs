@@ -48,7 +48,7 @@ internal static class AcquisitionModelConfiguration
         builder.Entity<TargetList>(b =>
         {
             b.Property(x => x.Name).HasMaxLength(200);
-            b.HasIndex(x => new { x.TenantId, x.Name });
+            b.HasIndex(x => new { x.TenantId, x.CampaignId, x.Name });
         });
         builder.Entity<TargetListMember>(b => b.HasIndex(x => new { x.TenantId, x.TargetListId, x.ProspectId }).IsUnique());
         builder.Entity<Campaign>(b => { b.Property(x => x.PackageVersion).HasMaxLength(32).IsRequired(); b.HasIndex(x => new { x.TenantId, x.Status, x.StartsAtUtc }); });
