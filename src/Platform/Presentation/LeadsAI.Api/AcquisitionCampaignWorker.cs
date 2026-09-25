@@ -18,17 +18,13 @@ public sealed class AcquisitionCampaignWorker(
             {
                 await using var rootScope = scopeFactory.CreateAsyncScope();
                 var db = rootScope.ServiceProvider.GetRequiredService<LeadsAI.Persistence.SqlServer.AppDbContext>();
+                var workerRuntime = rootScope.ServiceProvider.GetRequiredService<TenantWorkerRuntime>();
                 var now = DateTime.UtcNow;
+                var enabledTenants = await workerRuntime.EnabledTenantIdsAsync(TenantWorkerKeys.AcquisitionCampaign, stoppingToken);
 
                 var tenants = await db.TenantEntitlements
                     .AsNoTracking()
-                    .Where(x =>
-                        x.TenantId != Guid.Empty &&
-                        !string.IsNullOrWhiteSpace(x.TenantSlug) &&
-                        x.TenantStatus == "active" &&
-                        x.LicenseStatus == "active" &&
-                        x.StartsAtUtc <= now &&
-                        (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now))
+                    .Where(x => enabledTenants.Contains(x.TenantId) && x.TenantId != Guid.Empty && !string.IsNullOrWhiteSpace(x.TenantSlug) && x.TenantStatus == "active" && x.LicenseStatus == "active" && x.StartsAtUtc <= now && (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now))
                     .Select(x => new { x.TenantId, x.TenantSlug })
                     .ToListAsync(stoppingToken);
 
@@ -39,11 +35,7 @@ public sealed class AcquisitionCampaignWorker(
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
-            {
-                logger.LogError(ex, "Campaign scheduler iteration failed.");
-            }
-
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested) { logger.LogError(ex, "Campaign scheduler iteration failed."); }
             await timer.WaitForNextTickAsync(stoppingToken);
         }
     }
@@ -53,12 +45,7 @@ public sealed class AcquisitionCampaignWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
         tenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
-
-        var queued = await scope.ServiceProvider.GetRequiredService<CampaignExecutionService>()
-            .QueueDueMessagesAsync(tenantId, ct);
-
-        if (queued > 0)
-            logger.LogInformation("Tenant {TenantSlug}: queued {Count} due campaign messages.", tenantSlug, queued);
+        var queued = await scope.ServiceProvider.GetRequiredService<CampaignExecutionService>().QueueDueMessagesAsync(tenantId, ct);
+        if (queued > 0) logger.LogInformation("Tenant {TenantSlug}: queued {Count} due campaign messages.", tenantSlug, queued);
     }
-
 }
