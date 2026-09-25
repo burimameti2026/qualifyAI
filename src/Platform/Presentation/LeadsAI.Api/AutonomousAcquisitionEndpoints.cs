@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api;
