@@ -556,9 +556,6 @@ public sealed class AcquisitionController(
     private static string NormalizeEmail(string? value) => (value??string.Empty).Trim().ToLowerInvariant();
 
 
-    private static bool ContainsAny(string value, string csv) =>
-        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
 
 }
 
