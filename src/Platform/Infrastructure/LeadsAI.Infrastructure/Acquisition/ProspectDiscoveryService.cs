@@ -469,6 +469,11 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
         if(!provider.IsConfigured)
             throw new InvalidOperationException($"Discovery provider '{provider.Name}' is not configured. {provider.Description}");
 
+        var verification = await provider.VerifyAsync(ct);
+        if(!verification.Verified)
+            throw new InvalidOperationException(
+                verification.Error ?? $"Discovery provider '{provider.Name}' could not be verified.");
+
         var candidates = await provider.SearchAsync(icp, options, ct);
         var existing = await db.Prospects.Where(x => x.TenantId==tenantId).ToListAsync(ct);
         var byDomain = existing.Where(x => !string.IsNullOrWhiteSpace(x.Domain))
