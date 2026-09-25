@@ -579,7 +579,7 @@ public sealed class AcquisitionController(
                         message.ProviderMessageId,
                         message.SentAtUtc,
                         message.CreatedAtUtc,
-                        approvalRequested = db.CrmTasks.Any(task => task.TenantId==tenantId&&task.Title=="APPROVAL: Send outreach "+message.Id)
+                        approvalRequested = db.CrmTasks.Any(task => task.TenantId==tenantId&&task.Title=="APPROVAL: Send outreach "+message.Id&&!task.Completed)
                     };
         return Ok(await query.Take(200).ToListAsync(ct));
     }
