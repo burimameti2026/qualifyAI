@@ -402,32 +402,6 @@ public sealed class AcquisitionController(
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
-    [HttpPut("campaigns/{id:guid}")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> UpdateCampaign(Guid id, CampaignInput input, CancellationToken ct)
-    {
-        var tenantId = TenantId;
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
-        if (campaign is null) return NotFound();
-        if (campaign.Status is CampaignStatus.Completed) return Conflict(new { detail = "Completed campaigns cannot be edited." });
-        if (input.Steps is null || input.Steps.Length == 0) return BadRequest(new { detail = "At least one campaign message is required." });
-        if (!await db.TargetLists.AnyAsync(x => x.TenantId == tenantId && x.Id == input.TargetListId, ct))
-            return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
-
-        campaign.TargetListId=input.TargetListId; campaign.Name=input.Name.Trim();
-        campaign.Goal=input.Goal.Trim(); campaign.SenderName=input.SenderName.Trim(); campaign.SenderEmail=input.SenderEmail.Trim();
-        campaign.StartsAtUtc=input.StartsAtUtc;
-
-        var existing=await db.CampaignSteps.Where(x => x.TenantId==tenantId&&x.CampaignId==id).ToListAsync(ct);
-        db.CampaignSteps.RemoveRange(existing);
-        db.CampaignSteps.AddRange(input.Steps.OrderBy(x=>x.StepNumber).Select(x=>new CampaignStep {
-            TenantId=tenantId,CampaignId=id,StepNumber=x.StepNumber,DelayHours=x.DelayHours,Channel=x.Channel,
-            SubjectTemplate=x.SubjectTemplate,BodyTemplate=x.BodyTemplate,TemplateId=x.TemplateId
-        }));
-        await db.SaveChangesAsync(ct);
-        return await CampaignDetail(id, ct);
-    }
-
     [HttpGet("campaigns/{id:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignActivity(Guid id, CancellationToken ct)
@@ -581,21 +555,6 @@ public sealed class AcquisitionController(
 
     private static string NormalizeEmail(string? value) => (value??string.Empty).Trim().ToLowerInvariant();
 
-    private static CampaignStepRules ParseRules(string json)
-    {
-        try { return JsonSerializer.Deserialize<CampaignStepRules>(json) ?? new CampaignStepRules(); }
-        catch { return new CampaignStepRules(); }
-    }
-
-    private static bool Matches(Prospect p, CampaignStepRules r)
-    {
-        if (r.Qualification.Equals("qualified", StringComparison.OrdinalIgnoreCase) && p.Status != ProspectStatus.Qualified) return false;
-        if (p.PriorityScore < Math.Clamp(r.MinimumScore, 0, 100)) return false;
-        if (!string.IsNullOrWhiteSpace(r.Industry) && !ContainsAny(p.Industry, r.Industry)) return false;
-        if (!string.IsNullOrWhiteSpace(r.Countries) && !ContainsAny(p.Country, r.Countries)) return false;
-        if (!string.IsNullOrWhiteSpace(r.ContactRoles) && !ContainsAny(p.JobTitle, r.ContactRoles)) return false;
-        return true;
-    }
 
     private static bool ContainsAny(string value, string csv) =>
         csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -625,9 +584,6 @@ public sealed record ProspectImportRow(
     string? VerificationStatus = null,
     string? OutreachStatus = null,
     string? DatasetOrigin = null);
-public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, Guid? TemplateId = null, string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
-public sealed record CampaignInput(Guid TargetListId, Guid? OfferId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
-internal sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
 
 public sealed record DeliveryConfirmation(string ProviderMessageId);
 public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
