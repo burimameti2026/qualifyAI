@@ -72,14 +72,40 @@ public sealed class WhiteLabelController(ISender sender, ITenantContext tenant) 
 [RequireModule(QualifyAiModules.Settings)]
 [RequirePermission(QualifyAiPermissions.SettingsManage)]
 [Route("api/industry-packs")]
-public sealed class IndustryPacksController(ISender sender, ITenantContext tenant) : ControllerBase
+public sealed class IndustryPacksController(ISender sender, ITenantContext tenant, AppDbContext db) : ControllerBase
 {
     [HttpGet]
-    public Task<IReadOnlyList<IndustryPack>> List(CancellationToken ct) => sender.Send(new ListIndustryPacksQuery(tenant.TenantId()), ct);
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var installed = await db.TenantIndustryPacks
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Enabled)
+            .Select(x => x.IndustryPackId)
+            .ToListAsync(ct);
+
+        var packs = await db.IndustryPacks
+            .AsNoTracking()
+            .OrderBy(x => x.Name)
+            .Select(x => new
+            {
+                x.Id,
+                x.Code,
+                x.Name,
+                x.Description,
+                x.TemplateJson,
+                installed = installed.Contains(x.Id)
+            })
+            .ToListAsync(ct);
+
+        return Ok(packs);
+    }
 
     [HttpPost("{id:guid}/install")]
     public async Task<IActionResult> Install(Guid id, CancellationToken ct)
-        => await sender.Send(new InstallIndustryPackCommand(tenant.TenantId(), id), ct) ? Ok(new { installed = true }) : NotFound();
+        => await sender.Send(new InstallIndustryPackCommand(tenant.TenantId(), id), ct)
+            ? Ok(new { installed = true })
+            : NotFound();
 }
 
 [ApiController]
