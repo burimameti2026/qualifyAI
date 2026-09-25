@@ -39,19 +39,6 @@ public sealed class AcquisitionController(
         });
     }
 
-    [HttpGet("icp")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public Task<List<IcpProfile>> Icp(CancellationToken ct) => db.IcpProfiles.Where(x => x.TenantId==TenantId).OrderBy(x => x.Name).ToListAsync(ct);
-
-    [HttpPost("icp")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> SaveIcp(IcpProfile input, CancellationToken ct)
-    {
-        input.Id=Guid.NewGuid(); input.TenantId=TenantId; input.CreatedAtUtc=input.UpdatedAtUtc=DateTime.UtcNow;
-        db.IcpProfiles.Add(input); await db.SaveChangesAsync(ct);
-        return Created($"/api/acquisition/icp/{input.Id}", input);
-    }
-
     [HttpGet("discovery/providers")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
@@ -74,24 +61,6 @@ public sealed class AcquisitionController(
                 code = "discovery_provider_not_found",
                 detail = exception.Message
             });
-        }
-    }
-
-    [HttpPost("icp/{id:guid}/discover")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> Discover(Guid id, [FromBody] DiscoveryRequest? input, CancellationToken ct)
-    {
-        try
-        {
-            var request = input??new DiscoveryRequest();
-            var result = await discovery.DiscoverAsync(TenantId, id, new DiscoveryRunOptions(
-                request.Source, request.Region, request.MaximumResults, request.MinimumScore,
-                request.TargetListName, request.CreateTargetList, request.CountriesCsv), ct);
-            return Ok(result);
-        }
-        catch(InvalidOperationException exception)
-        {
-            return Conflict(new { code = "discovery_not_ready", detail = exception.Message });
         }
     }
 
@@ -315,24 +284,6 @@ public sealed class AcquisitionController(
     [HttpGet("target-lists")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public Task<List<TargetList>> TargetLists(CancellationToken ct) => db.TargetLists.Where(x => x.TenantId==TenantId).OrderBy(x => x.Name).ToListAsync(ct);
-
-    [HttpPost("target-lists")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> AddTargetList(TargetListInput input, CancellationToken ct)
-    {
-        var list = new TargetList { TenantId=TenantId, Name=input.Name.Trim(), Description=input.Description.Trim(), IcpProfileId=input.IcpProfileId, Dynamic=input.Dynamic };
-        db.TargetLists.Add(list); await db.SaveChangesAsync(ct); return Created($"/api/acquisition/target-lists/{list.Id}", list);
-    }
-
-    [HttpPost("target-lists/{id:guid}/members")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> AddMembers(Guid id, Guid[] prospectIds, CancellationToken ct)
-    {
-        var valid = await db.Prospects.Where(x => x.TenantId==TenantId&&prospectIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(ct);
-        var existing = await db.TargetListMembers.Where(x => x.TenantId==TenantId&&x.TargetListId==id).Select(x => x.ProspectId).ToListAsync(ct);
-        db.TargetListMembers.AddRange(valid.Except(existing).Select(x => new TargetListMember { TenantId=TenantId, TargetListId=id, ProspectId=x }));
-        await db.SaveChangesAsync(ct); return Ok(new { added = valid.Except(existing).Count() });
-    }
 
     [HttpGet("campaigns")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
@@ -720,15 +671,6 @@ public sealed class AcquisitionController(
 
 }
 
-public sealed record TargetListInput(string Name, string Description, Guid? IcpProfileId, bool Dynamic);
-public sealed record DiscoveryRequest(
-    string? Source = null,
-    string? Region = null,
-    int MaximumResults = 50,
-    int MinimumScore = 70,
-    string? TargetListName = null,
-    bool CreateTargetList = true,
-    string? CountriesCsv = null);
 public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
 public sealed record ProspectImportRow(
     string CompanyName,
