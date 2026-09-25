@@ -187,6 +187,24 @@ public static class AutonomousAcquisitionEndpoints
             if (recipients.Count == 0)
                 return Results.BadRequest(new { error = "There are no prepared recipients awaiting approval." });
 
+            var prospectIds = recipients.Select(x => x.ProspectId).ToArray();
+            var messages = await db.OutreachMessages
+                .Where(x => x.TenantId == tenantId &&
+                            x.CampaignId == id &&
+                            prospectIds.Contains(x.ProspectId) &&
+                            x.Status == OutreachStatus.Queued)
+                .ToListAsync(ct);
+
+            var approvalTitles = messages
+                .Select(x => $"APPROVAL: Send outreach {x.Id}")
+                .ToArray();
+
+            var approvalTasks = await db.CrmTasks
+                .Where(x => x.TenantId == tenantId &&
+                            !x.Completed &&
+                            approvalTitles.Contains(x.Title))
+                .ToListAsync(ct);
+
             campaign.Status = CampaignStatus.Running;
             campaign.StartsAtUtc ??= DateTime.UtcNow;
 
@@ -195,6 +213,9 @@ public static class AutonomousAcquisitionEndpoints
                 recipient.Status = "active";
                 recipient.NextRunAtUtc = DateTime.UtcNow;
             }
+
+            foreach (var approvalTask in approvalTasks)
+                approvalTask.Completed = true;
 
             var agent = campaign.AgentId.HasValue
                 ? await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
@@ -225,7 +246,7 @@ public static class AutonomousAcquisitionEndpoints
                 await db.SaveChangesAsync(ct);
             }
 
-            return Results.Ok(new { campaign, approvedRecipients = recipients.Count });
+            return Results.Ok(new { campaign, approvedRecipients = recipients.Count, approvedMessages = messages.Count, completedApprovalTasks = approvalTasks.Count });
         });
 
         g.MapGet("/tenants/{tenantId}/agents", async (
