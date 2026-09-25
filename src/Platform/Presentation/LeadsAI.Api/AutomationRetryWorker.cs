@@ -33,7 +33,8 @@ public sealed class AutomationRetryWorker(IServiceScopeFactory scopeFactory, IOp
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var executor = scope.ServiceProvider.GetRequiredService<AutomationActionExecutor>();
-        var failed = await db.AutomationRuns.Where(x => x.Status == "failed").OrderBy(x => x.CompletedAtUtc).Take(50).ToListAsync(ct);
+        var enabledTenantIds = await scope.ServiceProvider.GetRequiredService<TenantWorkerRuntime>().EnabledTenantIdsAsync(TenantWorkerKeys.AutomationRetry, ct);
+        var failed = await db.AutomationRuns.Where(x => x.Status == "failed" && enabledTenantIds.Contains(x.TenantId)).OrderBy(x => x.CompletedAtUtc).Take(50).ToListAsync(ct);
         foreach (var previous in failed)
         {
             var attempt = ReadAttempt(previous.TriggerDataJson);
@@ -45,8 +46,7 @@ public sealed class AutomationRetryWorker(IServiceScopeFactory scopeFactory, IOp
             var rule = await db.AutomationRules.FirstOrDefaultAsync(x => x.TenantId == previous.TenantId && x.Id == previous.RuleId && x.Active, ct);
             if (rule is null) { await DeadLetterAsync(db, previous, attempt, ct); continue; }
             var payload = JsonSerializer.Serialize(new { parentRunId = previous.Id, retryAttempt = attempt + 1, originalTrigger = previous.TriggerDataJson });
-            var retry = AutomationRun.Create(previous.TenantId, previous.RuleId, payload);
-            db.AutomationRuns.Add(retry); retry.Start(); await db.SaveChangesAsync(ct);
+            var retry = AutomationRun.Create(previous.TenantId, previous.RuleId, payload); db.AutomationRuns.Add(retry); retry.Start(); await db.SaveChangesAsync(ct);
             var result = await executor.ExecuteAsync(rule, retry, ct);
             if (result.Success) retry.Complete(result.LogJson); else retry.Fail(result.LogJson);
             await db.SaveChangesAsync(ct);
@@ -62,8 +62,7 @@ public sealed class AutomationRetryWorker(IServiceScopeFactory scopeFactory, IOp
 
     private static async Task DeadLetterAsync(AppDbContext db, AutomationRun run, int attempt, CancellationToken ct)
     {
-        var connection = db.IntegrationConnections.Local.FirstOrDefault(x => x.TenantId == run.TenantId && x.Provider == "internal-dead-letter")
-            ?? await db.IntegrationConnections.FirstOrDefaultAsync(x => x.TenantId == run.TenantId && x.Provider == "internal-dead-letter", ct);
+        var connection = db.IntegrationConnections.Local.FirstOrDefault(x => x.TenantId == run.TenantId && x.Provider == "internal-dead-letter") ?? await db.IntegrationConnections.FirstOrDefaultAsync(x => x.TenantId == run.TenantId && x.Provider == "internal-dead-letter", ct);
         if (connection is null) { connection = new IntegrationConnection { TenantId = run.TenantId, Provider = "internal-dead-letter", Name = "Automation dead-letter queue", Status = IntegrationStatus.Connected }; db.IntegrationConnections.Add(connection); }
         if (!await db.IntegrationSyncJobs.AnyAsync(x => x.TenantId == run.TenantId && x.ConnectionId == connection.Id && x.EntityType == $"automation-run:{run.Id}", ct))
         {
