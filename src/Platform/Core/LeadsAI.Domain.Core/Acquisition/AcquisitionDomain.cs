@@ -73,6 +73,11 @@ public sealed class TargetListMember : TenantEntity
 public sealed class Campaign : TenantEntity
 {
     public Guid TargetListId { get; set; }
+    public Guid? AgentId { get; set; }
+    public string PackageCode { get; set; } = string.Empty;
+    public string Objective { get; set; } = string.Empty;
+    public string PlanJson { get; set; } = "{}";
+    public string PlanStatus { get; set; } = "draft";
     public string Name { get; set; } = string.Empty;
     public string Goal { get; set; } = "book-demo";
     public CampaignStatus Status { get; set; } = CampaignStatus.Draft;
