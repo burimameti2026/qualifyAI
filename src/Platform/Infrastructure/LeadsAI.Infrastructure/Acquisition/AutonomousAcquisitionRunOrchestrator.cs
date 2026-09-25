@@ -44,6 +44,21 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             .SingleOrDefaultAsync(x => x.Id == run.AgentId && x.TenantId == run.TenantId, ct)
             ?? throw new InvalidOperationException("Agent was not found.");
 
+        if (agent.Status is AutonomousAgentStatus.Paused)
+        {
+            run.Status = AutonomousAgentRunStatus.Paused;
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (agent.Status is AutonomousAgentStatus.Stopped)
+        {
+            run.Status = AutonomousAgentRunStatus.Cancelled;
+            run.CompletedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
         if (agent.Status is not AutonomousAgentStatus.Active)
             throw new InvalidOperationException("Only active agents are allowed to run.");
 
