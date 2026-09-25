@@ -68,10 +68,13 @@ public static class AutonomousAcquisitionEndpoints
                 Active = true
             };
 
+            var campaignId = Guid.NewGuid();
+
             var target = new TargetList
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
+                CampaignId = campaignId,
                 Name = input.Name + " targets",
                 IcpProfileId = icp.Id,
                 Description = template.TargetDefinition,
@@ -80,7 +83,7 @@ public static class AutonomousAcquisitionEndpoints
 
             var campaign = new Campaign
             {
-                Id = Guid.NewGuid(),
+                Id = campaignId,
                 TenantId = tenantId,
                 TargetListId = target.Id,
                 AgentId = agent.Id,
