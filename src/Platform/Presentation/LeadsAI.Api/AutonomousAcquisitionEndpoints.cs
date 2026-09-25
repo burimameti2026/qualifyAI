@@ -214,6 +214,45 @@ public static class AutonomousAcquisitionEndpoints
             });
         });
 
+        g.MapPost("/tenants/{tenantId}/campaigns/{id}/start", async (
+            Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+            if (campaign is null) return Results.NotFound();
+            if (campaign.Status is CampaignStatus.Stopped or CampaignStatus.Completed)
+                return Results.BadRequest(new { error = $"Campaign is {campaign.Status}." });
+            if (!campaign.AgentId.HasValue)
+                return Results.BadRequest(new { error = "Campaign has no provisioned workflow agent." });
+
+            var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct);
+            if (agent is null)
+                return Results.BadRequest(new { error = "Campaign workflow agent is missing." });
+
+            campaign.Start();
+            agent.Status = AutonomousAgentStatus.Active;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+
+            var existingQueued = await db.AutonomousAcquisitionAgentRuns.AnyAsync(
+                x => x.TenantId == tenantId && x.CampaignId == campaign.Id &&
+                     x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval,
+                ct);
+            if (!existingQueued)
+            {
+                db.AutonomousAcquisitionAgentRuns.Add(new AutonomousAcquisitionAgentRun
+                {
+                    TenantId = tenantId,
+                    AgentId = agent.Id,
+                    CampaignId = campaign.Id,
+                    IsManual = true,
+                    Status = AutonomousAgentRunStatus.Queued
+                });
+            }
+
+            await db.SaveChangesAsync(ct);
+            return Results.Accepted($"/api/autonomous-acquisition/tenants/{tenantId}/campaigns/{id}", new { campaign, agent });
+        });
+
         g.MapPost("/tenants/{tenantId}/campaigns/{id}/approve", async (
             Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
         {
