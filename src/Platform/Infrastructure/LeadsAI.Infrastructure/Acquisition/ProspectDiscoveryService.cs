@@ -15,7 +15,8 @@ public sealed record DiscoveryRunOptions(
     int MinimumScore = 70,
     string? TargetListName = null,
     bool CreateTargetList = true,
-    Guid? TenantId = null);
+    Guid? TenantId = null,
+    string? CountriesCsv = null);
 
 public sealed record DiscoveryProviderStatus(string Name, bool Configured, string Description);
 
@@ -115,7 +116,7 @@ public sealed class SerpApiProspectDiscoveryProvider(
         DiscoveryRunOptions options,
         CancellationToken ct = default)
     {
-        var apiKey = configuration[ApiKeyPath];
+        var apiKey = configuration[ApiKeyPath]?.Trim();
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("SerpAPI is not configured.");
 
@@ -130,54 +131,75 @@ public sealed class SerpApiProspectDiscoveryProvider(
         if (account.PlanSearchesLeft <= 0)
             throw new InvalidOperationException("SerpAPI reports no searches remaining. Prospect discovery has been stopped.");
 
-        var query = BuildQuery(icp, options);
+        var countries = ParseCountries(options.CountriesCsv, icp.CountriesCsv);
         var maximumResults = Math.Clamp(options.MaximumResults, 1, 100);
-        var uri = $"search.json?engine=google&q={Uri.EscapeDataString(query)}&num={maximumResults}&api_key={Uri.EscapeDataString(apiKey)}";
+        var perCountry = Math.Max(5, (int)Math.Ceiling((double)maximumResults / Math.Max(1, countries.Count)));
+        var candidates = new List<DiscoveryCandidate>();
 
-        try
+        foreach (var country in countries)
         {
-            using var response = await http.GetAsync(uri, ct);
-            var content = await response.Content.ReadAsStringAsync(ct);
+            var query = BuildQuery(icp, options);
+            var parameters = new List<string>
+            {
+                "engine=google",
+                $"q={Uri.EscapeDataString(query)}",
+                $"num={Math.Min(perCountry, 100)}",
+                $"gl={Uri.EscapeDataString(CountryCode(country))}",
+                "hl=en",
+                $"api_key={Uri.EscapeDataString(apiKey)}"
+            };
 
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException($"SerpAPI search failed ({(int)response.StatusCode}).");
+            if (!string.IsNullOrWhiteSpace(options.Region))
+                parameters.Add($"location={Uri.EscapeDataString(options.Region.Trim())}");
 
-            using var document = JsonDocument.Parse(content);
-            if (!document.RootElement.TryGetProperty("organic_results", out var organic) ||
-                organic.ValueKind != JsonValueKind.Array)
-                return Array.Empty<DiscoveryCandidate>();
+            try
+            {
+                using var response = await http.GetAsync($"search.json?{string.Join("&", parameters)}", ct);
+                var content = await response.Content.ReadAsStringAsync(ct);
 
-            return organic.EnumerateArray()
-                .Select(result =>
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException($"SerpAPI search failed ({(int)response.StatusCode}) for {country}.");
+
+                using var document = JsonDocument.Parse(content);
+                if (!document.RootElement.TryGetProperty("organic_results", out var organic) ||
+                    organic.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var result in organic.EnumerateArray())
                 {
                     var url = Read(result, "link");
                     var domain = DomainFromUrl(url);
                     var title = Read(result, "title");
                     var snippet = Read(result, "snippet");
-                    return new DiscoveryCandidate(
+
+                    if (string.IsNullOrWhiteSpace(domain) || IsNonCompanyDomain(domain))
+                        continue;
+
+                    candidates.Add(new DiscoveryCandidate(
                         CompanyName(title, domain),
                         domain,
                         url,
                         $"{title}. {snippet}".Trim(),
                         icp.Industry,
-                        PrimaryCountry(icp.CountriesCsv));
-                })
-                .Where(x => !string.IsNullOrWhiteSpace(x.Domain) && !IsNonCompanyDomain(x.Domain))
-                .GroupBy(x => x.Domain, StringComparer.OrdinalIgnoreCase)
-                .Select(x => x.First())
-                .Take(maximumResults)
-                .ToList();
+                        country));
+                }
+            }
+            catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new InvalidOperationException("SerpAPI search timed out. Please try again.");
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new InvalidOperationException($"SerpAPI could not be reached: {ex.Message}", ex);
+            }
         }
-        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-        {
-            throw new InvalidOperationException("SerpAPI search timed out. Please try again.");
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new InvalidOperationException($"SerpAPI could not be reached: {ex.Message}", ex);
-        }
-    }
 
+        return candidates
+            .GroupBy(x => x.Domain, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .Take(maximumResults)
+            .ToList();
+    }
     private async Task<SerpApiAccountUsage> GetAccountUsageAsync(string apiKey, CancellationToken ct)
     {
         using var response = await http.GetAsync($"account.json?api_key={Uri.EscapeDataString(apiKey)}", ct);
@@ -228,8 +250,34 @@ public sealed class SerpApiProspectDiscoveryProvider(
         root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
 
     private static string BuildQuery(IcpProfile icp, DiscoveryRunOptions options) =>
-        string.Join(" ", new[] { icp.Industry, options.Region, icp.CountriesCsv, icp.IntentKeywordsCsv }
-            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+        string.Join(" ", new[] { icp.Industry, options.IntentKeywordsCsv }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .SelectMany(x => x!.Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Take(8));
+
+    private static List<string> ParseCountries(string? selected, string fallback) =>
+        (string.IsNullOrWhiteSpace(selected) ? fallback : selected)
+            .Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => x.Length >= 2)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static string CountryCode(string country) =>
+        country.Trim().ToLowerInvariant() switch
+        {
+            "germany" or "deutschland" => "de",
+            "austria" or "österreich" => "at",
+            "switzerland" or "schweiz" => "ch",
+            "netherlands" or "nederland" => "nl",
+            "belgium" or "belgië" => "be",
+            "france" => "fr",
+            "italy" or "italia" => "it",
+            "slovenia" or "slovenija" => "si",
+            "croatia" or "hrvatska" => "hr",
+            "kosovo" => "xk",
+            "north macedonia" or "macedonia" or "северна македонија" => "mk",
+            _ => country.Trim().Length == 2 ? country.Trim().ToLowerInvariant() : string.Empty
+        };
 
     private static string Read(JsonElement item, string property) =>
         item.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
