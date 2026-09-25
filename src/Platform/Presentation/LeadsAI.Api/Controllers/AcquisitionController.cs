@@ -377,7 +377,7 @@ public sealed class AcquisitionController(
     {
         var tenantId = TenantId;
         var campaign = await db.Campaigns.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id)
-            .Select(x => new { x.Id, x.TargetListId, x.Name, x.Goal, x.Status, x.SenderName, x.SenderEmail, x.StartsAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc })
+            .Select(x => new { x.Id, x.TargetListId, x.Name, x.Goal, x.Objective, x.Status, x.SenderName, x.SenderEmail, x.StartsAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc, x.PackageCode, x.PackageVersion, x.PlanStatus, x.PlanJson, x.AgentId })
             .SingleOrDefaultAsync(ct);
         if (campaign is null) return NotFound();
         var steps = await db.CampaignSteps.AsNoTracking().Where(x => x.TenantId == tenantId && x.CampaignId == id)
