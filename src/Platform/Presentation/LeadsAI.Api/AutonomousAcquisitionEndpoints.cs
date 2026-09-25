@@ -373,6 +373,11 @@ public static class AutonomousAcquisitionEndpoints
             if (agent is null) return Results.NotFound();
             if (agent.Status is AutonomousAgentStatus.Stopped)
                 return Results.BadRequest(new { error = "Agent is stopped." });
+            if (agent.Status is AutonomousAgentStatus.Draft or AutonomousAgentStatus.Paused or AutonomousAgentStatus.Failed)
+            {
+                agent.Status = AutonomousAgentStatus.Active;
+                agent.UpdatedAtUtc = DateTime.UtcNow;
+            }
 
             var campaign = await db.Campaigns
                 .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AgentId == id, ct);
