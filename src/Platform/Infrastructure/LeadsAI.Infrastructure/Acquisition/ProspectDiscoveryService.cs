@@ -79,7 +79,7 @@ public sealed class SerpApiProspectDiscoveryProvider(
 
     public async Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default)
     {
-        var apiKey = configuration[ApiKeyPath];
+        var apiKey = configuration[ApiKeyPath]?.Trim();
         if (string.IsNullOrWhiteSpace(apiKey))
             return new DiscoveryVerificationResult(false, "SerpAPI API key is not configured.");
 
@@ -184,7 +184,28 @@ public sealed class SerpApiProspectDiscoveryProvider(
         var json = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException("Unable to verify SerpAPI quota. Search was blocked for safety.");
+        {
+            string? providerError = null;
+
+            try
+            {
+                using var errorDocument = JsonDocument.Parse(json);
+                if (errorDocument.RootElement.TryGetProperty("error", out var error))
+                    providerError = error.GetString();
+            }
+            catch (JsonException)
+            {
+                // Keep the HTTP status as the useful diagnostic when the provider
+                // does not return a JSON error payload.
+            }
+
+            var detail = string.IsNullOrWhiteSpace(providerError)
+                ? $"HTTP {(int)response.StatusCode} ({response.StatusCode})"
+                : providerError;
+
+            throw new InvalidOperationException(
+                $"SerpAPI account verification failed: {detail}");
+        }
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
