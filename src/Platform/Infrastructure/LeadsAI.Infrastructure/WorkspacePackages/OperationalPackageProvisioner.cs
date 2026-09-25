@@ -188,7 +188,7 @@ public sealed class OperationalPackageProvisioner(
         if (existing is not null)
         {
             if (existing.Status == AutonomousAgentStatus.Draft)
-                existing.Status = AutonomousAgentStatus.Active;
+                existing.Status = AutonomousAgentStatus.Draft;
             existing.UpdatedAtUtc = DateTime.UtcNow;
             return;
         }
@@ -227,7 +227,7 @@ public sealed class OperationalPackageProvisioner(
             DailyDiscoveryLimit = 50,
             DailyEmailLimit = 10,
             RunTimeUtc = new TimeOnly(8, 0),
-            Status = AutonomousAgentStatus.Active,
+            Status = AutonomousAgentStatus.Draft,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow
         });
