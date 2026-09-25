@@ -89,9 +89,30 @@ public sealed class Campaign : TenantEntity
 
     public void Start()
     {
-        if (Status is CampaignStatus.Completed) throw new InvalidOperationException("Completed campaigns cannot be restarted.");
+        if (Status is CampaignStatus.Completed or CampaignStatus.Stopped) throw new InvalidOperationException("Completed or stopped campaigns cannot be restarted.");
         Status = CampaignStatus.Running;
         StartsAtUtc ??= DateTime.UtcNow;
+        Touch();
+    }
+
+    public void Pause()
+    {
+        if (Status is not CampaignStatus.Running) throw new InvalidOperationException($"Only running campaigns can be paused. Current status: {Status}.");
+        Status = CampaignStatus.Paused;
+        Touch();
+    }
+
+    public void Resume()
+    {
+        if (Status is not CampaignStatus.Paused) throw new InvalidOperationException($"Only paused campaigns can be resumed. Current status: {Status}.");
+        Status = CampaignStatus.Running;
+        Touch();
+    }
+
+    public void Stop()
+    {
+        if (Status is CampaignStatus.Completed or CampaignStatus.Stopped) throw new InvalidOperationException($"Campaign is already {Status}.");
+        Status = CampaignStatus.Stopped;
         Touch();
     }
 }
