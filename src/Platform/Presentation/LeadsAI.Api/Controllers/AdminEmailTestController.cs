@@ -46,8 +46,6 @@ public sealed class AdminEmailTestController(
     [HttpGet("prospects")]
     public async Task<IActionResult> Prospects(CancellationToken ct)
     {
-        // Keep this query limited to mapped Prospect properties. PriorityScore is
-        // currently not mapped for EF translation, so it must not be used in SQL.
         var prospects = await db.Prospects.AsNoTracking()
             .Where(x => x.TenantId == TenantId &&
                         x.Status == ProspectStatus.Discovered &&
@@ -288,7 +286,6 @@ public sealed class AdminEmailTestController(
             }
             catch (JsonException)
             {
-                // Ignore malformed sender settings and inspect the next connection.
             }
         }
 
@@ -297,5 +294,11 @@ public sealed class AdminEmailTestController(
 
     private sealed record ConfiguredSender(string Email, string Name, string Provider, bool Verified);
 }
+
+public sealed record OutreachTemplateInput(
+    string Name,
+    string? Description,
+    string SubjectTemplate,
+    string BodyTemplate);
 
 public sealed record TestEmailInput(Guid ProspectId, Guid TemplateId, string RecipientEmail);
