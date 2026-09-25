@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using LeadsAI.Infrastructure.IndustryPacks;
 using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Domain;
@@ -11,8 +12,8 @@ namespace LeadsAI.Infrastructure.Demo;
 
 public sealed class DevelopmentSeedService(
     AppDbContext db,
-    LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService workspace,
-    LeadsAI.Infrastructure.WorkspacePackages.WorkspacePackageInstaller packageInstaller,
+    RealWorkspaceService workspace,
+    IIndustryPackProvisioner industryPackProvisioner,
     IConfiguration configuration,
     ILogger<DevelopmentSeedService> logger)
 {
@@ -45,7 +46,7 @@ public sealed class DevelopmentSeedService(
                 entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
             {
                 await EnsureWorkspaceAsync(tenantId, cancellationToken);
-                await EnsureFusionFleetPackageAsync(tenantId, cancellationToken);
+                await EnsureIndustryPackCampaignAsync(tenantId, cancellationToken);
                 return;
             }
 
@@ -59,101 +60,48 @@ public sealed class DevelopmentSeedService(
             tenantId);
     }
 
-    private async Task EnsureFusionFleetPackageAsync(Guid tenantId, CancellationToken cancellationToken)
+    private async Task EnsureIndustryPackCampaignAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken)
     {
-        var packageId = configuration["DevelopmentSeed:WorkspacePackage"]?.Trim();
-        if (string.IsNullOrWhiteSpace(packageId))
+        var code = configuration["DevelopmentSeed:IndustryPackCode"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            logger.LogInformation(
+                "Development seed has no IndustryPackCode configured; skipping acquisition provisioning.");
             return;
-
-        const string markerKey = "acquisition.workspace-package.seed.v1";
-        var marker = await db.TenantSettings.AsNoTracking()
-            .AnyAsync(x => x.TenantId == tenantId && x.Key == markerKey && x.Value == packageId, cancellationToken);
-
-        if (marker)
-            return;
-
-        await packageInstaller.InstallAsync(tenantId, packageId, cancellationToken);
-        await SeedFusionFleetPackageLocalizationsAsync(tenantId, cancellationToken);
-
-        db.TenantSettings.Add(new TenantSetting
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            Key = markerKey,
-            Value = packageId
-        });
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Seeded workspace package {PackageId} for tenant {TenantId}.", packageId, tenantId);
-    }
-
-    private async Task SeedFusionFleetPackageLocalizationsAsync(Guid tenantId, CancellationToken cancellationToken)
-    {
-        const string key = "acquisition.workspace-packages";
-        var packages = new[]
-        {
-            new SavedWorkspacePackageSeed(
-                "en",
-                "FusionFleet Logistics Growth",
-                "AI-powered customer acquisition for logistics and transport companies",
-                "Find high-fit shippers, fleet operators and 3PL prospects, qualify them with AI and automate the follow-up.",
-                "Logistics companies, freight operators, 3PLs and fleet businesses",
-                "299",
-                new[] { "AI prospect discovery", "ICP qualification", "Automated outreach", "CRM pipeline", "Logistics growth workflows", "Revenue analytics" }
-            ),
-            new SavedWorkspacePackageSeed(
-                "mk",
-                "FusionFleet Логистички раст",
-                "AI-платформа за пронаоѓање и освојување клиенти во логистиката",
-                "Пронајдете компании со висок потенцијал, квалификувајте ги со AI и автоматизирајте го следењето до продажната можност.",
-                "Логистички компании, транспортни оператори, 3PL компании и флота оператори",
-                "299",
-                new[] { "AI пронаоѓање потенцијални клиенти", "ICP квалификација", "Автоматизиран outreach", "CRM pipeline", "Логистички sales workflows", "Аналитика на приход" }
-            ),
-            new SavedWorkspacePackageSeed(
-                "sq",
-                "FusionFleet Rritje për Logjistikë",
-                "Platformë me AI për gjetjen dhe fitimin e klientëve në logjistikë",
-                "Gjeni kompani me potencial të lartë, kualifikojini me AI dhe automatizoni ndjekjen deri te mundësia e shitjes.",
-                "Kompani logjistike, operatorë transporti, kompani 3PL dhe operatorë flotash",
-                "299",
-                new[] { "Zbulim i prospekteve me AI", "Kualifikim ICP", "Kontaktim i automatizuar", "Pipeline CRM", "Workflow për rritje në logjistikë", "Analitikë e të ardhurave" }
-            )
-        };
-
-        var setting = await db.TenantSettings.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Key == key, cancellationToken);
-        var saved = packages.Select(x => new
-        {
-            Id = Guid.NewGuid(),
-            Name = x.Name,
-            Headline = x.Headline,
-            Subheadline = x.Subheadline,
-            Audience = x.Audience,
-            Price = x.Price,
-            Billing = "month",
-            Features = x.Features,
-            Sections = new[] { "Hero", "Problem", "AI acquisition", "Automation", "How it works", "Pricing", "Call to action" },
-            HiddenSections = Array.Empty<string>(),
-            UpdatedAtUtc = DateTime.UtcNow,
-            Language = x.Language
-        }).ToArray();
-        var json = System.Text.Json.JsonSerializer.Serialize(saved);
-
-        if (setting is null)
-        {
-            db.TenantSettings.Add(new TenantSetting { Id = Guid.NewGuid(), TenantId = tenantId, Key = key, Value = json });
-        }
-        else
-        {
-            setting.Value = json;
-            setting.UpdatedAtUtc = DateTime.UtcNow;
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        var pack = await db.IndustryPacks
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Code == code, cancellationToken);
+
+        if (pack is null)
+        {
+            logger.LogWarning(
+                "Development seed requested IndustryPackCode '{IndustryPackCode}', but no IndustryPack exists. " +
+                "Seed the IndustryPack first; no workspace package will be created.",
+                code);
+            return;
+        }
+
+        var result = await industryPackProvisioner.ProvisionAsync(
+            tenantId,
+            pack.Id,
+            cancellationToken);
+
+        logger.LogInformation(
+            "Provisioned industry pack {IndustryPackCode} for tenant {TenantId}. Campaign {CampaignId}, TargetList {TargetListId}.",
+            pack.Code,
+            tenantId,
+            result.CampaignId,
+            result.TargetListId);
     }
 
-    private sealed record SavedWorkspacePackageSeed(string Language, string Name, string Headline, string Subheadline, string Audience, string Price, IReadOnlyList<string> Features);
-
-    private async Task EnsureWorkspaceAsync(Guid tenantId, CancellationToken cancellationToken)
+    private async Task EnsureWorkspaceAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken)
     {
         var existing = await db.TenantSettings
             .AsNoTracking()
@@ -199,10 +147,6 @@ public sealed class DevelopmentSeedHostedService(
         if (!configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
             return;
 
-        // Run after the host (and MassTransit bus) has started. The identity events
-        // that create TenantEntitlements are asynchronous, so running the seed from
-        // Program.cs before app.Run() creates a startup race and can never observe
-        // the entitlement projections on a clean database.
         await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
