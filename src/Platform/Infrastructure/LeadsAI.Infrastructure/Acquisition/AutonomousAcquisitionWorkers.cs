@@ -130,6 +130,11 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         foreach (var agent in agents)
         {
             if (pending.Contains(agent.Id)) continue;
+            var campaign = await db.Campaigns
+                .Where(x => x.TenantId == tenantId && x.AgentId == agent.Id && x.Status == CampaignStatus.Running)
+                .OrderByDescending(x => x.UpdatedAtUtc)
+                .FirstOrDefaultAsync(ct);
+            if (campaign is null) continue;
 
             var due = localNow.TimeOfDay >= agent.RunTimeUtc.ToTimeSpan();
             var already = agent.LastRunAtUtc.HasValue &&
@@ -141,6 +146,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
             {
                 TenantId = tenantId,
                 AgentId = agent.Id,
+                CampaignId = campaign.Id,
                 IsManual = false,
                 Status = AutonomousAgentRunStatus.Queued,
                 ScheduledAtUtc = nowUtc
