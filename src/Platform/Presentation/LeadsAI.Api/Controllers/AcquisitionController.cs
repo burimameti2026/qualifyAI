@@ -224,67 +224,6 @@ public sealed class AcquisitionController(
         await db.SaveChangesAsync(ct); return Ok(prospect);
     }
 
-    [HttpGet("templates")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public async Task<IActionResult> Templates(CancellationToken ct)
-    {
-        var tenantId = TenantId;
-        var templates = await db.OutreachTemplates.Where(x => x.TenantId == tenantId && x.IsActive).OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
-        if (templates.Count == 0)
-        {
-            templates = CreateDefaultTemplates(tenantId);
-            db.OutreachTemplates.AddRange(templates);
-            await db.SaveChangesAsync(ct);
-        }
-        return Ok(templates.Select(x => new { x.Id, x.Name, x.Description, x.SubjectTemplate, x.BodyTemplate, x.IsActive }));
-    }
-
-    [HttpPost("templates")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> CreateTemplate(OutreachTemplateInput input, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(input.Name) || string.IsNullOrWhiteSpace(input.SubjectTemplate) || string.IsNullOrWhiteSpace(input.BodyTemplate))
-            return BadRequest(new { detail = "Template name, subject and body are required." });
-        var name = input.Name.Trim();
-        if (await db.OutreachTemplates.AnyAsync(x => x.TenantId == TenantId && x.Name == name, ct))
-            return Conflict(new { detail = "A template with this name already exists." });
-        var template = new OutreachTemplate { TenantId = TenantId, Name = name, Description = input.Description?.Trim() ?? string.Empty, SubjectTemplate = input.SubjectTemplate.Trim(), BodyTemplate = input.BodyTemplate.Trim(), IsActive = true };
-        db.OutreachTemplates.Add(template);
-        await db.SaveChangesAsync(ct);
-        return Created($"/api/acquisition/templates/{template.Id}", template);
-    }
-
-    [HttpPut("templates/{id:guid}")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> UpdateTemplate(Guid id, OutreachTemplateInput input, CancellationToken ct)
-    {
-        var template = await db.OutreachTemplates.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-        if (template is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(input.Name) || string.IsNullOrWhiteSpace(input.SubjectTemplate) || string.IsNullOrWhiteSpace(input.BodyTemplate))
-            return BadRequest(new { detail = "Template name, subject and body are required." });
-        var name = input.Name.Trim();
-        if (await db.OutreachTemplates.AnyAsync(x => x.TenantId == TenantId && x.Id != id && x.Name == name, ct))
-            return Conflict(new { detail = "A template with this name already exists." });
-        template.Name = name; template.Description = input.Description?.Trim() ?? string.Empty; template.SubjectTemplate = input.SubjectTemplate.Trim(); template.BodyTemplate = input.BodyTemplate.Trim(); template.IsActive = true;
-        await db.SaveChangesAsync(ct);
-        return Ok(template);
-    }
-
-    [HttpDelete("templates/{id:guid}")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> DeleteTemplate(Guid id, CancellationToken ct)
-    {
-        var template = await db.OutreachTemplates.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-        if (template is null) return NotFound();
-        template.IsActive = false;
-        await db.SaveChangesAsync(ct);
-        return Ok(new { template.Id, template.IsActive });
-    }
-
-    [HttpGet("target-lists")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public Task<List<TargetList>> TargetLists(CancellationToken ct) => db.TargetLists.Where(x => x.TenantId==TenantId).OrderBy(x => x.Name).ToListAsync(ct);
-
     [HttpGet("campaigns")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> Campaigns(CancellationToken ct)
