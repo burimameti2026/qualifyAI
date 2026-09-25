@@ -51,7 +51,7 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
             New(agent, 2, AutonomousAgentTaskTypes.Qualify, "Qualify prospects", false, new { minimumScore = agent.MinimumScore, signals = template.Signals }, now),
             New(agent, 3, AutonomousAgentTaskTypes.Enrich, "Enrich company intelligence", false, new { fields = new[] { "company", "size", "website", "buyer", "signals" } }, now),
             New(agent, 4, AutonomousAgentTaskTypes.BuildTargetList, "Build target list", false, new { minimumScore = agent.MinimumScore }, now),
-            New(agent, 5, AutonomousAgentTaskTypes.Outreach, "Prepare outreach", true, new { approvalRequired = true, dailyLimit = agent.DailyEmailLimit }, now)
+            New(agent, 5, AutonomousAgentTaskTypes.Outreach, "Prepare outreach", template.OutreachTemplates.Any(x => x.RequiresApproval), new { approvalRequired = template.OutreachTemplates.Any(x => x.RequiresApproval), dailyLimit = agent.DailyEmailLimit }, now)
         };
 
         db.AutonomousAcquisitionTasks.AddRange(tasks);
