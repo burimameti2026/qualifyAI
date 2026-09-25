@@ -235,7 +235,9 @@ public static class AutonomousAcquisitionEndpoints
 
             var existingQueued = await db.AutonomousAcquisitionAgentRuns.AnyAsync(
                 x => x.TenantId == tenantId && x.CampaignId == campaign.Id &&
-                     x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval,
+                     (x.Status == AutonomousAgentRunStatus.Queued ||
+                      x.Status == AutonomousAgentRunStatus.Running ||
+                      x.Status == AutonomousAgentRunStatus.WaitingApproval),
                 ct);
             if (!existingQueued)
             {
