@@ -56,7 +56,7 @@ public interface IProspectDiscoveryProvider
         get;
     }
     Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default);
-    Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default);
+    Task<DiscoveryVerificationResult> VerifyAsync(Guid? tenantId = null, CancellationToken ct = default);
     string Description
     {
         get;
@@ -94,6 +94,37 @@ public sealed class SerpApiProspectDiscoveryProvider(
 
     public async Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default) =>
         !string.IsNullOrWhiteSpace(await ResolveSettingAsync(tenantId, ApiKeyPath, "SERPAPI_API_KEY", ct));
+
+    public async Task<DiscoveryVerificationResult> VerifyAsync(Guid? tenantId = null, CancellationToken ct = default)
+    {
+        var apiKey = await ResolveSettingAsync(tenantId, ApiKeyPath, "SERPAPI_API_KEY", ct);
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return new DiscoveryVerificationResult(false, "SerpAPI API key is not configured for this tenant.");
+
+        try
+        {
+            var account = await GetAccountUsageAsync(apiKey, ct);
+            return new DiscoveryVerificationResult(
+                true,
+                null,
+                account.PlanName,
+                account.PlanSearchesLeft,
+                account.ThisMonthUsage);
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new DiscoveryVerificationResult(false, "SerpAPI verification timed out. Please try again.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new DiscoveryVerificationResult(false, $"SerpAPI could not be reached: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new DiscoveryVerificationResult(false, ex.Message);
+        }
+    }
 
     public async Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(
         IcpProfile icp,
@@ -450,6 +481,7 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
 
     public async Task<DiscoveryVerificationResult> VerifyProviderAsync(
         string name,
+        Guid tenantId,
         CancellationToken ct = default)
     {
         var provider = providers.FirstOrDefault(x =>
@@ -457,7 +489,7 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
             ?? throw new InvalidOperationException(
                 $"Discovery provider '{name}' is not available.");
 
-        return await provider.VerifyAsync(ct);
+        return await provider.VerifyAsync(tenantId, ct);
     }
     public async Task<ProspectDiscoveryResult> DiscoverAsync(Guid tenantId, Guid icpId, DiscoveryRunOptions options, CancellationToken ct = default)
     {
