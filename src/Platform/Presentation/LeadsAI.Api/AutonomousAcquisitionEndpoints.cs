@@ -197,6 +197,52 @@ public static class AutonomousAcquisitionEndpoints
                 .OrderByDescending(x => x.UpdatedAtUtc)
                 .ToListAsync(ct)));
 
+        g.MapGet("/tenants/{tenantId}/agents/{id}/tasks/{taskId}", async (
+            Guid tenantId, Guid id, Guid taskId, AppDbContext db, CancellationToken ct) =>
+        {
+            var task = await db.AutonomousAcquisitionTasks.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.AgentId == id && x.Id == taskId, ct);
+            if (task is null) return Results.NotFound();
+
+            return Results.Ok(new
+            {
+                task.Id,
+                task.AgentId,
+                task.Sequence,
+                task.Type,
+                task.Name,
+                task.Status,
+                task.RequiresApproval,
+                task.ConfigurationJson,
+                task.ResultJson,
+                task.Error,
+                task.AttemptCount,
+                task.StartedAtUtc,
+                task.CompletedAtUtc,
+                task.CreatedAtUtc,
+                task.UpdatedAtUtc
+            });
+        });
+
+        g.MapPost("/tenants/{tenantId}/agents/{id}/runs/{runId}/retry", async (
+            Guid tenantId, Guid id, Guid runId, AppDbContext db, CancellationToken ct) =>
+        {
+            var run = await db.AutonomousAcquisitionAgentRuns.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.AgentId == id && x.Id == runId, ct);
+            if (run is null) return Results.NotFound();
+            if (run.Status != AutonomousAgentRunStatus.Failed)
+                return Results.BadRequest(new { error = "Only failed runs can be retried." });
+
+            run.Status = AutonomousAgentRunStatus.Queued;
+            run.Error = null;
+            run.StartedAtUtc = null;
+            run.CompletedAtUtc = null;
+            run.ScheduledAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Accepted(
+                $"/api/autonomous-acquisition/tenants/{tenantId}/agents/{id}/runs/{run.Id}", run);
+        });
+
         g.MapGet("/tenants/{tenantId}/agents/{id}/tasks", async (
             Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
             Results.Ok(await db.AutonomousAcquisitionTasks
