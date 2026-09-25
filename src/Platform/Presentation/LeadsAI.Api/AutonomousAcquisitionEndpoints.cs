@@ -257,7 +257,7 @@ public static class AutonomousAcquisitionEndpoints
             var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
             if (campaign is null) return Results.NotFound();
             campaign.Pause();
-            var runs = await db.AutonomousAcquisitionAgentRuns.Where(x => x.TenantId == tenantId && x.AgentId == campaign.AgentId && x.Status == AutonomousAgentRunStatus.Running).ToListAsync(ct);
+            var runs = await db.AutonomousAcquisitionAgentRuns.Where(x => x.TenantId == tenantId && x.AgentId == campaign.AgentId && x.CampaignId == campaign.Id && x.Status == AutonomousAgentRunStatus.Running).ToListAsync(ct);
             foreach (var run in runs) run.Status = AutonomousAgentRunStatus.Paused;
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { campaign, pausedRuns = runs.Count });
@@ -392,6 +392,7 @@ public static class AutonomousAcquisitionEndpoints
             {
                 TenantId = tenantId,
                 AgentId = id,
+                CampaignId = campaign.Id,
                 IsManual = true,
                 Status = AutonomousAgentRunStatus.Queued
             };
