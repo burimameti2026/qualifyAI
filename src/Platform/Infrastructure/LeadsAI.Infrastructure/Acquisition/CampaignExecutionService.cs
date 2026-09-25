@@ -52,7 +52,7 @@ public sealed class CampaignExecutionService(AppDbContext db)
                 continue;
             }
 
-            db.OutreachMessages.Add(new OutreachMessage
+            var message = new OutreachMessage
             {
                 TenantId = recipient.TenantId,
                 CampaignId = campaign.Id,
@@ -62,7 +62,24 @@ public sealed class CampaignExecutionService(AppDbContext db)
                 Subject = RenderTemplate(step.SubjectTemplate, prospect),
                 Body = RenderTemplate(step.BodyTemplate, prospect),
                 Status = OutreachStatus.Queued
-            });
+            };
+            db.OutreachMessages.Add(message);
+
+            var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
+            if (!await db.CrmTasks.AnyAsync(
+                    x => x.TenantId == recipient.TenantId &&
+                         x.Title == approvalTitle &&
+                         !x.Completed,
+                    cancellationToken))
+            {
+                db.CrmTasks.Add(new CrmTask
+                {
+                    TenantId = recipient.TenantId,
+                    Title = approvalTitle,
+                    DueAtUtc = DateTime.UtcNow.AddHours(4)
+                });
+            }
+
             recipient.CurrentStep = step.StepNumber;
             recipient.Status = "awaiting-delivery";
             recipient.NextRunAtUtc = null;
