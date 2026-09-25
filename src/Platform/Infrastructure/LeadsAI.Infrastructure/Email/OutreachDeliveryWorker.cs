@@ -32,9 +32,7 @@ public sealed class OutreachDeliveryWorker(
                 var services = rootScope.ServiceProvider;
                 var runtime = services.GetRequiredService<TenantWorkerRuntime>();
                 var delivery = services.GetRequiredService<EmailDeliveryService>();
-                var tenants = await runtime.EnabledActiveTenantsAsync(
-                    TenantWorkerKeys.OutreachDelivery,
-                    stoppingToken);
+                var tenants = await runtime.ActiveCampaignTenantsAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
