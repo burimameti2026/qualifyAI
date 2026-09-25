@@ -56,11 +56,24 @@ public static class AutonomousAcquisitionEndpoints
 
             templates.Apply(agent);
 
+            var icp = new IcpProfile
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                Name = input.Name + " ICP",
+                Industry = input.Industry ?? template.Industry,
+                CountriesCsv = string.Join(',', input.Countries ?? Array.Empty<string>()),
+                IntentKeywordsCsv = string.Join(',', template.Keywords),
+                CriteriaJson = JsonSerializer.Serialize(input.Icp ?? new Dictionary<string, string>()),
+                Active = true
+            };
+
             var target = new TargetList
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
                 Name = input.Name + " targets",
+                IcpProfileId = icp.Id,
                 Description = template.TargetDefinition,
                 Dynamic = true
             };
@@ -80,6 +93,7 @@ public static class AutonomousAcquisitionEndpoints
                 PlanStatus = "draft"
             };
 
+            db.IcpProfiles.Add(icp);
             db.TargetLists.Add(target);
             db.AutonomousAcquisitionAgents.Add(agent);
             db.Campaigns.Add(campaign);
@@ -113,7 +127,7 @@ public static class AutonomousAcquisitionEndpoints
 
             return Results.Created(
                 $"/api/autonomous-acquisition/tenants/{tenantId}/campaigns/{campaign.Id}",
-                new { campaign, agent, package = template, tasks, target });
+                new { campaign, agent, package = template, icp, tasks, target });
         });
 
         g.MapGet("/tenants/{tenantId}/campaigns", async (
