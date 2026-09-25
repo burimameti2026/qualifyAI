@@ -47,11 +47,11 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
         var now = DateTime.UtcNow;
         var tasks = new[]
         {
-            New(agent, 1, AutonomousAgentTaskTypes.Discover, "Discover companies", false, common, now),
-            New(agent, 2, AutonomousAgentTaskTypes.Qualify, "Qualify prospects", false, new { minimumScore = agent.MinimumScore, signals = template.Signals }, now),
-            New(agent, 3, AutonomousAgentTaskTypes.Enrich, "Enrich company intelligence", false, new { fields = new[] { "company", "size", "website", "buyer", "signals" } }, now),
-            New(agent, 4, AutonomousAgentTaskTypes.BuildTargetList, "Build target list", false, new { minimumScore = agent.MinimumScore }, now),
-            New(agent, 5, AutonomousAgentTaskTypes.Outreach, "Prepare outreach", template.OutreachTemplates.Any(x => x.RequiresApproval), new { approvalRequired = template.OutreachTemplates.Any(x => x.RequiresApproval), dailyLimit = agent.DailyEmailLimit }, now)
+            New(agent, 1, AutonomousAgentTaskTypes.Discover, "Discover companies", "Find companies matching the installed package ICP and search strategy.", common, AutonomousAgentTaskTypes.Qualify, false, now),
+            New(agent, 2, AutonomousAgentTaskTypes.Qualify, "Qualify prospects", "Evaluate discovered companies against the package qualification rules and score threshold.", new { minimumScore = agent.MinimumScore, signals = template.Signals }, AutonomousAgentTaskTypes.Enrich, false, now),
+            New(agent, 3, AutonomousAgentTaskTypes.Enrich, "Enrich company intelligence", "Preserve and structure public evidence needed to understand the qualified company and likely buyer.", new { fields = new[] { "company", "size", "website", "buyer", "signals" } }, AutonomousAgentTaskTypes.BuildTargetList, false, now),
+            New(agent, 4, AutonomousAgentTaskTypes.BuildTargetList, "Build target list", "Put qualified prospects into the campaign container target list without duplicates.", new { minimumScore = agent.MinimumScore }, AutonomousAgentTaskTypes.Outreach, false, now),
+            New(agent, 5, AutonomousAgentTaskTypes.Outreach, "Prepare outreach", "Create campaign outreach messages from the installed package templates and stop at human approval when required.", new { approvalRequired = template.OutreachTemplates.Any(x => x.RequiresApproval), dailyLimit = agent.DailyEmailLimit }, "campaign-approval", template.OutreachTemplates.Any(x => x.RequiresApproval), now)
         };
 
         db.AutonomousAcquisitionTasks.AddRange(tasks);
@@ -64,8 +64,10 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
         int sequence,
         string type,
         string name,
-        bool requiresApproval,
+        string purpose,
         object configuration,
+        string nextStep,
+        bool requiresApproval,
         DateTime now) =>
         new()
         {
@@ -75,7 +77,7 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
             Type = type,
             Name = name,
             RequiresApproval = requiresApproval,
-            ConfigurationJson = JsonSerializer.Serialize(configuration),
+            ConfigurationJson = JsonSerializer.Serialize(new { purpose, input = configuration, nextStep }),
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
