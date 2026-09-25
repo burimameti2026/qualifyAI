@@ -90,7 +90,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
             var awaitingApproval = false;
             var current = tasks
-                .Where(x => x.Status != AutonomousAcquisitionTaskStatus.Completed)
+                .Where(x => x.Status != AutonomousAgentTaskStatus.Completed)
                 .OrderBy(x => x.Sequence)
                 .FirstOrDefault();
 
@@ -106,8 +106,8 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
                 var nextType = ReadNextStep(current.ConfigurationJson);
                 current = string.IsNullOrWhiteSpace(nextType)
-                    ? tasks.Where(x => x.Status != AutonomousAcquisitionTaskStatus.Completed).OrderBy(x => x.Sequence).FirstOrDefault()
-                    : tasks.FirstOrDefault(x => x.Type == nextType && x.Status != AutonomousAcquisitionTaskStatus.Completed);
+                    ? tasks.Where(x => x.Status != AutonomousAgentTaskStatus.Completed).OrderBy(x => x.Sequence).FirstOrDefault()
+                    : tasks.FirstOrDefault(x => x.Type == nextType && x.Status != AutonomousAgentTaskStatus.Completed);
             }
 
             agent.LastRunAtUtc = now;
@@ -132,12 +132,12 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 .FirstOrDefaultAsync(x => x.TenantId == run.TenantId &&
                                            x.AgentId == run.AgentId &&
                                            x.RunId == run.Id &&
-                                           x.Status == AutonomousAcquisitionTaskStatus.Running,
+                                           x.Status == AutonomousAgentTaskStatus.Running,
                     CancellationToken.None);
 
             if (runningTask is not null)
             {
-                runningTask.Status = AutonomousAcquisitionTaskStatus.Failed;
+                runningTask.Status = AutonomousAgentTaskStatus.Failed;
                 runningTask.Error = ex.Message;
                 runningTask.CompletedAtUtc = DateTime.UtcNow;
                 runningTask.UpdatedAtUtc = DateTime.UtcNow;
@@ -580,7 +580,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             Sequence = d.Sequence,
             Type = d.Type,
             Name = d.Name,
-            Status = AutonomousAcquisitionTaskStatus.Pending,
+            Status = AutonomousAgentTaskStatus.Pending,
             RequiresApproval = d.RequiresApproval,
             ConfigurationJson = d.ConfigurationJson,
             ResultJson = "{}"
@@ -600,14 +600,14 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     }
 
     private static bool IsCompleted(IReadOnlyList<AutonomousAcquisitionTask> tasks, string type) =>
-        tasks.Any(x => x.Type == type && x.Status == AutonomousAcquisitionTaskStatus.Completed);
+        tasks.Any(x => x.Type == type && x.Status == AutonomousAgentTaskStatus.Completed);
 
     private static AutonomousAcquisitionTask StartTask(
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
         string type)
     {
         var task = tasks.First(x => x.Type == type);
-        task.Status = AutonomousAcquisitionTaskStatus.Running;
+        task.Status = AutonomousAgentTaskStatus.Running;
         task.AttemptCount++;
         task.StartedAtUtc = DateTime.UtcNow;
         task.CompletedAtUtc = null;
@@ -618,7 +618,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
     private static void CompleteTask(AutonomousAcquisitionTask task, object result)
     {
-        task.Status = AutonomousAcquisitionTaskStatus.Completed;
+        task.Status = AutonomousAgentTaskStatus.Completed;
         task.ResultJson = JsonSerializer.Serialize(result);
         task.CompletedAtUtc = DateTime.UtcNow;
         task.UpdatedAtUtc = DateTime.UtcNow;
