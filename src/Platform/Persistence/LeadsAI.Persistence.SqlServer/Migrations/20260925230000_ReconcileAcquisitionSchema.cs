@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace LeadsAI.Persistence.SqlServer.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20260925230000_ReconcileAcquisitionSchema")]
 public partial class ReconcileAcquisitionSchema : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
