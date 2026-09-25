@@ -1,7 +1,7 @@
 namespace LeadsAI.Domain;
 
 public enum ProspectStatus { Discovered, Enriched, Qualified, Nurturing, Replied, DemoReady, Converted, Suppressed }
-public enum CampaignStatus { Draft, Scheduled, Running, Paused, Completed }
+public enum CampaignStatus { Draft, Scheduled, Running, Paused, Completed, Stopped }
 public enum OutreachStatus { Queued, Sent, Delivered, Replied, Failed, Suppressed }
 
 public sealed class Prospect : TenantEntity
@@ -75,6 +75,7 @@ public sealed class Campaign : TenantEntity
     public Guid TargetListId { get; set; }
     public Guid? AgentId { get; set; }
     public string PackageCode { get; set; } = string.Empty;
+    public string PackageVersion { get; set; } = string.Empty;
     public string Objective { get; set; } = string.Empty;
     public string PlanJson { get; set; } = "{}";
     public string PlanStatus { get; set; } = "draft";
