@@ -4,52 +4,51 @@ using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Infrastructure.WorkspacePackages;
 
-public sealed record WorkspacePackageInstallResult(string PackageId, string Scenario, int Prospects, int Campaigns, int Opportunities, int Meetings, int Tickets, int Automations);
+public sealed record WorkspacePackageInstallResult(
+    string PackageId,
+    string Scenario,
+    int Prospects,
+    int Campaigns,
+    int Opportunities,
+    int Meetings,
+    int Tickets,
+    int Automations);
 
 public sealed class WorkspacePackageInstaller(
     AppDbContext db,
-    FusionFleetPackageProvisioner fusionFleet,
-    QualifyAiAcquisitionPackageProvisioner qualifyAi,
     IModuleProvisioningOrchestrator moduleProvisioning,
     IModuleRegistry moduleRegistry,
     OperationalPackageProvisioner operationalProvisioner)
 {
-    public Task<WorkspacePackageInstallResult> InstallAsync(Guid tenantId, string packageId, CancellationToken ct = default)
+    public Task<WorkspacePackageInstallResult> InstallAsync(
+        Guid tenantId,
+        string packageId,
+        CancellationToken ct = default)
     {
         if (!WorkspacePackageCatalog.TryGet(packageId, out var package))
             throw new InvalidOperationException($"Unknown workspace package '{packageId}'.");
 
-        return package.Id switch
-        {
-            "fusionfleet-promotion" => InstallFusionFleetPackageAsync(tenantId, ct),
-            "leadsai-acquisition" => InstallQualifyAiAcquisitionPackageAsync(tenantId, ct),
-            "blank" => InstallProfileAsync(tenantId, package, ct),
-            _ when package.ProvisioningMode.Equals("operational", StringComparison.OrdinalIgnoreCase) => InstallProfileAsync(tenantId, package, ct),
-            _ => throw new InvalidOperationException($"Unsupported workspace package '{packageId}'.")
-        };
+        if (package.ProvisioningMode.Equals("customer-scenario", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Workspace package '{package.Id}' is an acquisition scenario. " +
+                "Provision acquisition campaigns through IndustryPackProvisioner.");
+
+        return InstallProfileAsync(tenantId, package, ct);
     }
 
-    private async Task<WorkspacePackageInstallResult> InstallFusionFleetPackageAsync(Guid tenantId, CancellationToken ct)
-    {
-        var result = await fusionFleet.ProvisionAsync(tenantId, ct);
-        return new WorkspacePackageInstallResult("fusionfleet-promotion", "FusionFleet Promotion", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
-    }
-
-    private async Task<WorkspacePackageInstallResult> InstallQualifyAiAcquisitionPackageAsync(Guid tenantId, CancellationToken ct)
-    {
-        var result = await qualifyAi.ProvisionAsync(tenantId, ct);
-        return new WorkspacePackageInstallResult("leadsai-acquisition", "LeadsAI Acquisition", result.Prospects, result.Campaigns, result.Opportunities, result.Meetings, result.Tickets, result.Automations);
-    }
-
-
-    private async Task<WorkspacePackageInstallResult> InstallProfileAsync(Guid tenantId, WorkspacePackageDefinition package, CancellationToken ct)
+    private async Task<WorkspacePackageInstallResult> InstallProfileAsync(
+        Guid tenantId,
+        WorkspacePackageDefinition package,
+        CancellationToken ct)
     {
         var resolvedModules = moduleRegistry.Resolve(package.RequiredModules);
         var unsupported = package.RequiredModules
             .Where(code => !resolvedModules.Contains(code, StringComparer.OrdinalIgnoreCase))
             .ToArray();
+
         if (unsupported.Length > 0)
-            throw new InvalidOperationException($"Package '{package.Id}' requires unsupported modules: {string.Join(", ", unsupported)}.");
+            throw new InvalidOperationException(
+                $"Package '{package.Id}' requires unsupported modules: {string.Join(", ", unsupported)}.");
 
         await moduleProvisioning.ProvisionAsync(tenantId, resolvedModules, ct);
         await operationalProvisioner.ProvisionAsync(tenantId, package, ct);
@@ -74,7 +73,13 @@ public sealed class WorkspacePackageInstaller(
         });
 
         if (existing is null)
-            db.TenantSettings.Add(new TenantSetting { Id = Guid.NewGuid(), TenantId = tenantId, Key = key, Value = value });
+            db.TenantSettings.Add(new TenantSetting
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                Key = key,
+                Value = value
+            });
         else
         {
             existing.Value = value;
@@ -82,10 +87,15 @@ public sealed class WorkspacePackageInstaller(
         }
 
         await db.SaveChangesAsync(ct);
+
         return await SnapshotAsync(tenantId, package.Id, $"{package.Name} profile", ct);
     }
 
-    private async Task<WorkspacePackageInstallResult> SnapshotAsync(Guid tenantId, string packageId, string scenario, CancellationToken ct)
+    private async Task<WorkspacePackageInstallResult> SnapshotAsync(
+        Guid tenantId,
+        string packageId,
+        string scenario,
+        CancellationToken ct)
         => new(
             packageId,
             scenario,
