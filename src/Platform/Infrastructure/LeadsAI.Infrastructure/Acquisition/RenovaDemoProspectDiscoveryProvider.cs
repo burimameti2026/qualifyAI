@@ -42,4 +42,9 @@ public sealed class RenovaDemoProspectDiscoveryProvider : IProspectDiscoveryProv
         };
         return Task.FromResult<IReadOnlyList<DiscoveryCandidate>>(candidates.Take(Math.Clamp(options.MaximumResults, 1, candidates.Count)).ToList());
     }
+
+    public Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
+    }
 }
