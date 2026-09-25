@@ -62,7 +62,7 @@ public sealed class AcquisitionController(
     {
         try
         {
-            var result = await discovery.VerifyProviderAsync(name, TenantId, ct);
+            var result = await discovery.VerifyProviderAsync(name, ct);
             return result.Verified
                 ? Ok(result)
                 : BadRequest(result);
@@ -86,7 +86,7 @@ public sealed class AcquisitionController(
             var request = input??new DiscoveryRequest();
             var result = await discovery.DiscoverAsync(TenantId, id, new DiscoveryRunOptions(
                 request.Source, request.Region, request.MaximumResults, request.MinimumScore,
-                request.TargetListName, request.CreateTargetList, TenantId), ct);
+                request.TargetListName, request.CreateTargetList), ct);
             return Ok(result);
         }
         catch(InvalidOperationException exception)
