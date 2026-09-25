@@ -10,54 +10,35 @@ public sealed class RevenueAutomationOptions
     public int IntervalSeconds { get; set; } = 300;
 }
 
-public sealed class RevenueAutomationWorker(
-    IServiceScopeFactory scopeFactory,
-    IOptions<RevenueAutomationOptions> options,
-    ILogger<RevenueAutomationWorker> logger) : BackgroundService
+public sealed class RevenueAutomationWorker(IServiceScopeFactory scopeFactory, IOptions<RevenueAutomationOptions> options, ILogger<RevenueAutomationWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!options.Value.Enabled)
-            return;
-
+        if (!options.Value.Enabled) return;
         var interval = TimeSpan.FromSeconds(Math.Max(60, options.Value.IntervalSeconds));
         using var timer = new PeriodicTimer(interval);
-
         do
         {
             try
             {
                 using var scope = scopeFactory.CreateScope();
                 var entitlements = scope.ServiceProvider.GetRequiredService<ITenantEntitlementRepository>();
+                var workerRuntime = scope.ServiceProvider.GetRequiredService<TenantWorkerRuntime>();
                 var automation = scope.ServiceProvider.GetRequiredService<SalesAutomationService>();
-
+                var enabledTenantIds = await workerRuntime.EnabledTenantIdsAsync(TenantWorkerKeys.RevenueAutomation, stoppingToken);
                 var tenantIds = await entitlements.ListActiveTenantIdsAsync(stoppingToken);
                 foreach (var tenantId in tenantIds)
                 {
+                    if (!enabledTenantIds.Contains(tenantId)) continue;
                     var entitlement = await entitlements.GetAsync(tenantId, stoppingToken);
-                    if (entitlement is null || !entitlement.IsAccessibleAt(DateTime.UtcNow))
-                        continue;
-
+                    if (entitlement is null || !entitlement.IsAccessibleAt(DateTime.UtcNow)) continue;
                     var result = await automation.RunAsync(tenantId, stoppingToken);
                     if (result.OpportunitiesCreated > 0 || result.TasksCreated > 0)
-                    {
-                        logger.LogInformation(
-                            "Revenue automation tenant {TenantId}: {Opportunities} opportunities, {Tasks} tasks, {Pipeline} pipeline",
-                            tenantId,
-                            result.OpportunitiesCreated,
-                            result.TasksCreated,
-                            result.PipelineCreated);
-                    }
+                        logger.LogInformation("Revenue automation tenant {TenantId}: {Opportunities} opportunities, {Tasks} tasks, {Pipeline} pipeline", tenantId, result.OpportunitiesCreated, result.TasksCreated, result.PipelineCreated);
                 }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                logger.LogError(exception, "Revenue automation cycle failed");
-            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception) { logger.LogError(exception, "Revenue automation cycle failed"); }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
