@@ -2,7 +2,7 @@ namespace LeadsAI.Domain;
 
 public enum ProspectStatus { Discovered, Enriched, Qualified, Nurturing, Replied, DemoReady, Converted, Suppressed }
 public enum CampaignStatus { Draft, Scheduled, Running, Paused, Completed, Stopped }
-public enum OutreachStatus { Queued, Sent, Delivered, Replied, Failed, Suppressed }
+public enum OutreachStatus { Queued, Sending, Sent, Delivered, Replied, Failed, Suppressed }
 
 public sealed class Prospect : TenantEntity
 {
