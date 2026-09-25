@@ -107,6 +107,8 @@ public sealed class IndustryPackProvisioner(
             campaign.Goal = definition.Goal;
             campaign.SenderName = definition.SenderName;
             campaign.SenderEmail = definition.SenderEmail;
+            campaign.TargetListId = targetList.Id;
+            targetList.CampaignId = campaign.Id;
             campaign.PackageCode = marker;
             campaign.PackageVersion = Version;
             campaign.PlanStatus = "ready";
