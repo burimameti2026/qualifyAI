@@ -320,10 +320,16 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                     Channel = "email",
                     SubjectTemplate = message.Subject,
                     BodyTemplate = message.Body,
-                    RulesJson = JsonSerializer.Serialize(new { requiresApproval = message.RequiresApproval })
+                    RulesJson = JsonSerializer.Serialize(new { requiresApproval = true })
                 });
             }
         }
+
+        await db.SaveChangesAsync(ct);
+
+        existingSteps = await db.CampaignSteps
+            .Where(x => x.TenantId == agent.TenantId && x.CampaignId == campaign.Id)
+            .ToListAsync(ct);
 
         var members = await db.TargetListMembers
             .Where(x => x.TenantId == agent.TenantId && x.TargetListId == campaign.TargetListId)
