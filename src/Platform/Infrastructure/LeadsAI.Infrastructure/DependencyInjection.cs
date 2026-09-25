@@ -89,12 +89,12 @@ public static class DependencyInjection
         services.AddSingleton<IAutonomousAcquisitionTemplateRegistry, AutonomousAcquisitionTemplateRegistry>();
         services.AddScoped<IAutonomousAcquisitionBackendService, AutonomousAcquisitionBackendService>();
         services.AddScoped<IAutonomousAcquisitionRunOrchestrator, AutonomousAcquisitionRunOrchestrator>();
-        services.AddHttpClient<TenantSerpApiProspectDiscoveryProvider>(c =>
+        services.AddHttpClient<SerpApiProspectDiscoveryProvider>(c =>
         {
             c.BaseAddress = new Uri("https://serpapi.com/");
             c.Timeout = TimeSpan.FromSeconds(60);
         });
-        services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<TenantSerpApiProspectDiscoveryProvider>());
+        services.AddScoped<IProspectDiscoveryProvider>(sp => sp.GetRequiredService<SerpApiProspectDiscoveryProvider>());
         services.AddScoped<AutomationActionExecutor>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
         services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.FusionFleetPackageProvisioner>();
