@@ -280,11 +280,7 @@ public static class AutonomousAcquisitionEndpoints
             });
         });
 
-        g.MapPost("/tenants/{tenantId}/agents/{id}/runs/{runId}/retry", async (
-            Guid tenantId, Guid id, Guid runId, AppDbContext db, CancellationToken ct) =>
-        {
-            var run = await db.AutonomousAcquisitionAgentRuns.SingleOrDefaultAsync(
-                x => x.TenantId == tenantId && x.AgentId == id && x.Id == runId, ct);
+
             if (run is null) return Results.NotFound();
             if (run.Status != AutonomousAgentRunStatus.Failed)
                 return Results.BadRequest(new { error = "Only failed runs can be retried." });
@@ -314,23 +310,13 @@ public static class AutonomousAcquisitionEndpoints
                 .Take(100)
                 .ToListAsync(ct)));
 
-        g.MapPost("/tenants/{tenantId}/agents/{id}/activate", async (
-            Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
-            await SetStatus(tenantId, id, AutonomousAgentStatus.Active, db, ct));
 
-        g.MapPost("/tenants/{tenantId}/agents/{id}/pause", async (
-            Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
-            await SetStatus(tenantId, id, AutonomousAgentStatus.Paused, db, ct));
 
-        g.MapPost("/tenants/{tenantId}/agents/{id}/stop", async (
-            Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
-            await SetStatus(tenantId, id, AutonomousAgentStatus.Stopped, db, ct));
 
-        g.MapPost("/tenants/{tenantId}/agents/{id}/run", async (
-            Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
-        {
-            var agent = await db.AutonomousAcquisitionAgents
-                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+
+
+
+
             if (agent is null) return Results.NotFound();
             if (agent.Status is AutonomousAgentStatus.Stopped)
                 return Results.BadRequest(new { error = "Agent is stopped." });
@@ -388,16 +374,5 @@ public static class AutonomousAcquisitionEndpoints
         catch { return string.Empty; }
     }
 
-    private static async Task<IResult> SetStatus(
-        Guid tenantId, Guid id, AutonomousAgentStatus status, AppDbContext db, CancellationToken ct)
-    {
-        var agent = await db.AutonomousAcquisitionAgents
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
-        if (agent is null) return Results.NotFound();
 
-        agent.Status = status;
-        agent.UpdatedAtUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return Results.Ok(agent);
-    }
 }
