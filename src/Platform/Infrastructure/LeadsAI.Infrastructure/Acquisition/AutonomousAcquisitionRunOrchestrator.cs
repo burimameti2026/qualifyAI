@@ -31,8 +31,8 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             .SingleOrDefaultAsync(x => x.Id == run.AgentId && x.TenantId == run.TenantId, ct)
             ?? throw new InvalidOperationException("Agent was not found.");
 
-        if (agent.Status is AutonomousAgentStatus.Paused or AutonomousAgentStatus.Stopped)
-            throw new InvalidOperationException("Agent is not allowed to run.");
+        if (agent.Status is not AutonomousAgentStatus.Active)
+            throw new InvalidOperationException("Only active agents are allowed to run.");
 
         if (tenantContext.Current?.Id != run.TenantId)
             throw new InvalidOperationException("Autonomous acquisition run must execute inside its tenant context.");
@@ -337,37 +337,70 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
         var knownRecipients = existingRecipients.ToHashSet();
         var prepared = 0;
+        var firstTemplate = template.OutreachTemplates.OrderBy(x => x.Step).FirstOrDefault();
+
+        if (firstTemplate is null)
+        {
+            CompleteTask(task, new { prepared = 0, requiresApproval = true, next = "no outreach template configured" });
+            return false;
+        }
 
         foreach (var prospectId in members)
         {
             if (!knownRecipients.Add(prospectId)) continue;
-            var prospect = await db.Prospects.SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == prospectId, ct);
+            var prospect = await db.Prospects.SingleOrDefaultAsync(
+                x => x.TenantId == agent.TenantId && x.Id == prospectId,
+                ct);
             if (prospect is null || prospect.Status != ProspectStatus.Qualified) continue;
             if (!await backend.CanContactAsync(agent.TenantId, prospect, agent.DailyEmailLimit, ct)) continue;
 
-            db.CampaignRecipients.Add(new CampaignRecipient
+            var recipient = new CampaignRecipient
             {
                 TenantId = agent.TenantId,
                 CampaignId = campaign.Id,
                 ProspectId = prospect.Id,
-                CurrentStep = 1,
-                Status = "pending-approval",
+                CurrentStep = firstTemplate.Step,
+                Status = "awaiting-delivery",
                 NextRunAtUtc = null
+            };
+            db.CampaignRecipients.Add(recipient);
+
+            var step = existingSteps.FirstOrDefault(x => x.StepNumber == firstTemplate.Step);
+            if (step is null) continue;
+
+            var message = new OutreachMessage
+            {
+                TenantId = agent.TenantId,
+                CampaignId = campaign.Id,
+                ProspectId = prospect.Id,
+                CampaignStepId = step.Id,
+                Channel = step.Channel,
+                Subject = CampaignExecutionService.RenderTemplate(step.SubjectTemplate, prospect),
+                Body = CampaignExecutionService.RenderTemplate(step.BodyTemplate, prospect),
+                Status = OutreachStatus.Queued
+            };
+            db.OutreachMessages.Add(message);
+
+            var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
+            db.CrmTasks.Add(new CrmTask
+            {
+                TenantId = agent.TenantId,
+                Title = approvalTitle,
+                DueAtUtc = DateTime.UtcNow.AddHours(4)
             });
+
             prepared++;
         }
 
         await db.SaveChangesAsync(ct);
 
-        var requiresApproval = template.OutreachTemplates.Any(x => x.RequiresApproval);
-        if (requiresApproval)
+        CompleteTask(task, new
         {
-            CompleteTask(task, new { prepared, requiresApproval = true, next = "campaign approval" });
-            return prepared > 0;
-        }
-
-        CompleteTask(task, new { prepared, requiresApproval = false });
-        return false;
+            prepared,
+            requiresApproval = true,
+            next = "campaign approval"
+        });
+        return prepared > 0;
     }
 
     private static AutonomousAcquisitionTask StartTask(
