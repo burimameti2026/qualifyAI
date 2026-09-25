@@ -59,6 +59,26 @@ public sealed class TenantWorkerRuntime(AppDbContext db)
             .ToListAsync(ct);
     }
 
+    public Task<List<EnabledTenant>> ActiveCampaignTenantsAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+
+        return db.TenantEntitlements
+            .AsNoTracking()
+            .Where(x =>
+                x.TenantId != Guid.Empty &&
+                !string.IsNullOrWhiteSpace(x.TenantSlug) &&
+                x.TenantStatus == "active" &&
+                x.LicenseStatus == "active" &&
+                x.StartsAtUtc <= now &&
+                (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > now) &&
+                db.Campaigns.Any(c =>
+                    c.TenantId == x.TenantId &&
+                    c.Status == CampaignStatus.Running))
+            .Select(x => new EnabledTenant(x.TenantId, x.TenantSlug!))
+            .ToListAsync(ct);
+    }
+
     public static string WorkerSettingKey(string workerKey) => $"worker.enabled.{workerKey}";
 }
 
