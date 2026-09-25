@@ -565,6 +565,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
                     b.Property<string>("Error").HasMaxLength(4000).HasColumnType("nvarchar(4000)");
                     b.Property<Guid>("AgentId").HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("RunId").HasColumnType("uniqueidentifier");
                     b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("nvarchar(200)");
                     b.Property<bool>("RequiresApproval").HasColumnType("bit");
                     b.Property<string>("ResultJson").IsRequired().HasColumnType("nvarchar(max)");
@@ -575,7 +576,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.Property<string>("Type").IsRequired().HasMaxLength(64).HasColumnType("nvarchar(64)");
                     b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime2");
                     b.HasKey("Id");
-                    b.HasIndex("TenantId", "AgentId", "Sequence").IsUnique();
+                    b.HasIndex("TenantId", "AgentId", "RunId", "Sequence").IsUnique();
                     b.HasIndex("TenantId", "Status");
                     b.ToTable("AutonomousAcquisitionTasks", (string)null);
                 });
