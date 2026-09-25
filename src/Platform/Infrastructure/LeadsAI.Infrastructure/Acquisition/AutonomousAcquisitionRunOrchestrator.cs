@@ -246,13 +246,28 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
         run.Query = await backend.SelectNextQueryAsync(agent, template, ct);
 
-        var icp = new IcpProfile
+        var campaign = await db.Campaigns
+            .Include(x => x.TargetListId)
+            .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct)
+            ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
+
+        var icpId = await db.TargetLists
+            .Where(x => x.TenantId == run.TenantId && x.Id == campaign.TargetListId)
+            .Select(x => x.IcpProfileId)
+            .FirstOrDefaultAsync(ct);
+
+        var icp = icpId.HasValue
+            ? await db.IcpProfiles.SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == icpId.Value && x.Active, ct)
+            : null;
+
+        icp ??= new IcpProfile
         {
             TenantId = agent.TenantId,
-            Name = $"Agent {agent.Name} run",
+            Name = $"{campaign.Name} ICP",
             Industry = string.IsNullOrWhiteSpace(agent.Industry) ? template.Industry : agent.Industry,
             CountriesCsv = string.Join(',', countries),
             IntentKeywordsCsv = string.Join(',', template.Keywords),
+            CriteriaJson = agent.IcpJson,
             Active = true
         };
 
