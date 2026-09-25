@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IModuleDeactivationOrchestrator, ModuleDeactivationOrchestrator>();
         services.AddScoped<ITenantLifecycleOrchestrator, TenantLifecycleOrchestrator>();
         services.AddScoped<ILicenseChangeOrchestrator, LicenseChangeOrchestrator>();
+        services.AddScoped<TenantWorkerRuntime>();
         services.AddHostedService<ModuleProvisioningRetryWorker>();
         services.AddHostedService<LicenseExpirationWorker>();
         services.AddHostedService<TenantLifecycleReconciliationWorker>();
