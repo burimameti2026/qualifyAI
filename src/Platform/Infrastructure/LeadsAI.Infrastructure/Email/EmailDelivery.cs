@@ -84,6 +84,7 @@ public sealed class EmailDeliveryService(
         var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == messageId, ct);
         if (message is null) return new(false, null, "Outreach message was not found.");
         if (message.Status is OutreachStatus.Sent or OutreachStatus.Delivered or OutreachStatus.Replied) return new(true, message.ProviderMessageId);
+        if (message.Status == OutreachStatus.Sending) return new(false, null, "This outreach message is already being delivered.");
         if (message.Status == OutreachStatus.Suppressed) return new(false, null, "This outreach message was stopped by a reply, opt-out, or suppression rule.");
         if (message.Status != OutreachStatus.Queued) return new(false, null, "Only queued outreach messages can be sent.");
         var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == message.ProspectId, ct);
@@ -95,6 +96,14 @@ public sealed class EmailDeliveryService(
         if (await IsSuppressedAsync(tenantId, prospect, ct)) return new(false, null, "Recipient is suppressed or has withdrawn marketing consent.");
         var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
         if (!await db.CrmTasks.AnyAsync(x => x.TenantId == tenantId && x.Title == approvalTitle && x.Completed, ct)) return new(false, null, "Human approval is required before sending.");
+        var claimed = await db.OutreachMessages
+            .Where(x => x.TenantId == tenantId && x.Id == messageId && x.Status == OutreachStatus.Queued)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, OutreachStatus.Sending)
+                .SetProperty(x => x.UpdatedAtUtc, DateTime.UtcNow), ct);
+        if (claimed == 0)
+            return new(false, null, "Outreach message was claimed by another delivery attempt.");
+        message = await db.OutreachMessages.FirstAsync(x => x.TenantId == tenantId && x.Id == messageId, ct);
         var dailyLimit = Math.Max(1, configuration.GetValue("Email:DailySendLimit", 10));
         var startOfDay = DateTime.UtcNow.Date;
         var sentToday = await db.UsageRecords.CountAsync(x => x.TenantId == tenantId && x.Meter == "emails_sent" && x.CreatedAtUtc >= startOfDay, ct);
