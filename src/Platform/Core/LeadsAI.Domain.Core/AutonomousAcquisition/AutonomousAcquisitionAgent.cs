@@ -13,6 +13,7 @@ public enum AutonomousAgentRunStatus
 {
     Queued,
     Running,
+    WaitingApproval,
     Completed,
     Failed,
     Cancelled
