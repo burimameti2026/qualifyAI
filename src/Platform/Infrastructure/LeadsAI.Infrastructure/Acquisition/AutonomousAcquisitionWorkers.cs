@@ -41,7 +41,17 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
 
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var ids = await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentRunStatus.Queued)
+            .Where(x => x.TenantId == tenantId &&
+                        x.Status == AutonomousAgentRunStatus.Queued &&
+                        db.Campaigns.Any(campaign =>
+                            campaign.TenantId == tenantId &&
+                            campaign.Id == x.CampaignId &&
+                            campaign.Status == CampaignStatus.Running &&
+                            campaign.AgentId == x.AgentId) &&
+                        db.AutonomousAcquisitionAgents.Any(agent =>
+                            agent.TenantId == tenantId &&
+                            agent.Id == x.AgentId &&
+                            agent.Status == AutonomousAgentStatus.Active))
             .OrderBy(x => x.ScheduledAtUtc)
             .Take(10)
             .Select(x => x.Id)
