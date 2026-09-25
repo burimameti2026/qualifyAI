@@ -782,7 +782,6 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
                     b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime2");
                     b.HasKey("Id");
-                    b.HasIndex("TenantId", "AgentId");
                     b.HasIndex("TenantId", "Status", "StartsAtUtc");
                     b.ToTable("Campaigns", (string)null);
                 });
