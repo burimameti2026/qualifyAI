@@ -20,7 +20,7 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
                 await using var rootScope = scopes.CreateAsyncScope();
                 var services = rootScope.ServiceProvider;
                 var runtime = services.GetRequiredService<TenantWorkerRuntime>();
-                var tenants = await runtime.EnabledActiveTenantsAsync(TenantWorkerKeys.AutonomousAcquisitionQueue, stoppingToken);
+                var tenants = await runtime.ActiveCampaignTenantsAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
@@ -81,7 +81,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
                 await using var rootScope = scopes.CreateAsyncScope();
                 var services = rootScope.ServiceProvider;
                 var runtime = services.GetRequiredService<TenantWorkerRuntime>();
-                var tenants = await runtime.EnabledActiveTenantsAsync(TenantWorkerKeys.AutonomousAcquisitionScheduler, stoppingToken);
+                var tenants = await runtime.ActiveCampaignTenantsAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
