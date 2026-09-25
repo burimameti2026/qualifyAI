@@ -13,7 +13,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     [Migration("20260925183719_intialcreate")]
-    partial class intialcreate
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
