@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using LeadsAI.Domain;
 using LeadsAI.Application;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using LeadsAI.Application;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
 
@@ -49,7 +49,7 @@ public sealed class OutreachDeliveryWorker(
                         from message in db.OutreachMessages
                         join campaign in db.Campaigns
                             on new { message.TenantId, message.CampaignId }
-                            equals new { campaign.TenantId, campaign.Id }
+                            equals new { campaign.TenantId, CampaignId = campaign.Id }
                         where message.TenantId == tenant.Id
                               && message.Status == OutreachStatus.Queued
                               && campaign.Status == CampaignStatus.Running
