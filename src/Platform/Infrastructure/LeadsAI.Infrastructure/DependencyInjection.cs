@@ -74,6 +74,7 @@ public static class DependencyInjection
         services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
         services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
         services.AddHostedService<AutonomousAcquisitionEnrichmentWorker>();
+        services.AddHostedService<OutreachDeliveryWorker>();
         services.AddHostedService<CampaignExecutionWorker>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
