@@ -12,7 +12,7 @@ public interface IAutonomousAcquisitionBackendService
 {
  Task<string> SelectNextQueryAsync(AutonomousAcquisitionAgent agent,AutonomousAcquisitionTemplate template,CancellationToken ct=default);
  Task<AutonomousResearchResult> ResearchAsync(Guid tenantId,Guid agentId,Prospect prospect,int threshold,CancellationToken ct=default);
- Task<string> GenerateOutreachAsync(Prospect prospect,CancellationToken ct=default);
+ Task<string> GenerateOutreachAsync(Prospect prospect, AutonomousAcquisitionTemplate template, int step = 1, CancellationToken ct = default);
  Task<bool> CanContactAsync(Guid tenantId,Prospect prospect,int dailyLimit,CancellationToken ct=default);
  Task RecordReplyFeedbackAsync(Guid tenantId,Guid prospectId,string classification,int sentiment,CancellationToken ct=default);
  Task RetryFailedRunAsync(Guid runId,CancellationToken ct=default);
@@ -36,7 +36,14 @@ public sealed class AutonomousAcquisitionBackendService(AppDbContext db):IAutono
   var suppressed=await IsSuppressed(tenantId,p,ct);var ready=!string.IsNullOrWhiteSpace(p.Email)&&!p.Email.EndsWith(".example",StringComparison.OrdinalIgnoreCase)&&!suppressed;p.ContactReadiness=ready?"ready":"needs-contact";p.Priority=score>=threshold?"high":"medium";p.OutreachStatus=score>=threshold&&ready?"eligible":"not-ready";p.Status=score>=threshold&&!suppressed?ProspectStatus.Qualified:ProspectStatus.Enriched;
   await Audit(tenantId,"autonomous.research.scored",p.Id,new{agentId,score,threshold,suppressed,ready},ct);await db.SaveChangesAsync(ct);return new(score,string.Join(" | ",evidence.Take(5)),p.ContactReadiness,suppressed,score>=threshold&&!suppressed,score>=threshold&&!suppressed?"qualified":"nurture");
  }
- public Task<string> GenerateOutreachAsync(Prospect p,CancellationToken ct=default){var subject=$"Quick question about {p.CompanyName}";var body=$"Hi {p.ContactName},\n\nI noticed {p.CompanyName} works in {p.Industry}. Based on the public signals we found, {p.PainHypothesis}\n\nWould it be useful to compare how similar teams handle this today?\n\nBest regards";return Task.FromResult(subject+"\n\n"+body);}
+ public Task<string> GenerateOutreachAsync(Prospect p, AutonomousAcquisitionTemplate template, int step = 1, CancellationToken ct = default)
+ {
+  var message = template.OutreachTemplates.FirstOrDefault(x => x.Step == step) ?? template.OutreachTemplates.FirstOrDefault();
+  if (message is null) return Task.FromResult(string.Empty);
+  var subject = CampaignExecutionService.RenderTemplate(message.Subject, p);
+  var body = CampaignExecutionService.RenderTemplate(message.Body, p);
+  return Task.FromResult(subject + "\n\n" + body);
+ }
  public async Task<bool> CanContactAsync(Guid tenantId,Prospect p,int dailyLimit,CancellationToken ct=default){if(await IsSuppressed(tenantId,p,ct))return false;if(string.IsNullOrWhiteSpace(p.Email)||p.Email.EndsWith(".example",StringComparison.OrdinalIgnoreCase))return false;var sent=await db.UsageRecords.CountAsync(x=>x.TenantId==tenantId&&x.Meter=="emails_sent"&&x.CreatedAtUtc>=DateTime.UtcNow.Date,ct);return sent<Math.Max(1,dailyLimit);}
  public async Task RecordReplyFeedbackAsync(Guid tenantId,Guid prospectId,string classification,int sentiment,CancellationToken ct=default){var p=await db.Prospects.SingleOrDefaultAsync(x=>x.TenantId==tenantId&&x.Id==prospectId,ct);if(p is null)return;p.Status=classification.Equals("interested",StringComparison.OrdinalIgnoreCase)?ProspectStatus.Replied:ProspectStatus.Nurturing;p.OutreachStatus=classification;db.AutonomousAcquisitionAgentMemories.Add(new AutonomousAcquisitionAgentMemory{TenantId=tenantId,AgentId=Guid.Empty,Category="feedback",Key=$"reply:{prospectId:N}:{DateTime.UtcNow.Ticks}",Value=JsonSerializer.Serialize(new{classification,sentiment})});await Audit(tenantId,"autonomous.reply.feedback",prospectId,new{classification,sentiment},ct);await db.SaveChangesAsync(ct);}
  public async Task RetryFailedRunAsync(Guid runId,CancellationToken ct=default){var r=await db.AutonomousAcquisitionAgentRuns.SingleOrDefaultAsync(x=>x.Id==runId,ct);if(r is null||r.Status!=AutonomousAgentRunStatus.Failed)return;r.Status=AutonomousAgentRunStatus.Queued;r.Error=null;r.CompletedAtUtc=null;await Audit(r.TenantId,"autonomous.run.retry",r.Id,new{runId},ct);await db.SaveChangesAsync(ct);}

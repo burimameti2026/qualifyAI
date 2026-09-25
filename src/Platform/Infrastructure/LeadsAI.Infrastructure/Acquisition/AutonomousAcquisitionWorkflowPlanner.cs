@@ -38,7 +38,10 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
             agent.MinimumScore,
             agent.DailyDiscoveryLimit,
             Keywords = template.Keywords,
-            Signals = template.Signals
+            Signals = template.Signals,
+            ProspectType = template.ProspectType,
+            TargetDefinition = template.TargetDefinition,
+            OutreachTemplates = template.OutreachTemplates.Select(x => new { x.Step, x.Name, x.Subject, x.Body, x.DelayHours, x.RequiresApproval })
         };
 
         var now = DateTime.UtcNow;
