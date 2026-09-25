@@ -22,8 +22,19 @@ public sealed class AutonomousAcquisitionBackendService(AppDbContext db):IAutono
 {
  public async Task<string> SelectNextQueryAsync(AutonomousAcquisitionAgent agent,AutonomousAcquisitionTemplate template,CancellationToken ct=default)
  {
-  var countries=Read(agent.CountriesJson);if(countries.Count==0)countries.Add(agent.Region);
-  var variants=(template.Keywords.Length==0?new[]{agent.Industry}:template.Keywords).SelectMany(k=>countries.Select(c=>$"{k} {agent.Industry} {c}".Trim())).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+  var countries=Read(agent.CountriesJson);
+  if(countries.Count==0 && !string.IsNullOrWhiteSpace(agent.Region)) countries.Add(agent.Region);
+  var keywords=template.Keywords.Length==0
+      ? new[]{string.IsNullOrWhiteSpace(agent.Industry) ? "company" : agent.Industry}
+      : template.Keywords;
+  var variants=keywords
+      .SelectMany(k=>countries.Count==0
+          ? new[]{k.Trim()}
+          : countries.Select(country=>$"{k} {agent.Industry} {country}".Trim()))
+      .Where(x=>!string.IsNullOrWhiteSpace(x))
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToArray();
+  if(variants.Length==0) variants=new[]{"company"};
   var used=await db.AutonomousAcquisitionAgentMemories.Where(x=>x.TenantId==agent.TenantId&&x.AgentId==agent.Id&&x.Category=="query").Select(x=>x.Value).ToListAsync(ct);
   var query=variants.FirstOrDefault(v=>!used.Contains(v,StringComparer.OrdinalIgnoreCase))??variants[DateTime.UtcNow.DayOfYear%variants.Length];
   var key=$"query:{Guid.NewGuid():N}";db.AutonomousAcquisitionAgentMemories.Add(new AutonomousAcquisitionAgentMemory{TenantId=agent.TenantId,AgentId=agent.Id,Category="query",Key=key,Value=query});await Audit(agent.TenantId,"autonomous.query.selected",agent.Id,new{query},ct);await db.SaveChangesAsync(ct);return query;
