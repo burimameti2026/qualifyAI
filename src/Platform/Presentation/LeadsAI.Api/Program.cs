@@ -59,6 +59,34 @@ builder.Services.AddSwaggerGen(o =>
 builder.Services.AddQualifyAiResourceServer(builder.Configuration);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
 
+static async Task EnsureIndustryPacksAsync(AppDbContext db, CancellationToken cancellationToken = default)
+{
+    var definitions = new[]
+    {
+        ("logistics", "Logistics & 3PL", "Prospecting blueprint for logistics, transport, freight, 3PL and fulfillment companies.", "logistics"),
+        ("fleet", "Fleet & Mobility", "Prospecting blueprint for fleet operators, transport companies and mobility businesses.", "fleet"),
+        ("custom", "Custom ICP", "Flexible prospecting blueprint driven by the campaign ICP.", "custom")
+    };
+
+    var existing = await db.IndustryPacks.ToListAsync(cancellationToken);
+    foreach (var definition in definitions)
+    {
+        if (existing.Any(x => string.Equals(x.Code, definition.Item1, StringComparison.OrdinalIgnoreCase)))
+            continue;
+
+        db.IndustryPacks.Add(new IndustryPack
+        {
+            Id = Guid.NewGuid(),
+            Code = definition.Item1,
+            Name = definition.Item2,
+            Description = definition.Item3,
+            TemplateJson = System.Text.Json.JsonSerializer.Serialize(new { templateCode = definition.Item4, version = "1.0" })
+        });
+    }
+
+    await db.SaveChangesAsync(cancellationToken);
+}
+
 static async Task ResetDevelopmentDatabaseAsync(DbContext db)
 {
     if (!string.Equals(Environment.GetEnvironmentVariable("RESET_DATABASE_ON_STARTUP"), "true", StringComparison.OrdinalIgnoreCase))
@@ -139,6 +167,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
     await db.Database.MigrateAsync();
+    await EnsureIndustryPacksAsync(db);
     await db.EnsureBillingSchemaAsync();
     await ResetDevelopmentDatabaseAsync(db);
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
