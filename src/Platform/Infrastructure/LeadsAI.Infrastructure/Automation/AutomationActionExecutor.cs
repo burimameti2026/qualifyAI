@@ -13,7 +13,8 @@ public sealed class AutomationActionExecutor(
     AppDbContext db,
     ProspectDiscoveryService discovery,
     EmailDeliveryService emailDelivery,
-    IAutonomousAcquisitionBackendService acquisitionBackend)
+    IAutonomousAcquisitionBackendService acquisitionBackend,
+    IAutonomousAcquisitionTemplateRegistry templates)
 {
     public async Task<AutomationExecutionResult> ExecuteAsync(
         AutomationRule rule,
@@ -202,7 +203,8 @@ public sealed class AutomationActionExecutor(
         if (prospect is null)
             return ("skipped", "Prospect no longer exists in this tenant.");
 
-        var generated = await acquisitionBackend.GenerateOutreachAsync(prospect, ct);
+        var template = templates.Resolve(Read(action, "templateCode", "logistics"));
+        var generated = await acquisitionBackend.GenerateOutreachAsync(prospect, template, ReadInt(action, "step", 1), ct);
         return ("completed", $"Personalized outreach generated for {prospect.CompanyName}; {generated.Length} characters prepared for the campaign delivery stage.");
     }
 
@@ -220,7 +222,8 @@ public sealed class AutomationActionExecutor(
         if (!await acquisitionBackend.CanContactAsync(tenantId, prospect, dailyLimit, ct))
             return ("blocked", "Prospect is suppressed, lacks a deliverable contact, or the daily outreach limit has been reached.");
 
-        var message = await acquisitionBackend.GenerateOutreachAsync(prospect, ct);
+        var template = templates.Resolve(Read(action, "templateCode", "logistics"));
+        var message = await acquisitionBackend.GenerateOutreachAsync(prospect, template, ReadInt(action, "step", 1), ct);
         return ("prepared", $"Outreach prepared for {prospect.CompanyName}; delivery remains gated by an approved campaign message/provider.");
     }
 
