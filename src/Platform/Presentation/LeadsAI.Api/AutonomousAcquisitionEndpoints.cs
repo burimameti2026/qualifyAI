@@ -24,8 +24,6 @@ public static class AutonomousAcquisitionEndpoints
             return await next(ctx);
         });
 
-        g.MapGet("/templates", (IAutonomousAcquisitionTemplateRegistry r) => Results.Ok(r.List()));
-
         g.MapGet("/tenants/{tenantId}/campaigns", async (
             Guid tenantId, AppDbContext db, CancellationToken ct) =>
             Results.Ok(await db.Campaigns
