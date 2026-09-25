@@ -241,8 +241,9 @@ public static class AutonomousAcquisitionEndpoints
 
             if (waitingRun is not null)
             {
-                waitingRun.Status = AutonomousAgentRunStatus.Completed;
-                waitingRun.CompletedAtUtc = DateTime.UtcNow;
+                waitingRun.Status = AutonomousAgentRunStatus.Queued;
+                waitingRun.CompletedAtUtc = null;
+                waitingRun.Error = null;
                 await db.SaveChangesAsync(ct);
             }
 
