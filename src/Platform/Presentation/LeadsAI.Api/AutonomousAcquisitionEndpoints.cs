@@ -38,7 +38,19 @@ public static class AutonomousAcquisitionEndpoints
             if (string.IsNullOrWhiteSpace(input.Name))
                 return Results.BadRequest(new { error = "Campaign name is required." });
 
-            var template = templates.Resolve(input.PackageCode ?? "custom");
+            var packageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? "custom" : input.PackageCode.Trim();
+            var pack = await db.IndustryPacks
+                .AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Code == packageCode, ct);
+            if (pack is null)
+                return Results.BadRequest(new { error = $"Industry Pack '{packageCode}' is not configured." });
+
+            var installed = await db.TenantIndustryPacks
+                .AnyAsync(x => x.TenantId == tenantId && x.IndustryPackId == pack.Id && x.Enabled, ct);
+            if (!installed)
+                return Results.Conflict(new { error = $"Industry Pack '{packageCode}' is not installed for this tenant." });
+
+            var template = templates.Resolve(packageCode);
             var agent = new AutonomousAcquisitionAgent
             {
                 Id = Guid.NewGuid(),
@@ -88,7 +100,7 @@ public static class AutonomousAcquisitionEndpoints
                 TargetListId = target.Id,
                 AgentId = agent.Id,
                 PackageCode = template.Code,
-                PackageVersion = ResolvePackageVersion(template.Code),
+                PackageVersion = "1.0",
                 Objective = input.Objective ?? template.Description,
                 Name = input.Name,
                 SenderName = input.SenderName ?? string.Empty,
@@ -432,9 +444,6 @@ public static class AutonomousAcquisitionEndpoints
 
         return endpoints;
     }
-
-    private static string ResolvePackageVersion(string packageCode)
-        => WorkspacePackageCatalog.TryGet(packageCode, out var package) ? package.Version : "1.0";
 
     private static string ReadTaskPurpose(string json) => ReadTaskObjectProperty(json, "purpose");
     private static string ReadTaskNext(string json) => ReadTaskObjectProperty(json, "nextStep");
