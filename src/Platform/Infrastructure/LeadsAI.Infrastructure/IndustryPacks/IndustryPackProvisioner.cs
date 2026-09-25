@@ -52,12 +52,24 @@ public sealed class IndustryPackProvisioner(
 
     public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default)
     {
-        var pack = await db.IndustryPacks.SingleOrDefaultAsync(x => x.Id == industryPackId, ct)
+        // SQL Server uses a retrying execution strategy. The entire transaction must
+        // execute inside that strategy so a transient failure can safely retry the
+        // complete provisioning unit.
+        var pack = await db.IndustryPacks
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == industryPackId, ct)
             ?? throw new InvalidOperationException($"Industry pack '{industryPackId}' was not found.");
 
         var definition = BuildDefinition(pack);
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        return await strategy.ExecuteAsync(async () =>
+        {
+            // A retry re-enters this delegate. Clear state from a previous failed
+            // attempt so Added/Modified entities are not replayed accidentally.
+            db.ChangeTracker.Clear();
+
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var installed = await db.TenantIndustryPacks.SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.IndustryPackId == industryPackId, ct);
@@ -190,6 +202,7 @@ public sealed class IndustryPackProvisioner(
             campaign.Status.ToString(),
             "industry-pack",
             definition);
+        });
     }
 
     private async Task<AutonomousAcquisitionAgent> EnsureCampaignAgentAsync(
