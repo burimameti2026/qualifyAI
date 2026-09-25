@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace LeadsAI.Persistence.SqlServer.Migrations;
 
+[DbContext(typeof(AppDbContext))]
 [Migration("20260926011700_SeedIndustryPacks")]
 public partial class SeedIndustryPacks : Migration
 {
