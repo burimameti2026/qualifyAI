@@ -156,7 +156,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     {
         foreach (var candidate in providers)
         {
-            if (await candidate.IsConfiguredForTenantAsync(tenantId, ct))
+            if (candidate.IsConfigured)
                 return candidate;
         }
 
