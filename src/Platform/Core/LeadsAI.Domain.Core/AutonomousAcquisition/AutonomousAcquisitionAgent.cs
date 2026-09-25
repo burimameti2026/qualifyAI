@@ -43,6 +43,7 @@ public sealed class AutonomousAcquisitionTask
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid TenantId { get; set; }
     public Guid AgentId { get; set; }
+    public Guid? RunId { get; set; }
     public int Sequence { get; set; }
     public string Type { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
