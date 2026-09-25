@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
@@ -40,31 +39,24 @@ public sealed record IndustryPackProvisioningResult(
 
 public interface IIndustryPackProvisioner
 {
-    Task<IndustryPackProvisioningResult> ProvisionAsync(
-        Guid tenantId,
-        Guid industryPackId,
-        CancellationToken ct = default);
+    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default);
 }
 
 public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProvisioner
 {
     private const string Version = "industry-pack.v1";
 
-    public async Task<IndustryPackProvisioningResult> ProvisionAsync(
-        Guid tenantId,
-        Guid industryPackId,
-        CancellationToken ct = default)
+    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default)
     {
-        var pack = await db.IndustryPacks
-            .SingleOrDefaultAsync(x => x.Id == industryPackId, ct)
+        var pack = await db.IndustryPacks.SingleOrDefaultAsync(x => x.Id == industryPackId, ct)
             ?? throw new InvalidOperationException($"Industry pack '{industryPackId}' was not found.");
 
         var definition = BuildDefinition(pack);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        var installed = await db.TenantIndustryPacks
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IndustryPackId == industryPackId, ct);
+        var installed = await db.TenantIndustryPacks.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.IndustryPackId == industryPackId, ct);
 
         if (installed is null)
         {
@@ -83,20 +75,27 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
 
         var marker = $"industry-pack:{pack.Code.Trim().ToLowerInvariant()}";
 
-        var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x =>
-                x.TenantId == tenantId &&
-                x.PackageCode == marker, ct);
+        var campaign = await db.Campaigns.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.PackageCode == marker, ct);
 
-        TargetList? targetList = null;
+        if (campaign is null)
+        {
+            // Adopt an existing draft created by the old scenario provisioner instead of
+            // creating a second campaign during the migration to IndustryPack provisioning.
+            campaign = await db.Campaigns.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId &&
+                     x.PackageCode == string.Empty &&
+                     x.Name == definition.CampaignName &&
+                     x.Status == CampaignStatus.Draft, ct);
+        }
+
+        TargetList targetList;
 
         if (campaign is not null)
         {
-            targetList = await db.TargetLists
-                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.TargetListId, ct);
-
-            if (targetList is null)
-                throw new InvalidOperationException(
+            targetList = await db.TargetLists.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == campaign.TargetListId, ct)
+                ?? throw new InvalidOperationException(
                     $"Campaign '{campaign.Id}' references missing target list '{campaign.TargetListId}'.");
 
             campaign.Name = definition.CampaignName;
@@ -104,6 +103,7 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
             campaign.Goal = definition.Goal;
             campaign.SenderName = definition.SenderName;
             campaign.SenderEmail = definition.SenderEmail;
+            campaign.PackageCode = marker;
             campaign.PackageVersion = Version;
             campaign.PlanStatus = "ready";
             campaign.PlanJson = JsonSerializer.Serialize(definition);
@@ -137,7 +137,6 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
             };
 
             targetList.CampaignId = campaign.Id;
-
             db.TargetLists.Add(targetList);
             db.Campaigns.Add(campaign);
         }
@@ -182,16 +181,12 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
             definition);
     }
 
-    private async Task<IcpProfile> EnsureIcpAsync(
-        Guid tenantId,
-        IndustryPack pack,
-        CampaignReadyDefinition definition,
-        CancellationToken ct)
+    private async Task<IcpProfile> EnsureIcpAsync(Guid tenantId, IndustryPack pack, CampaignReadyDefinition definition, CancellationToken ct)
     {
         var name = $"{pack.Name} ICP";
 
-        var icp = await db.IcpProfiles
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Name == name, ct);
+        var icp = await db.IcpProfiles.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Name == name, ct);
 
         if (icp is null)
         {
@@ -223,7 +218,6 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
     private static CampaignReadyDefinition BuildDefinition(IndustryPack pack)
     {
         var config = Parse(pack.TemplateJson);
-
         var industry = First(config.Industry, pack.Name);
         var region = First(config.Region, "Europe");
         var countries = config.Countries.Count > 0 ? config.Countries : Array.Empty<string>();
@@ -235,39 +229,23 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
         var objective = First(config.Objective, $"Discover, qualify and engage high-fit {industry} prospects.");
         var goal = First(config.Goal, "book-demo");
 
-        var steps = config.Steps.Count > 0
-            ? config.Steps
-            : new[]
-            {
-                new CampaignReadyStep(
-                    1, 0, "email",
-                    "{{company}}: a better way to improve {{pain}}",
-                    "Hi {{contact}},\n\nI noticed {{company}} operates in {{industry}}. We help teams improve {{pain}} with a focused workflow.\n\nWould a short introduction be useful?"),
-                new CampaignReadyStep(
-                    2, 48, "email",
-                    "Re: {{company}} and {{pain}}",
-                    "Hi {{contact}},\n\nFollowing up on my note about {{pain}}. If this is currently a priority, I can share a concise example of how the workflow works.\n\nWorth a look?"),
-                new CampaignReadyStep(
-                    3, 120, "email",
-                    "Close the loop — {{company}}",
-                    "Hi {{contact}},\n\nI will close the loop here. If improving {{pain}} becomes a priority, I would be happy to reconnect.\n\nBest,\n{{sender}}")
-            };
+        var steps = config.Steps.Count > 0 ? config.Steps : new[]
+        {
+            new CampaignReadyStep(1, 0, "email",
+                "{{company}}: a better way to improve {{pain}}",
+                "Hi {{contact}},\n\nI noticed {{company}} operates in {{industry}}. We help teams improve {{pain}} with a focused workflow.\n\nWould a short introduction be useful?"),
+            new CampaignReadyStep(2, 48, "email",
+                "Re: {{company}} and {{pain}}",
+                "Hi {{contact}},\n\nFollowing up on my note about {{pain}}. If this is currently a priority, I can share a concise example of how the workflow works.\n\nWorth a look?"),
+            new CampaignReadyStep(3, 120, "email",
+                "Close the loop — {{company}}",
+                "Hi {{contact}},\n\nI will close the loop here. If improving {{pain}} becomes a priority, I would be happy to reconnect.\n\nBest,\n{{sender}}")
+        };
 
         return new CampaignReadyDefinition(
-            pack.Id,
-            pack.Code,
-            pack.Name,
-            industry,
-            region,
-            countries,
-            keywords,
-            Math.Clamp(config.MinimumScore, 0, 100),
-            campaignName,
-            objective,
-            goal,
-            config.SenderName,
-            config.SenderEmail,
-            steps);
+            pack.Id, pack.Code, pack.Name, industry, region, countries, keywords,
+            Math.Clamp(config.MinimumScore, 0, 100), campaignName, objective, goal,
+            config.SenderName, config.SenderEmail, steps);
     }
 
     private static PackConfig Parse(string? json)
