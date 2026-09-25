@@ -94,43 +94,7 @@ public sealed class DevelopmentSeedService(
             result.TargetListId);
     }
 
-    private async Task EnsureWorkspaceAsync(
-        Guid tenantId,
-        CancellationToken cancellationToken)
-    {
-        var existing = await db.TenantSettings
-            .AsNoTracking()
-            .AnyAsync(x => x.TenantId == tenantId && x.Key == WorkspaceSettingKey, cancellationToken);
 
-        if (existing)
-        {
-            logger.LogInformation("Development workspace already exists for tenant {TenantId}.", tenantId);
-            return;
-        }
-
-        var draft = await workspace.PrepareAsync(
-            tenantId,
-            new PrepareRealWorkspaceRequest(
-                "sales",
-                "sales-acquisition",
-                "FindLeadsAI Development Workspace"),
-            cancellationToken);
-
-        await workspace.SaveAsync(
-            tenantId,
-            new SaveRealWorkspaceRequest(
-                draft.WorkspaceId,
-                draft.Name,
-                Array.Empty<RealWorkspaceProspect>(),
-                Array.Empty<string>()),
-            cancellationToken);
-
-        logger.LogInformation(
-            "Provisioned empty development workspace {WorkspaceId} for tenant {TenantId}.",
-            draft.WorkspaceId,
-            tenantId);
-    }
-}
 
 public sealed class DevelopmentSeedHostedService(
     IServiceScopeFactory scopeFactory,
