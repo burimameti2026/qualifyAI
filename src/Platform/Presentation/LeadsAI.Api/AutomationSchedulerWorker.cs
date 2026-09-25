@@ -2,9 +2,9 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using LeadsAI.Domain;
+using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Automation;
 using LeadsAI.Persistence.SqlServer;
-
 namespace LeadsAI.Api;
 
 public sealed class AutomationSchedulerOptions
