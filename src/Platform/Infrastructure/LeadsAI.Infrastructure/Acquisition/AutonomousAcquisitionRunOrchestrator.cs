@@ -247,7 +247,6 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         run.Query = await backend.SelectNextQueryAsync(agent, template, ct);
 
         var campaign = await db.Campaigns
-            .Include(x => x.TargetListId)
             .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct)
             ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
 
