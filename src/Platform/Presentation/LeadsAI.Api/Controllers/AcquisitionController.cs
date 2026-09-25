@@ -347,11 +347,18 @@ public sealed class AcquisitionController(
                 campaign.TargetListId,
                 campaign.Name,
                 campaign.Goal,
+                campaign.Objective,
                 campaign.Status,
                 campaign.SenderName,
                 campaign.SenderEmail,
                 campaign.StartsAtUtc,
                 campaign.CreatedAtUtc,
+                campaign.UpdatedAtUtc,
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanStatus,
+                campaign.PlanJson,
+                campaign.AgentId,
                 recipients = db.CampaignRecipients.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id),
                 active = db.CampaignRecipients.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status=="active"),
                 awaitingDelivery = db.CampaignRecipients.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status=="awaiting-delivery"),
@@ -377,7 +384,82 @@ public sealed class AcquisitionController(
             .OrderBy(x => x.StepNumber)
             .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate, x.TemplateId, templateName = db.OutreachTemplates.Where(t => t.TenantId == tenantId && t.Id == x.TemplateId).Select(t => t.Name).FirstOrDefault() })
             .ToListAsync(ct);
-        return Ok(new { campaign, steps });
+
+        var targetList = await db.TargetLists.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == campaign.TargetListId)
+            .Select(x => new { x.Id, x.Name, x.Description, x.CampaignId, x.IcpProfileId, x.Dynamic })
+            .SingleOrDefaultAsync(ct);
+
+        var icpId = targetList?.IcpProfileId;
+        var icp = icpId.HasValue
+            ? await db.IcpProfiles.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Id == icpId.Value)
+                .Select(x => new { x.Id, x.Name, x.Industry, x.CountriesCsv, x.IntentKeywordsCsv, x.MinimumEmployees, x.MaximumEmployees, x.CriteriaJson, x.Active })
+                .SingleOrDefaultAsync(ct)
+            : null;
+
+        var prospects = await (
+            from member in db.TargetListMembers.AsNoTracking()
+            join prospect in db.Prospects.AsNoTracking() on member.ProspectId equals prospect.Id
+            where member.TenantId == tenantId && member.TargetListId == campaign.TargetListId && prospect.TenantId == tenantId
+            orderby prospect.PriorityScore descending, prospect.CompanyName
+            select new
+            {
+                prospect.Id,
+                prospect.CompanyName,
+                prospect.Domain,
+                prospect.ContactName,
+                prospect.Email,
+                prospect.JobTitle,
+                prospect.Industry,
+                prospect.Country,
+                prospect.Status,
+                prospect.FitScore,
+                prospect.IntentScore,
+                prospect.PriorityScore,
+                prospect.Source,
+                prospect.UpdatedAtUtc
+            }).Take(500).ToListAsync(ct);
+
+        var latestRun = await db.AutonomousAcquisitionAgentRuns.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.CampaignId == id)
+            .OrderByDescending(x => x.ScheduledAtUtc)
+            .Select(x => new
+            {
+                x.Id,
+                x.Status,
+                x.ScheduledAtUtc,
+                x.StartedAtUtc,
+                x.CompletedAtUtc,
+                x.DiscoveredCount,
+                x.QualifiedCount,
+                x.HighScoreCount,
+                x.EmailsSentCount,
+                x.Error
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var tasks = latestRun is null
+            ? new object[0]
+            : await db.AutonomousAcquisitionTasks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.RunId == latestRun.Id)
+                .OrderBy(x => x.Sequence)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Sequence,
+                    x.Type,
+                    x.Name,
+                    x.Status,
+                    x.RequiresApproval,
+                    x.StartedAtUtc,
+                    x.CompletedAtUtc,
+                    x.ResultJson,
+                    x.Error
+                })
+                .ToListAsync(ct);
+
+        return Ok(new { campaign, steps, icp, targetList, prospects, latestRun, tasks });
     }
 
     [HttpPost("campaigns/{id:guid}/pause")]
@@ -470,21 +552,6 @@ public sealed class AcquisitionController(
                         approvalRequested = db.CrmTasks.Any(task => task.TenantId==tenantId&&task.Title=="APPROVAL: Send outreach "+message.Id)
                     };
         return Ok(await query.Take(200).ToListAsync(ct));
-    }
-
-    [HttpPost("campaigns")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> CreateCampaign(CampaignInput input, CancellationToken ct)
-    {
-        if (input.Steps is null || input.Steps.Length == 0) return BadRequest(new { detail = "At least one campaign message is required." });
-        if (!await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == input.TargetListId, ct)) return BadRequest(new { detail = "The selected target list does not belong to this tenant." });
-        var campaign = new Campaign { TenantId=TenantId, TargetListId=input.TargetListId, Name=input.Name.Trim(), Goal=input.Goal.Trim(), SenderName=input.SenderName.Trim(), SenderEmail=input.SenderEmail.Trim(), StartsAtUtc=input.StartsAtUtc };
-        db.Campaigns.Add(campaign);
-        db.CampaignSteps.AddRange(input.Steps.OrderBy(x => x.StepNumber).Select(x => new CampaignStep {
-            TenantId=TenantId, CampaignId=campaign.Id, StepNumber=x.StepNumber, DelayHours=x.DelayHours, Channel=x.Channel,
-            SubjectTemplate=x.SubjectTemplate, BodyTemplate=x.BodyTemplate, TemplateId=x.TemplateId
-        }));
-        await db.SaveChangesAsync(ct); return Created($"/api/acquisition/campaigns/{campaign.Id}", campaign);
     }
 
     [HttpPost("campaigns/{id:guid}/start")]
