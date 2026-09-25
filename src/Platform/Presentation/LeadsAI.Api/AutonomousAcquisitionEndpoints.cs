@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
-using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api;
@@ -26,124 +25,6 @@ public static class AutonomousAcquisitionEndpoints
         });
 
         g.MapGet("/templates", (IAutonomousAcquisitionTemplateRegistry r) => Results.Ok(r.List()));
-
-        g.MapPost("/tenants/{tenantId}/campaigns", async (
-            Guid tenantId,
-            CreateCampaignRequest input,
-            AppDbContext db,
-            IAutonomousAcquisitionTemplateRegistry templates,
-            IAutonomousAcquisitionWorkflowPlanner planner,
-            CancellationToken ct) =>
-        {
-            if (string.IsNullOrWhiteSpace(input.Name))
-                return Results.BadRequest(new { error = "Campaign name is required." });
-
-            var packageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? "custom" : input.PackageCode.Trim();
-            var pack = await db.IndustryPacks
-                .AsNoTracking()
-                .SingleOrDefaultAsync(x => x.Code == packageCode, ct);
-            if (pack is null)
-                return Results.BadRequest(new { error = $"Industry Pack '{packageCode}' is not configured." });
-
-            var installed = await db.TenantIndustryPacks
-                .AnyAsync(x => x.TenantId == tenantId && x.IndustryPackId == pack.Id && x.Enabled, ct);
-            if (!installed)
-                return Results.Conflict(new { error = $"Industry Pack '{packageCode}' is not installed for this tenant." });
-
-            var template = templates.Resolve(packageCode);
-            var agent = new AutonomousAcquisitionAgent
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                Name = input.Name + " Agent",
-                TemplateCode = template.Code,
-                Industry = input.Industry ?? template.Industry,
-                Region = input.Region ?? template.Region,
-                CountriesJson = JsonSerializer.Serialize(input.Countries ?? Array.Empty<string>()),
-                IcpJson = JsonSerializer.Serialize(input.Icp ?? new Dictionary<string, string>()),
-                MinimumScore = input.MinimumScore > 0 ? Math.Clamp(input.MinimumScore, 0, 100) : template.MinimumScore,
-                DailyDiscoveryLimit = Math.Clamp(input.DailyDiscoveryLimit <= 0 ? 50 : input.DailyDiscoveryLimit, 1, 100),
-                DailyEmailLimit = Math.Clamp(input.DailyEmailLimit <= 0 ? 10 : input.DailyEmailLimit, 1, 1000)
-            };
-
-            templates.Apply(agent);
-
-            var icp = new IcpProfile
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                Name = input.Name + " ICP",
-                Industry = input.Industry ?? template.Industry,
-                CountriesCsv = string.Join(',', input.Countries ?? Array.Empty<string>()),
-                IntentKeywordsCsv = string.Join(',', template.Keywords),
-                CriteriaJson = JsonSerializer.Serialize(input.Icp ?? new Dictionary<string, string>()),
-                Active = true
-            };
-
-            var campaignId = Guid.NewGuid();
-
-            var target = new TargetList
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                CampaignId = campaignId,
-                Name = input.Name + " targets",
-                IcpProfileId = icp.Id,
-                Description = template.TargetDefinition,
-                Dynamic = true
-            };
-
-            var campaign = new Campaign
-            {
-                Id = campaignId,
-                TenantId = tenantId,
-                TargetListId = target.Id,
-                AgentId = agent.Id,
-                PackageCode = template.Code,
-                PackageVersion = "1.0",
-                Objective = input.Objective ?? template.Description,
-                Name = input.Name,
-                SenderName = input.SenderName ?? string.Empty,
-                SenderEmail = input.SenderEmail ?? string.Empty,
-                PlanStatus = "draft"
-            };
-
-            db.IcpProfiles.Add(icp);
-            db.TargetLists.Add(target);
-            db.AutonomousAcquisitionAgents.Add(agent);
-            db.Campaigns.Add(campaign);
-            await db.SaveChangesAsync(ct);
-
-            var tasks = await planner.EnsurePlanAsync(agent, template, ct);
-            campaign.PlanJson = JsonSerializer.Serialize(new
-            {
-                package = new { template.Code, template.Name, template.Description, template.ProspectType, template.TargetDefinition },
-                objective = campaign.Objective,
-                agent = new { agent.Id, agent.Name },
-                workflow = new
-                {
-                    name = $"{template.Name} acquisition workflow",
-                    steps = tasks.Select(t => new
-                    {
-                        sequence = t.Sequence,
-                        key = t.Type,
-                        name = t.Name,
-                        purpose = ReadTaskPurpose(t.ConfigurationJson),
-                        input = ReadTaskInput(t.ConfigurationJson),
-                        nextStep = ReadTaskNext(t.ConfigurationJson),
-                        requiresApproval = t.RequiresApproval
-                    })
-                },
-                tasks = tasks.Select(t => new { t.Id, t.Sequence, t.Type, t.Name, t.Status, t.RequiresApproval, t.ConfigurationJson, t.ResultJson }),
-                messages = template.OutreachTemplates.Select(m => new { m.Step, m.Name, m.Subject, m.Body, m.DelayHours, m.RequiresApproval })
-            });
-            campaign.PlanStatus = "ready";
-            await db.SaveChangesAsync(ct);
-
-            return Results.Created(
-                $"/api/autonomous-acquisition/tenants/{tenantId}/campaigns/{campaign.Id}",
-                new { campaign, agent, package = template, icp, tasks, target });
-        });
 
         g.MapGet("/tenants/{tenantId}/campaigns", async (
             Guid tenantId, AppDbContext db, CancellationToken ct) =>
@@ -519,18 +400,3 @@ public static class AutonomousAcquisitionEndpoints
         await db.SaveChangesAsync(ct);
         return Results.Ok(agent);
     }
-
-    public sealed record CreateCampaignRequest(
-        string Name,
-        string? PackageCode = null,
-        string? Objective = null,
-        string? Industry = null,
-        string? Region = null,
-        string[]? Countries = null,
-        int MinimumScore = 0,
-        int DailyDiscoveryLimit = 50,
-        int DailyEmailLimit = 10,
-        string? SenderName = null,
-        string? SenderEmail = null,
-        Dictionary<string, string>? Icp = null);
-}
