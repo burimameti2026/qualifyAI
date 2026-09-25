@@ -445,7 +445,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Outreach);
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.AgentId == agent.Id, ct);
+            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == run.CampaignId, ct);
 
         if (campaign is null)
         {
