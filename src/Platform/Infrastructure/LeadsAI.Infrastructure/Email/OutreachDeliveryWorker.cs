@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using LeadsAI.Application;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using LeadsAI.Application;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
 
