@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using LeadsAI.Infrastructure.IndustryPacks;
-using LeadsAI.Infrastructure.WorkspacePackages;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Domain;
 
@@ -12,13 +11,10 @@ namespace LeadsAI.Infrastructure.Demo;
 
 public sealed class DevelopmentSeedService(
     AppDbContext db,
-    RealWorkspaceService workspace,
     IIndustryPackProvisioner industryPackProvisioner,
     IConfiguration configuration,
     ILogger<DevelopmentSeedService> logger)
 {
-    private const string WorkspaceSettingKey = "real-workspace.v1";
-
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
         if (!configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
@@ -45,7 +41,6 @@ public sealed class DevelopmentSeedService(
                 entitlement.TenantStatus.Equals("active", StringComparison.OrdinalIgnoreCase) &&
                 entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
             {
-                await EnsureWorkspaceAsync(tenantId, cancellationToken);
                 await EnsureIndustryPackCampaignAsync(tenantId, cancellationToken);
                 return;
             }
