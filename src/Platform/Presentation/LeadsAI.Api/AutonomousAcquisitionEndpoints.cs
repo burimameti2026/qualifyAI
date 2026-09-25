@@ -120,8 +120,8 @@ public static class AutonomousAcquisitionEndpoints
                     x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct)
                 : null;
 
-            var tasks = agent is null
-                ? []
+             IReadOnlyList<AutonomousAcquisitionTask> tasks = agent is null
+                ? Array.Empty<AutonomousAcquisitionTask>()
                 : await db.AutonomousAcquisitionTasks
                     .Where(x => x.TenantId == tenantId && x.AgentId == agent.Id)
                     .OrderBy(x => x.Sequence)
