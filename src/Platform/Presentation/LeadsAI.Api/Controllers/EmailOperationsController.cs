@@ -294,14 +294,24 @@ public sealed class EmailOperationsController(
         return Ok(new { message.Id, message.Status, rejected = true });
     }
 
-    [HttpPost("messages/{id:guid}/approve-and-send"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
-    public async Task<IActionResult> ApproveAndSend(Guid id, CancellationToken ct)
+    [HttpPost("messages/{id:guid}/approve"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
+    public async Task<IActionResult> Approve(Guid id, CancellationToken ct)
     {
-        var task = await db.CrmTasks.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}", ct);
-        if (task is null) return BadRequest(new { detail = "Request approval before sending this message." });
-        task.Completed = true; await db.SaveChangesAsync(ct);
-        var result = await delivery.SendApprovedAsync(TenantId, id, ct);
-        return result.Success ? Ok(result) : Conflict(new { detail = result.Error });
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+        if (message.Status != OutreachStatus.Queued)
+            return Conflict(new { detail = "Only queued outreach messages can be approved." });
+
+        var task = await db.CrmTasks.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}" && !x.Completed, ct);
+
+        if (task is null)
+            return BadRequest(new { detail = "Request approval before approving this message." });
+
+        task.Completed = true;
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { message.Id, message.Status, approved = true, delivery = "queued" });
     }
 
     [HttpPost("messages/{id:guid}/retry"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
@@ -311,10 +321,28 @@ public sealed class EmailOperationsController(
         if (message is null) return NotFound();
         if (message.Status != OutreachStatus.Failed)
             return Conflict(new { detail = "Only failed outreach messages can be retried." });
+
         message.Status = OutreachStatus.Queued;
+
+        var task = await db.CrmTasks.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}", ct);
+        if (task is null)
+        {
+            db.CrmTasks.Add(new CrmTask
+            {
+                TenantId = TenantId,
+                Title = $"APPROVAL: Send outreach {id}",
+                DueAtUtc = DateTime.UtcNow.AddHours(4),
+                Completed = false
+            });
+        }
+        else
+        {
+            task.Completed = false;
+        }
+
         await db.SaveChangesAsync(ct);
-        var result = await delivery.SendApprovedAsync(TenantId, id, ct);
-        return result.Success ? Ok(result) : Conflict(new { detail = result.Error });
+        return Ok(new { message.Id, message.Status, approvalRequired = true, delivery = "queued" });
     }
 
     private async Task<OutreachMessage?> FindMessageAsync(string correlationId, string providerMessageId, CancellationToken ct)
