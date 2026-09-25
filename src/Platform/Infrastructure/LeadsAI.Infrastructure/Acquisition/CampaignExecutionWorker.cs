@@ -1,10 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using LeadsAI.Application;
-using LeadsAI.Domain;
-using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Infrastructure.Acquisition;
 
@@ -16,28 +12,20 @@ public sealed class CampaignExecutionWorker(IServiceScopeFactory scopes, ILogger
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             try
             {
-                using var rootScope = scopes.CreateScope();
-                var db = rootScope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var tenants = await db.TenantEntitlements
-                    .AsNoTracking()
-                    .Where(x =>
-                        x.TenantId != Guid.Empty &&
-                        !string.IsNullOrWhiteSpace(x.TenantSlug) &&
-                        x.TenantStatus == "active" &&
-                        x.LicenseStatus == "active" &&
-                        x.StartsAtUtc <= DateTime.UtcNow &&
-                        (!x.ExpiresAtUtc.HasValue || x.ExpiresAtUtc > DateTime.UtcNow))
-                    .Select(x => new { x.TenantId, x.TenantSlug })
-                    .ToListAsync(stoppingToken);
+                await using var rootScope = scopes.CreateAsyncScope();
+                var services = rootScope.ServiceProvider;
+                var runtime = services.GetRequiredService<TenantWorkerRuntime>();
+                var tenants = await runtime.EnabledActiveTenantsAsync(TenantWorkerKeys.AcquisitionCampaign, stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
                     if (stoppingToken.IsCancellationRequested) break;
-                    await ProcessTenantAsync(tenant.TenantId, tenant.TenantSlug, stoppingToken);
+                    await ProcessTenantAsync(services, tenant.Id, tenant.Slug, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
@@ -45,14 +33,12 @@ public sealed class CampaignExecutionWorker(IServiceScopeFactory scopes, ILogger
             {
                 log.LogError(ex, "Campaign execution worker iteration failed");
             }
-
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
     }
 
-    private async Task ProcessTenantAsync(Guid tenantId, string tenantSlug, CancellationToken ct)
+    private async Task ProcessTenantAsync(IServiceProvider rootServices, Guid tenantId, string tenantSlug, CancellationToken ct)
     {
-        using var scope = scopes.CreateScope();
+        await using var scope = rootServices.CreateAsyncScope();
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
         tenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
 
