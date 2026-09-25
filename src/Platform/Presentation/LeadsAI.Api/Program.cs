@@ -42,6 +42,7 @@ builder.Services.AddScoped<FusionFleetPackageProvisioner>();
 builder.Services.AddScoped<QualifyAiAcquisitionPackageProvisioner>();
 builder.Services.AddScoped<RealisticScenarioService>();
 builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>();
+builder.Services.AddScoped<TenantWorkerRuntime>();
 builder.Services.Configure<RevenueAutomationOptions>(builder.Configuration.GetSection("RevenueAutomation"));
 builder.Services.AddHostedService<RevenueAutomationWorker>();
 builder.Services.AddHostedService<AcquisitionCampaignWorker>();
@@ -139,15 +140,10 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    // The Business database must be fully migrated before any hosted worker can query it.
     await db.Database.MigrateAsync();
     await db.EnsureBillingSchemaAsync();
-
-    // TEMPORARY DEV RESET: set RESET_DATABASE_ON_STARTUP=true for one clean run.
     await ResetDevelopmentDatabaseAsync(db);
-
     await scope.ServiceProvider.MigratePlatformModuleDatabasesAsync();
-
 }
 
 app.Run();
