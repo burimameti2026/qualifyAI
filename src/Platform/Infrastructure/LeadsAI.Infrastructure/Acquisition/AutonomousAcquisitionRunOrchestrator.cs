@@ -210,7 +210,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
     private async Task<bool> CanContinueAsync(AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.AgentId == agent.Id, ct);
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct);
         if (campaign.Status == CampaignStatus.Paused || agent.Status == AutonomousAgentStatus.Paused)
         {
             run.Status = AutonomousAgentRunStatus.Paused;
@@ -593,7 +593,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
     private async Task<bool> HasPendingApprovalAsync(AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.AgentId == agent.Id, ct);
+        var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == run.CampaignId, ct);
         if (campaign is null) return false;
         return await db.OutreachMessages.AnyAsync(x =>
             x.TenantId == run.TenantId && x.CampaignId == campaign.Id && x.Status == OutreachStatus.Queued &&
