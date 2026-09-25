@@ -468,7 +468,22 @@ public sealed class AcquisitionController(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
         if (campaign is null) return NotFound();
-        try { campaign.Status = CampaignStatus.Paused; await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        try
+        {
+            campaign.Status = CampaignStatus.Paused;
+            if (campaign.AgentId.HasValue)
+            {
+                var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
+                    x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
+                if (agent is not null)
+                {
+                    agent.Status = AutonomousAgentStatus.Paused;
+                    agent.UpdatedAtUtc = DateTime.UtcNow;
+                }
+            }
+            await db.SaveChangesAsync(ct);
+            return Ok(new { campaign.Id, campaign.Status });
+        }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
@@ -478,7 +493,22 @@ public sealed class AcquisitionController(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
         if (campaign is null) return NotFound();
-        try { campaign.Status = CampaignStatus.Running; await db.SaveChangesAsync(ct); return Ok(new { campaign.Id, campaign.Status }); }
+        try
+        {
+            campaign.Status = CampaignStatus.Running;
+            if (campaign.AgentId.HasValue)
+            {
+                var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
+                    x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
+                if (agent is not null)
+                {
+                    agent.Status = AutonomousAgentStatus.Active;
+                    agent.UpdatedAtUtc = DateTime.UtcNow;
+                }
+            }
+            await db.SaveChangesAsync(ct);
+            return Ok(new { campaign.Id, campaign.Status });
+        }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
@@ -558,20 +588,48 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Start(Guid id, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId==TenantId&&x.Id==id, ct);
-        if(campaign is null) return NotFound();
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+
         campaign.Start();
-        var prospectIds = await db.TargetListMembers.Where(x => x.TenantId==TenantId&&x.TargetListId==campaign.TargetListId).Select(x => x.ProspectId).ToListAsync(ct);
-        var firstStep = await db.CampaignSteps.Where(x => x.TenantId==TenantId&&x.CampaignId==id&&x.StepNumber==1).FirstOrDefaultAsync(ct);
-        if (firstStep is null) return BadRequest(new { detail = "Campaign must contain Message 1." });
-        var firstRules = new CampaignStepRules();
-        var prospects = await db.Prospects.Where(x => x.TenantId==TenantId).ToListAsync(ct);
-        prospectIds = prospects.Where(x => prospectIds.Contains(x.Id) && Matches(x, firstRules)).Select(x => x.Id).ToList();
-        var existing = await db.CampaignRecipients.Where(x => x.TenantId==TenantId&&x.CampaignId==id).Select(x => x.ProspectId).ToListAsync(ct);
-        db.CampaignRecipients.AddRange(prospectIds.Except(existing).Select(x => new CampaignRecipient { TenantId=TenantId, CampaignId=id, ProspectId=x, NextRunAtUtc=campaign.StartsAtUtc??DateTime.UtcNow }));
+
+        if (campaign.AgentId.HasValue)
+        {
+            var agent = await db.AutonomousAcquisitionAgents
+                .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
+            if (agent is not null)
+            {
+                agent.Status = AutonomousAgentStatus.Active;
+                agent.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
-        var queued = await executor.QueueDueMessagesAsync(TenantId, ct);
-        return Ok(new { campaign.Id, campaign.Status, recipients = prospectIds.Count, queued });
+        return Ok(new { campaign.Id, campaign.Status, execution = "campaign-runtime" });
+    }
+
+    [HttpPost("campaigns/{id:guid}/stop")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Stop(Guid id, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+
+        campaign.Status = CampaignStatus.Stopped;
+
+        if (campaign.AgentId.HasValue)
+        {
+            var agent = await db.AutonomousAcquisitionAgents
+                .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
+            if (agent is not null)
+            {
+                agent.Status = AutonomousAgentStatus.Stopped;
+                agent.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { campaign.Id, campaign.Status });
     }
 
     [HttpPost("messages/{id:guid}/delivered")]
