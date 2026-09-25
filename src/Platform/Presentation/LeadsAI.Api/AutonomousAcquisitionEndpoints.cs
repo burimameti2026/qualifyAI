@@ -150,10 +150,18 @@ public static class AutonomousAcquisitionEndpoints
                     x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct)
                 : null;
 
-             IReadOnlyList<AutonomousAcquisitionTask> tasks = agent is null
+            var latestRun = agent is null
+                ? null
+                : await db.AutonomousAcquisitionAgentRuns
+                    .Where(x => x.TenantId == tenantId && x.AgentId == agent.Id && x.CampaignId == campaign.Id)
+                    .OrderByDescending(x => x.ScheduledAtUtc)
+                    .FirstOrDefaultAsync(ct);
+
+            IReadOnlyList<AutonomousAcquisitionTask> tasks = agent is null
                 ? Array.Empty<AutonomousAcquisitionTask>()
                 : await db.AutonomousAcquisitionTasks
-                    .Where(x => x.TenantId == tenantId && x.AgentId == agent.Id)
+                    .Where(x => x.TenantId == tenantId && x.AgentId == agent.Id &&
+                                (latestRun != null ? x.RunId == latestRun.Id : x.RunId == null))
                     .OrderBy(x => x.Sequence)
                     .ToListAsync(ct);
 
