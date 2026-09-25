@@ -5,6 +5,7 @@ using LeadsAI.BuildingBlocks.Application.Behaviors;
 using LeadsAI.BuildingBlocks.Application.Security;
 using LeadsAI.BuildingBlocks.Security;
 using LeadsAI.BuildingBlocks.Security.Access;
+using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Demo;
