@@ -400,3 +400,4 @@ public static class AutonomousAcquisitionEndpoints
         await db.SaveChangesAsync(ct);
         return Results.Ok(agent);
     }
+}
