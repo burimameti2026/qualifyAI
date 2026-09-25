@@ -366,7 +366,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 CampaignId = campaign.Id,
                 ProspectId = prospect.Id,
                 CurrentStep = firstTemplate.Step,
-                Status = "awaiting-delivery",
+                Status = "pending-approval",
                 NextRunAtUtc = null
             };
             db.CampaignRecipients.Add(recipient);
