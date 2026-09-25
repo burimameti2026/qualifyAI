@@ -86,7 +86,7 @@ public sealed class AcquisitionController(
             var request = input??new DiscoveryRequest();
             var result = await discovery.DiscoverAsync(TenantId, id, new DiscoveryRunOptions(
                 request.Source, request.Region, request.MaximumResults, request.MinimumScore,
-                request.TargetListName, request.CreateTargetList), ct);
+                request.TargetListName, request.CreateTargetList, request.CountriesCsv), ct);
             return Ok(result);
         }
         catch(InvalidOperationException exception)
@@ -602,7 +602,8 @@ public sealed record DiscoveryRequest(
     int MaximumResults = 50,
     int MinimumScore = 70,
     string? TargetListName = null,
-    bool CreateTargetList = true);
+    bool CreateTargetList = true,
+    string? CountriesCsv = null);
 public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
 public sealed record ProspectImportRow(
     string CompanyName,
