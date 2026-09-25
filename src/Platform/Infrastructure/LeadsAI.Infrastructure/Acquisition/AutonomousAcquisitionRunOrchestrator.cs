@@ -27,6 +27,19 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         if (run.Status is not (AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.WaitingApproval))
             return;
 
+        var campaign = await db.Campaigns
+            .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.AgentId == run.AgentId, ct)
+            ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
+
+        if (campaign.Status is not CampaignStatus.Running)
+        {
+            run.Status = campaign.Status == CampaignStatus.Paused
+                ? AutonomousAgentRunStatus.Paused
+                : AutonomousAgentRunStatus.Cancelled;
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
         var agent = await db.AutonomousAcquisitionAgents
             .SingleOrDefaultAsync(x => x.Id == run.AgentId && x.TenantId == run.TenantId, ct)
             ?? throw new InvalidOperationException("Agent was not found.");
@@ -49,18 +62,18 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             var now = DateTime.UtcNow;
 
             var awaitingApproval = false;
-            if (!IsCompleted(tasks, AutonomousAgentTaskTypes.Discover))
-                await ExecuteDiscoveryAsync(run, agent, template, tasks, now, ct);
-            if (!IsCompleted(tasks, AutonomousAgentTaskTypes.Qualify))
-                await ExecuteQualificationAsync(run, agent, tasks, ct);
-            if (!IsCompleted(tasks, AutonomousAgentTaskTypes.Enrich))
-                await ExecuteEnrichmentAsync(run, agent, tasks, ct);
-            if (!IsCompleted(tasks, AutonomousAgentTaskTypes.BuildTargetList))
-                await ExecuteTargetListAsync(run, agent, tasks, ct);
-            if (!IsCompleted(tasks, AutonomousAgentTaskTypes.Outreach))
-                awaitingApproval = await PrepareOutreachAsync(run, agent, template, tasks, ct);
-            else
-                awaitingApproval = await HasPendingApprovalAsync(run, agent, ct);
+            foreach (var task in tasks.OrderBy(x => x.Sequence))
+            {
+                if (task.Status == AutonomousAcquisitionTaskStatus.Completed)
+                    continue;
+
+                if (!await CanContinueAsync(run, agent, ct))
+                    return;
+
+                awaitingApproval = await ExecuteTaskAsync(task, run, agent, template, tasks, now, ct);
+                if (awaitingApproval)
+                    break;
+            }
 
             agent.LastRunAtUtc = now;
             agent.UpdatedAtUtc = now;
@@ -83,6 +96,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             var runningTask = await db.AutonomousAcquisitionTasks
                 .FirstOrDefaultAsync(x => x.TenantId == run.TenantId &&
                                            x.AgentId == run.AgentId &&
+                                           x.RunId == run.Id &&
                                            x.Status == AutonomousAcquisitionTaskStatus.Running,
                     CancellationToken.None);
 
@@ -102,6 +116,71 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private async Task<bool> ExecuteTaskAsync(
+        AutonomousAcquisitionTask task,
+        AutonomousAcquisitionAgentRun run,
+        AutonomousAcquisitionAgent agent,
+        AutonomousAcquisitionTemplate template,
+        IReadOnlyList<AutonomousAcquisitionTask> tasks,
+        DateTime now,
+        CancellationToken ct)
+        => task.Type switch
+        {
+            AutonomousAgentTaskTypes.Discover => await ExecuteDiscoveryAndContinueAsync(task, run, agent, template, tasks, now, ct),
+            AutonomousAgentTaskTypes.Qualify => await ExecuteQualificationAndContinueAsync(task, run, agent, tasks, ct),
+            AutonomousAgentTaskTypes.Enrich => await ExecuteEnrichmentAndContinueAsync(task, run, agent, tasks, ct),
+            AutonomousAgentTaskTypes.BuildTargetList => await ExecuteTargetListAndContinueAsync(task, run, agent, tasks, ct),
+            AutonomousAgentTaskTypes.Outreach => await PrepareOutreachAsync(run, agent, template, tasks, ct),
+            _ => throw new InvalidOperationException($"No executor is registered for acquisition task '{task.Type}'.")
+        };
+
+    private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
+    {
+        var agent = await db.AutonomousAcquisitionAgents.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.AgentId, ct);
+        await ExecuteDiscoveryAsync(run, agent, templateAgentTemplate, tasks, now, ct);
+        return false;
+    }
+
+    private async Task<bool> ExecuteQualificationAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
+    {
+        await ExecuteQualificationAsync(run, agent, tasks, ct);
+        return false;
+    }
+
+    private async Task<bool> ExecuteEnrichmentAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
+    {
+        await ExecuteEnrichmentAsync(run, agent, tasks, ct);
+        return false;
+    }
+
+    private async Task<bool> ExecuteTargetListAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
+    {
+        await ExecuteTargetListAsync(run, agent, tasks, ct);
+        return false;
+    }
+
+    private async Task<bool> CanContinueAsync(AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.AgentId == agent.Id, ct);
+        if (campaign.Status == CampaignStatus.Paused || agent.Status == AutonomousAgentStatus.Paused)
+        {
+            run.Status = AutonomousAgentRunStatus.Paused;
+            run.CompletedAtUtc = null;
+            await db.SaveChangesAsync(ct);
+            return false;
+        }
+
+        if (campaign.Status is CampaignStatus.Stopped or CampaignStatus.Completed || agent.Status is AutonomousAgentStatus.Stopped)
+        {
+            run.Status = AutonomousAgentRunStatus.Cancelled;
+            run.CompletedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return false;
+        }
+
+        return campaign.Status == CampaignStatus.Running && agent.Status == AutonomousAgentStatus.Active;
     }
 
     private async Task ExecuteDiscoveryAsync(
