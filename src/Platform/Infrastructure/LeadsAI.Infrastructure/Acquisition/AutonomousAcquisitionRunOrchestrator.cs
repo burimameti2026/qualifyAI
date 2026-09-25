@@ -185,7 +185,6 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
     private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
     {
-        var agent = await db.AutonomousAcquisitionAgents.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.AgentId, ct);
         await ExecuteDiscoveryAsync(run, agent, templateAgentTemplate, tasks, now, ct);
         return false;
     }
