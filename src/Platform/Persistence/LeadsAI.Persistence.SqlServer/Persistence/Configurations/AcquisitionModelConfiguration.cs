@@ -51,7 +51,15 @@ internal static class AcquisitionModelConfiguration
             b.HasIndex(x => new { x.TenantId, x.CampaignId, x.Name });
         });
         builder.Entity<TargetListMember>(b => b.HasIndex(x => new { x.TenantId, x.TargetListId, x.ProspectId }).IsUnique());
-        builder.Entity<Campaign>(b => { b.Property(x => x.PackageVersion).HasMaxLength(32).IsRequired(); b.HasIndex(x => new { x.TenantId, x.Status, x.StartsAtUtc }); });
+        builder.Entity<Campaign>(b =>
+{
+    b.Property(x => x.PackageCode).HasMaxLength(128).IsRequired();
+    b.Property(x => x.PackageVersion).HasMaxLength(32).IsRequired();
+    b.Property(x => x.Objective).HasMaxLength(2000).IsRequired();
+    b.Property(x => x.PlanJson).IsRequired();
+    b.Property(x => x.PlanStatus).HasMaxLength(32).IsRequired();
+    b.HasIndex(x => new { x.TenantId, x.Status, x.StartsAtUtc });
+});
         builder.Entity<OutreachTemplate>(b =>
         {
             b.Property(x => x.Name).HasMaxLength(200);
