@@ -99,7 +99,11 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
             ?? throw new InvalidOperationException("Tenant context is not set.");
 
         var agents = await db.AutonomousAcquisitionAgents
-            .Where(x => x.TenantId == tenantId && x.Status == AutonomousAgentStatus.Active)
+            .Where(x => x.TenantId == tenantId &&
+                        x.Status == AutonomousAgentStatus.Active &&
+                        db.Campaigns.Any(c => c.TenantId == tenantId &&
+                                               c.AgentId == x.Id &&
+                                               c.Status == CampaignStatus.Running))
             .ToListAsync(ct);
 
         if (agents.Count == 0) return;
