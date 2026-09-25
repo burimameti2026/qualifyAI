@@ -36,5 +36,24 @@ public sealed class AutonomousAcquisitionTemplateRegistry : IAutonomousAcquisiti
  };
  public IReadOnlyList<AutonomousAcquisitionTemplate> List()=>Templates;
  public AutonomousAcquisitionTemplate Resolve(string code)=>Templates.FirstOrDefault(x=>string.Equals(x.Code,code,StringComparison.OrdinalIgnoreCase))??Templates[^1];
- public AutonomousAcquisitionTemplate Apply(AutonomousAcquisitionAgent agent){var t=Resolve(agent.TemplateCode);if(string.IsNullOrWhiteSpace(agent.Industry))agent.Industry=t.Industry;if(string.IsNullOrWhiteSpace(agent.Region))agent.Region=t.Region;if(agent.MinimumScore<=0)agent.MinimumScore=t.MinimumScore;return t;}
+ public AutonomousAcquisitionTemplate Apply(AutonomousAcquisitionAgent agent)
+ {
+  var t = Resolve(agent.TemplateCode);
+  if (!string.IsNullOrWhiteSpace(agent.IcpJson))
+  {
+   try
+   {
+    var configured = System.Text.Json.JsonSerializer.Deserialize<AutonomousAcquisitionTemplate>(
+     agent.IcpJson,
+     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    if (configured is not null && !string.IsNullOrWhiteSpace(configured.Industry))
+     t = configured;
+   }
+   catch (System.Text.Json.JsonException) { }
+  }
+  if (string.IsNullOrWhiteSpace(agent.Industry)) agent.Industry=t.Industry;
+  if (string.IsNullOrWhiteSpace(agent.Region)) agent.Region=t.Region;
+  if (agent.MinimumScore<=0) agent.MinimumScore=t.MinimumScore;
+  return t;
+ }
 }
