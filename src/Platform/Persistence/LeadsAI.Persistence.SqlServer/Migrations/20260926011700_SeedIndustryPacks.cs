@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace LeadsAI.Persistence.SqlServer.Migrations;
 
+[Migration("20260926011700_SeedIndustryPacks")]
 public partial class SeedIndustryPacks : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
