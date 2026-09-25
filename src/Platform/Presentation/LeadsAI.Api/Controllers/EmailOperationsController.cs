@@ -19,7 +19,6 @@ namespace LeadsAI.Api.Controllers;
 public sealed class EmailOperationsController(
     AppDbContext db,
     ITenantContext tenant,
-    EmailDeliveryService delivery,
     BrevoEmailProvider brevo,
     ProspectReplyProcessingService replyProcessor,
     IEnumerable<IEmailDeliveryProvider> emailProviders,
