@@ -21,7 +21,7 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
         CancellationToken ct = default)
     {
         var existing = await db.AutonomousAcquisitionTasks
-            .Where(x => x.TenantId == agent.TenantId && x.AgentId == agent.Id)
+            .Where(x => x.TenantId == agent.TenantId && x.AgentId == agent.Id && x.RunId == null)
             .OrderBy(x => x.Sequence)
             .ToListAsync(ct);
 
