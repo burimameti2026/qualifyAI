@@ -28,7 +28,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             return;
 
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.AgentId == run.AgentId, ct)
+            .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct)
             ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
 
         if (campaign.Status is not CampaignStatus.Running)
@@ -296,7 +296,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 Country = string.IsNullOrWhiteSpace(candidate.Country) ? country : candidate.Country,
                 Source = provider.Name,
                 SourceUrl = candidate.SourceUrl,
-                DatasetOrigin = "autonomous-agent",
+                DatasetOrigin = $"autonomous-agent:{run.CampaignId:N}",
                 VerificationStatus = "public-source",
                 ContactReadiness = "company-only",
                 SizeBand = "unknown",
@@ -336,7 +336,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Qualify);
         var since = run.StartedAtUtc ?? DateTime.UtcNow;
         var prospects = await db.Prospects
-            .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since)
+            .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since && x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}")
             .OrderByDescending(x => x.CreatedAtUtc)
             .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
             .ToListAsync(ct);
