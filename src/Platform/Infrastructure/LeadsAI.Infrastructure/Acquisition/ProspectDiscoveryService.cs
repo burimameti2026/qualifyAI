@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
 
@@ -47,21 +48,202 @@ public sealed record ProspectDiscoveryResult(
 
 public interface IProspectDiscoveryProvider
 {
-    string Name
-    {
-        get;
-    }
-    bool IsConfigured
-    {
-        get;
-    }
-    Task<bool> IsConfiguredForTenantAsync(Guid? tenantId, CancellationToken ct = default);
-    Task<DiscoveryVerificationResult> VerifyAsync(Guid? tenantId = null, CancellationToken ct = default);
-    string Description
-    {
-        get;
-    }
+    string Name { get; }
+    bool IsConfigured { get; }
+    string Description { get; }
     Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(IcpProfile icp, DiscoveryRunOptions options, CancellationToken ct = default);
+    Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Finds publicly indexed company websites through the single platform SerpAPI account.
+/// The API key and quota are platform-wide; tenant data only determines the ICP/search.
+/// </summary>
+public sealed class SerpApiProspectDiscoveryProvider(
+    HttpClient http,
+    IConfiguration configuration,
+    IMemoryCache cache)
+    : IProspectDiscoveryProvider
+{
+    private const string ApiKeyPath = "ProspectDiscovery:SerpApi:ApiKey";
+    private const string MonthlyLimitPath = "ProspectDiscovery:SerpApi:MonthlySafetyLimit";
+
+    public string Name => "serpapi";
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(configuration[ApiKeyPath]);
+    public string Description => "Public company website discovery through SerpAPI.";
+
+    private string VerificationCacheKey => $"serpapi-verification:{configuration[ApiKeyPath] ?? string.Empty}";
+
+    public DiscoveryVerificationResult? VerificationStatus() =>
+        cache.TryGetValue(VerificationCacheKey, out DiscoveryVerificationResult? result) ? result : null;
+
+    public async Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default)
+    {
+        var apiKey = configuration[ApiKeyPath];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return new DiscoveryVerificationResult(false, "SerpAPI API key is not configured.");
+
+        try
+        {
+            var account = await GetAccountUsageAsync(apiKey, ct);
+            var result = new DiscoveryVerificationResult(true, null, account.PlanName, account.PlanSearchesLeft, account.ThisMonthUsage);
+            cache.Set(VerificationCacheKey, result, TimeSpan.FromHours(6));
+            return result;
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            var result = new DiscoveryVerificationResult(false, "SerpAPI verification timed out.");
+            cache.Set(VerificationCacheKey, result, TimeSpan.FromMinutes(15));
+            return result;
+        }
+        catch (HttpRequestException ex)
+        {
+            var result = new DiscoveryVerificationResult(false, $"SerpAPI could not be reached: {ex.Message}");
+            cache.Set(VerificationCacheKey, result, TimeSpan.FromMinutes(15));
+            return result;
+        }
+        catch (InvalidOperationException ex)
+        {
+            var result = new DiscoveryVerificationResult(false, ex.Message);
+            cache.Set(VerificationCacheKey, result, TimeSpan.FromMinutes(15));
+            return result;
+        }
+    }
+
+    public async Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(
+        IcpProfile icp,
+        DiscoveryRunOptions options,
+        CancellationToken ct = default)
+    {
+        var apiKey = configuration[ApiKeyPath];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("SerpAPI is not configured.");
+
+        var account = await GetAccountUsageAsync(apiKey, ct);
+        var safetyLimit = configuration.GetValue<int?>(MonthlyLimitPath) ?? 200;
+        var effectiveLimit = Math.Min(safetyLimit, account.SearchesPerMonth);
+
+        if (account.ThisMonthUsage >= effectiveLimit)
+            throw new InvalidOperationException(
+                $"SERP monthly safety limit reached. Used: {account.ThisMonthUsage}, Application limit: {effectiveLimit}, Provider limit: {account.SearchesPerMonth}. Prospect discovery has been stopped.");
+
+        if (account.PlanSearchesLeft <= 0)
+            throw new InvalidOperationException("SerpAPI reports no searches remaining. Prospect discovery has been stopped.");
+
+        var query = BuildQuery(icp, options);
+        var maximumResults = Math.Clamp(options.MaximumResults, 1, 100);
+        var uri = $"search.json?engine=google&q={Uri.EscapeDataString(query)}&num={maximumResults}&api_key={Uri.EscapeDataString(apiKey)}";
+
+        try
+        {
+            using var response = await http.GetAsync(uri, ct);
+            var content = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"SerpAPI search failed ({(int)response.StatusCode}).");
+
+            using var document = JsonDocument.Parse(content);
+            if (!document.RootElement.TryGetProperty("organic_results", out var organic) ||
+                organic.ValueKind != JsonValueKind.Array)
+                return Array.Empty<DiscoveryCandidate>();
+
+            return organic.EnumerateArray()
+                .Select(result =>
+                {
+                    var url = Read(result, "link");
+                    var domain = DomainFromUrl(url);
+                    var title = Read(result, "title");
+                    var snippet = Read(result, "snippet");
+                    return new DiscoveryCandidate(
+                        CompanyName(title, domain),
+                        domain,
+                        url,
+                        $"{title}. {snippet}".Trim(),
+                        icp.Industry,
+                        PrimaryCountry(icp.CountriesCsv));
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Domain) && !IsNonCompanyDomain(x.Domain))
+                .GroupBy(x => x.Domain, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.First())
+                .Take(maximumResults)
+                .ToList();
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new InvalidOperationException("SerpAPI search timed out. Please try again.");
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new InvalidOperationException($"SerpAPI could not be reached: {ex.Message}", ex);
+        }
+    }
+
+    private async Task<SerpApiAccountUsage> GetAccountUsageAsync(string apiKey, CancellationToken ct)
+    {
+        using var response = await http.GetAsync($"account.json?api_key={Uri.EscapeDataString(apiKey)}", ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException("Unable to verify SerpAPI quota. Search was blocked for safety.");
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        return new SerpApiAccountUsage
+        {
+            PlanName = GetString(root, "plan_name"),
+            SearchesPerMonth = GetInt(root, "searches_per_month"),
+            PlanSearchesLeft = GetInt(root, "plan_searches_left"),
+            ThisMonthUsage = GetInt(root, "this_month_usage"),
+            ThisHourSearches = GetInt(root, "this_hour_searches"),
+            AccountRateLimitPerHour = GetInt(root, "account_rate_limit_per_hour")
+        };
+    }
+
+    private static int GetInt(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var value) && value.TryGetInt32(out var result) ? result : 0;
+
+    private static string GetString(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
+
+    private static string BuildQuery(IcpProfile icp, DiscoveryRunOptions options) =>
+        string.Join(" ", new[] { icp.Industry, options.Region, icp.CountriesCsv, icp.IntentKeywordsCsv }
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+
+    private static string Read(JsonElement item, string property) =>
+        item.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
+
+    private static string DomainFromUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return string.Empty;
+        return uri.Host.Trim().ToLowerInvariant().TrimStart('.').Replace("www.", string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsNonCompanyDomain(string domain) =>
+        domain.EndsWith("google.com", StringComparison.OrdinalIgnoreCase) ||
+        domain.EndsWith("linkedin.com", StringComparison.OrdinalIgnoreCase) ||
+        domain.EndsWith("facebook.com", StringComparison.OrdinalIgnoreCase) ||
+        domain.EndsWith("instagram.com", StringComparison.OrdinalIgnoreCase) ||
+        domain.EndsWith("wikipedia.org", StringComparison.OrdinalIgnoreCase);
+
+    private static string CompanyName(string title, string domain)
+    {
+        var cleaned = Regex.Replace(title, @"\s+[|–—-]\s+.*$", string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? domain.Split('.')[0] : cleaned;
+    }
+
+    private static string PrimaryCountry(string countriesCsv) =>
+        countriesCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
+}
+
+public sealed class SerpApiAccountUsage
+{
+    public string PlanName { get; init; } = string.Empty;
+    public int SearchesPerMonth { get; init; }
+    public int PlanSearchesLeft { get; init; }
+    public int ThisMonthUsage { get; init; }
+    public int ThisHourSearches { get; init; }
+    public int AccountRateLimitPerHour { get; init; }
 }
 
 public sealed class SerpApiAccountUsage
@@ -103,7 +285,6 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
 
     public async Task<DiscoveryVerificationResult> VerifyProviderAsync(
         string name,
-        Guid tenantId,
         CancellationToken ct = default)
     {
         var provider = providers.FirstOrDefault(x =>
@@ -111,7 +292,7 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
             ?? throw new InvalidOperationException(
                 $"Discovery provider '{name}' is not available.");
 
-        return await provider.VerifyAsync(tenantId, ct);
+        return await provider.VerifyAsync(ct);
     }
     public async Task<ProspectDiscoveryResult> DiscoverAsync(Guid tenantId, Guid icpId, DiscoveryRunOptions options, CancellationToken ct = default)
     {
