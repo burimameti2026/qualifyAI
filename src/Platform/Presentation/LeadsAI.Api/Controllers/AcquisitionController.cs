@@ -6,7 +6,6 @@ using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure.Acquisition;
-using LeadsAI.Api.Importing;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -62,166 +61,6 @@ public sealed class AcquisitionController(
                 detail = exception.Message
             });
         }
-    }
-
-    [HttpGet("prospects")]
-    [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public Task<List<Prospect>> Prospects([FromQuery] int minimumScore = 0, CancellationToken ct = default) => db.Prospects
-        .Where(x => x.TenantId==TenantId&&x.FitScore*55+x.IntentScore*45>=minimumScore*100)
-        .OrderByDescending(x => x.FitScore*55+x.IntentScore*45).ToListAsync(ct);
-
-    [HttpPost("prospects")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> AddProspect(Prospect input, CancellationToken ct)
-    {
-        input.Id=Guid.NewGuid(); input.TenantId=TenantId; input.CreatedAtUtc=input.UpdatedAtUtc=DateTime.UtcNow;
-        input.Evaluate(input.FitScore, input.IntentScore);
-        db.Prospects.Add(input); await db.SaveChangesAsync(ct);
-        return Created($"/api/acquisition/prospects/{input.Id}", input);
-    }
-
-    [HttpPost("prospects/import")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    [RequestSizeLimit(15_000_000)]
-    public async Task<IActionResult> ImportProspects(ProspectImportRequest input, CancellationToken ct)
-    {
-        if(input.Prospects is null||input.Prospects.Length is <1 or >10_000)
-            return BadRequest(new { code = "invalid_batch_size", detail = "Import between 1 and 10,000 companies per batch." });
-        if(string.IsNullOrWhiteSpace(input.Source)||!input.ComplianceConfirmed)
-            return BadRequest(new { code = "source_confirmation_required", detail = "Record the licensed/public source and confirm that this company data may be processed." });
-
-        var tenantId = TenantId;
-        var existing = await db.Prospects.Where(x => x.TenantId==tenantId).ToListAsync(ct);
-        var byDomain = existing.Where(x => NormalizeDomain(x.Domain).Length>0)
-            .GroupBy(x => NormalizeDomain(x.Domain), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
-        var byEmail = existing.Where(x => NormalizeEmail(x.Email).Length>0)
-            .GroupBy(x => NormalizeEmail(x.Email), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
-        var included = new List<Prospect>(input.Prospects.Length);
-        var created = new List<Prospect>(input.Prospects.Length);
-        var includedIds = new HashSet<Guid>();
-        var rejected = 0;
-        var duplicates = 0;
-        var updated = 0;
-        var now = DateTime.UtcNow;
-
-        foreach(var row in input.Prospects)
-        {
-            var domain = NormalizeDomain(row.Domain);
-            var email = NormalizeEmail(row.Email);
-            if(string.IsNullOrWhiteSpace(row.CompanyName)||domain.Length==0)
-            {
-                rejected++;
-                continue;
-            }
-            var hasDomain = byDomain.TryGetValue(domain, out var existingProspect);
-            if(!hasDomain&&email.Length>0)
-                byEmail.TryGetValue(email, out existingProspect);
-
-            if(existingProspect is not null)
-            {
-                if(!includedIds.Add(existingProspect.Id))
-                {
-                    duplicates++;
-                    continue;
-                }
-                MergeImportedProspect(existingProspect, row, domain, email, input.Source, now);
-                included.Add(existingProspect);
-                updated++;
-                continue;
-            }
-
-            var prospect = new Prospect
-            {
-                TenantId=tenantId,
-                CompanyName=row.CompanyName.Trim(),
-                Domain=domain,
-                ContactName=row.ContactName?.Trim()??string.Empty,
-                Email=email,
-                JobTitle=row.JobTitle?.Trim()??string.Empty,
-                Industry=row.Industry?.Trim()??string.Empty,
-                Country=row.Country?.Trim()??string.Empty,
-                Source=string.IsNullOrWhiteSpace(row.Source) ? input.Source.Trim() : row.Source.Trim(),
-                Priority=row.Priority?.Trim()??string.Empty,
-                ContactReadiness=row.ContactReadiness?.Trim()??string.Empty,
-                SuggestedBuyer=row.SuggestedBuyer?.Trim()??string.Empty,
-                SizeBand=row.SizeBand?.Trim()??string.Empty,
-                PainHypothesis=row.PainHypothesis?.Trim()??string.Empty,
-                Offer=row.Offer?.Trim()??string.Empty,
-                SourceUrl=row.SourceUrl?.Trim()??string.Empty,
-                VerificationStatus=row.VerificationStatus?.Trim()??string.Empty,
-                OutreachStatus=row.OutreachStatus?.Trim()??string.Empty,
-                DatasetOrigin=row.DatasetOrigin?.Trim()??string.Empty,
-                CreatedAtUtc=now,
-                UpdatedAtUtc=now
-            };
-            prospect.Evaluate(row.FitScore, row.IntentScore);
-            included.Add(prospect);
-            created.Add(prospect);
-            includedIds.Add(prospect.Id);
-            byDomain[domain]=prospect;
-            if(email.Length>0) byEmail[email]=prospect;
-        }
-
-        db.Prospects.AddRange(created);
-        TargetList? targetList = null;
-        if(!string.IsNullOrWhiteSpace(input.TargetListName)&&included.Count>0)
-        {
-            if(input.IcpProfileId.HasValue&&!await db.IcpProfiles.AnyAsync(x => x.TenantId==tenantId&&x.Id==input.IcpProfileId, ct))
-                return BadRequest(new { code = "icp_not_found", detail = "The selected ideal customer profile does not belong to this tenant." });
-
-            targetList=new TargetList
-            {
-                TenantId=tenantId,
-                Name=input.TargetListName.Trim(),
-                Description=$"Imported from {input.Source.Trim()} on {now:yyyy-MM-dd}. {included.Count} unique companies.",
-                IcpProfileId=input.IcpProfileId,
-                Dynamic=false
-            };
-            db.TargetLists.Add(targetList);
-            db.TargetListMembers.AddRange(included.Select(prospect => new TargetListMember
-            {
-                TenantId=tenantId,
-                TargetListId=targetList.Id,
-                ProspectId=prospect.Id,
-                AddedAtUtc=now
-            }));
-        }
-        await db.SaveChangesAsync(ct);
-        return Ok(new
-        {
-            received = input.Prospects.Length,
-            imported = included.Count-updated,
-            updated,
-            duplicates,
-            rejected,
-            targetListId = targetList?.Id,
-            nextStep = targetList is null ? "create-target-list" : "create-campaign"
-        });
-    }
-
-    [HttpPost("prospects/import/preview")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    [RequestSizeLimit(15_000_000)]
-    public async Task<IActionResult> PreviewImport([FromForm] IFormFile? file, [FromForm] string? sheetName, [FromForm] int? headerRow, CancellationToken ct)
-    {
-        if(file is null) return BadRequest(new { code = "import_file_required", detail = "Choose a CSV or XLSX file." });
-        try { return Ok(await ProspectDatasetReader.ReadAsync(file, sheetName, headerRow, ct)); }
-        catch(InvalidOperationException ex) { return BadRequest(new { code = "invalid_import_file", detail = ex.Message }); }
-        catch(InvalidDataException) { return BadRequest(new { code = "invalid_xlsx", detail = "The XLSX file is damaged or cannot be read." }); }
-    }
-
-    [HttpPost("prospects/{id:guid}/signals")]
-    [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> AddSignal(Guid id, ProspectSignal input, CancellationToken ct)
-    {
-        var prospect = await db.Prospects.FirstOrDefaultAsync(x => x.TenantId==TenantId&&x.Id==id, ct);
-        if(prospect is null) return NotFound();
-        input.Id=Guid.NewGuid(); input.TenantId=TenantId; input.ProspectId=id;
-        db.ProspectSignals.Add(input);
-        prospect.Evaluate(prospect.FitScore, Math.Clamp(prospect.IntentScore+input.Score, 0, 100));
-        await db.SaveChangesAsync(ct); return Ok(prospect);
     }
 
     [HttpGet("campaigns")]
@@ -518,33 +357,6 @@ public sealed class AcquisitionController(
         }
     }
 
-    private static void MergeImportedProspect(Prospect prospect, ProspectImportRow row, string domain, string email, string batchSource, DateTime now)
-    {
-        prospect.CompanyName=Prefer(row.CompanyName, prospect.CompanyName);
-        prospect.Domain=Prefer(domain, prospect.Domain);
-        prospect.ContactName=Prefer(row.ContactName, prospect.ContactName);
-        prospect.Email=Prefer(email, prospect.Email);
-        prospect.JobTitle=Prefer(row.JobTitle, prospect.JobTitle);
-        prospect.Industry=Prefer(row.Industry, prospect.Industry);
-        prospect.Country=Prefer(row.Country, prospect.Country);
-        prospect.Source=Prefer(row.Source, Prefer(batchSource, prospect.Source));
-        prospect.Priority=Prefer(row.Priority, prospect.Priority);
-        prospect.ContactReadiness=Prefer(row.ContactReadiness, prospect.ContactReadiness);
-        prospect.SuggestedBuyer=Prefer(row.SuggestedBuyer, prospect.SuggestedBuyer);
-        prospect.SizeBand=Prefer(row.SizeBand, prospect.SizeBand);
-        prospect.PainHypothesis=Prefer(row.PainHypothesis, prospect.PainHypothesis);
-        prospect.Offer=Prefer(row.Offer, prospect.Offer);
-        prospect.SourceUrl=Prefer(row.SourceUrl, prospect.SourceUrl);
-        prospect.VerificationStatus=Prefer(row.VerificationStatus, prospect.VerificationStatus);
-        prospect.OutreachStatus=Prefer(row.OutreachStatus, prospect.OutreachStatus);
-        prospect.DatasetOrigin=Prefer(row.DatasetOrigin, prospect.DatasetOrigin);
-        prospect.Evaluate(row.FitScore, row.IntentScore);
-        prospect.UpdatedAtUtc=now;
-    }
-
-    private static string Prefer(string? incoming, string? fallback)
-        => string.IsNullOrWhiteSpace(incoming) ? fallback?.Trim()??string.Empty : incoming.Trim();
-
     private static string NormalizeDomain(string? value)
     {
         var domain = (value??string.Empty).Trim().ToLowerInvariant();
@@ -553,35 +365,8 @@ public sealed class AcquisitionController(
         return domain.Split('/')[0].TrimEnd('.');
     }
 
-    private static string NormalizeEmail(string? value) => (value??string.Empty).Trim().ToLowerInvariant();
 
 
 
 }
 
-public sealed record ProspectImportRequest(string Source, bool ComplianceConfirmed, ProspectImportRow[] Prospects, string? TargetListName = null, Guid? IcpProfileId = null);
-public sealed record ProspectImportRow(
-    string CompanyName,
-    string Domain,
-    string? ContactName,
-    string? Email,
-    string? JobTitle,
-    string? Industry,
-    string? Country,
-    string? Source,
-    int FitScore,
-    int IntentScore,
-    string? Priority = null,
-    string? ContactReadiness = null,
-    string? SuggestedBuyer = null,
-    string? SizeBand = null,
-    string? PainHypothesis = null,
-    string? Offer = null,
-    string? SourceUrl = null,
-    string? VerificationStatus = null,
-    string? OutreachStatus = null,
-    string? DatasetOrigin = null);
-
-public sealed record DeliveryConfirmation(string ProviderMessageId);
-public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
-public sealed record CampaignActivityItem(Guid Id, DateTime AtUtc, string Type, string Status, string Title, string Detail);
