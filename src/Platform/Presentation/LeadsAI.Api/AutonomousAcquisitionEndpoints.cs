@@ -374,6 +374,15 @@ public static class AutonomousAcquisitionEndpoints
             if (agent.Status is AutonomousAgentStatus.Stopped)
                 return Results.BadRequest(new { error = "Agent is stopped." });
 
+            var campaign = await db.Campaigns
+                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AgentId == id, ct);
+            if (campaign is null)
+                return Results.BadRequest(new { error = "Agent is not linked to a campaign container." });
+            if (campaign.Status is CampaignStatus.Stopped or CampaignStatus.Completed)
+                return Results.BadRequest(new { error = $"Campaign is {campaign.Status}." });
+            if (campaign.Status is CampaignStatus.Draft or CampaignStatus.Scheduled)
+                campaign.Start();
+
             var run = new AutonomousAcquisitionAgentRun
             {
                 TenantId = tenantId,
