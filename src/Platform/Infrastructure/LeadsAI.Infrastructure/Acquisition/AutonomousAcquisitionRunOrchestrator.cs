@@ -62,17 +62,25 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             var now = DateTime.UtcNow;
 
             var awaitingApproval = false;
-            foreach (var task in tasks.OrderBy(x => x.Sequence))
-            {
-                if (task.Status == AutonomousAcquisitionTaskStatus.Completed)
-                    continue;
+            var current = tasks
+                .Where(x => x.Status != AutonomousAcquisitionTaskStatus.Completed)
+                .OrderBy(x => x.Sequence)
+                .FirstOrDefault();
 
+            var visited = new HashSet<Guid>();
+            while (current is not null && visited.Add(current.Id))
+            {
                 if (!await CanContinueAsync(run, agent, ct))
                     return;
 
-                awaitingApproval = await ExecuteTaskAsync(task, run, agent, template, tasks, now, ct);
+                awaitingApproval = await ExecuteTaskAsync(current, run, agent, template, tasks, now, ct);
                 if (awaitingApproval)
                     break;
+
+                var nextType = ReadNextStep(current.ConfigurationJson);
+                current = string.IsNullOrWhiteSpace(nextType)
+                    ? tasks.Where(x => x.Status != AutonomousAcquisitionTaskStatus.Completed).OrderBy(x => x.Sequence).FirstOrDefault()
+                    : tasks.FirstOrDefault(x => x.Type == nextType && x.Status != AutonomousAcquisitionTaskStatus.Completed);
             }
 
             agent.LastRunAtUtc = now;
@@ -116,6 +124,18 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private static string ReadNextStep(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            return doc.RootElement.TryGetProperty("nextStep", out var value)
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
+        }
+        catch { return string.Empty; }
     }
 
     private async Task<bool> ExecuteTaskAsync(
