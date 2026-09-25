@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Application;
 using LeadsAI.Domain;
-using LeadsAI.Persistence.SqlServer;
+
 
 namespace LeadsAI.Infrastructure.Acquisition;
 
