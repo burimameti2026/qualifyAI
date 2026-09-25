@@ -30,6 +30,12 @@ public sealed class IndustryPacksController(
             .Select(x => x.IndustryPackId)
             .ToListAsync(ct);
 
+        var campaigns = await db.Campaigns
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.PackageCode.StartsWith("industry-pack:"))
+            .Select(x => new { x.Id, x.PackageCode, x.Status, x.TargetListId, x.Name })
+            .ToListAsync(ct);
+
         var packs = await db.IndustryPacks
             .AsNoTracking()
             .OrderBy(x => x.Name)
@@ -44,7 +50,26 @@ public sealed class IndustryPacksController(
             })
             .ToListAsync(ct);
 
-        return Ok(packs);
+        return Ok(packs.Select(pack =>
+        {
+            var campaign = campaigns.SingleOrDefault(x =>
+                x.PackageCode == $"industry-pack:{pack.Code.Trim().ToLowerInvariant()}");
+
+            return new
+            {
+                pack.Id,
+                pack.Code,
+                pack.Name,
+                pack.Description,
+                pack.TemplateJson,
+                pack.installed,
+                provisioned = campaign is not null,
+                campaignId = campaign?.Id,
+                targetListId = campaign?.TargetListId,
+                campaignName = campaign?.Name,
+                campaignStatus = campaign?.Status.ToString()
+            };
+        }));
     }
 
     [HttpPost("{id:guid}/install")]
