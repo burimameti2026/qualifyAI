@@ -431,6 +431,9 @@ public static class AutonomousAcquisitionEndpoints
         return endpoints;
     }
 
+    private static string ResolvePackageVersion(string packageCode)
+        => WorkspacePackageCatalog.TryGet(packageCode, out var package) ? package.Version : "1.0";
+
     private static string ReadTaskPurpose(string json) => ReadTaskObjectProperty(json, "purpose");
     private static string ReadTaskNext(string json) => ReadTaskObjectProperty(json, "nextStep");
     private static object ReadTaskInput(string json)
