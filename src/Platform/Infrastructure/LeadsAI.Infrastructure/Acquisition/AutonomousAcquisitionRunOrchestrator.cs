@@ -183,7 +183,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             _ => throw new InvalidOperationException($"No executor is registered for acquisition task '{task.Type}'.")
         };
 
-    private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
+    private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
     {
         var agent = await db.AutonomousAcquisitionAgents.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.AgentId, ct);
         await ExecuteDiscoveryAsync(run, agent, templateAgentTemplate, tasks, now, ct);
