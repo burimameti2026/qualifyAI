@@ -631,6 +631,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.Property<Guid>("AgentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -674,7 +677,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AgentId", "ScheduledAtUtc");
+                    b.HasIndex("AgentId", "CampaignId", "ScheduledAtUtc");
 
                     b.HasIndex("TenantId", "Status");
 
