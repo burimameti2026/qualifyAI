@@ -71,6 +71,7 @@ public static class AutonomousAcquisitionEndpoints
                 TargetListId = target.Id,
                 AgentId = agent.Id,
                 PackageCode = template.Code,
+                PackageVersion = ResolvePackageVersion(template.Code),
                 Objective = input.Objective ?? template.Description,
                 Name = input.Name,
                 SenderName = input.SenderName ?? string.Empty,
@@ -248,6 +249,39 @@ public static class AutonomousAcquisitionEndpoints
             }
 
             return Results.Ok(new { campaign, approvedRecipients = recipients.Count, approvedMessages = messages.Count, completedApprovalTasks = approvalTasks.Count });
+        });
+
+        g.MapPost("/tenants/{tenantId}/campaigns/{id}/pause", async (Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+            if (campaign is null) return Results.NotFound();
+            campaign.Pause();
+            var runs = await db.AutonomousAcquisitionAgentRuns.Where(x => x.TenantId == tenantId && x.AgentId == campaign.AgentId && x.Status == AutonomousAgentRunStatus.Running).ToListAsync(ct);
+            foreach (var run in runs) run.Status = AutonomousAgentRunStatus.Paused;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { campaign, pausedRuns = runs.Count });
+        });
+
+        g.MapPost("/tenants/{tenantId}/campaigns/{id}/resume", async (Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+            if (campaign is null) return Results.NotFound();
+            campaign.Resume();
+            var runs = await db.AutonomousAcquisitionAgentRuns.Where(x => x.TenantId == tenantId && x.AgentId == campaign.AgentId && x.Status == AutonomousAgentRunStatus.Paused).ToListAsync(ct);
+            foreach (var run in runs) { run.Status = AutonomousAgentRunStatus.Queued; run.Error = null; }
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { campaign, resumedRuns = runs.Count });
+        });
+
+        g.MapPost("/tenants/{tenantId}/campaigns/{id}/stop", async (Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+            if (campaign is null) return Results.NotFound();
+            campaign.Stop();
+            var runs = await db.AutonomousAcquisitionAgentRuns.Where(x => x.TenantId == tenantId && x.AgentId == campaign.AgentId && x.Status != AutonomousAgentRunStatus.Completed && x.Status != AutonomousAgentRunStatus.Cancelled).ToListAsync(ct);
+            foreach (var run in runs) { run.Status = AutonomousAgentRunStatus.Cancelled; run.CompletedAtUtc = DateTime.UtcNow; }
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { campaign, cancelledRuns = runs.Count });
         });
 
         g.MapGet("/tenants/{tenantId}/agents", async (
