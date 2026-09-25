@@ -272,7 +272,7 @@ public sealed class AcquisitionController(
         if (campaign is null) return NotFound();
         var steps = await db.CampaignSteps.AsNoTracking().Where(x => x.TenantId == tenantId && x.CampaignId == id)
             .OrderBy(x => x.StepNumber)
-            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate, x.TemplateId, templateName = db.OutreachTemplates.Where(t => t.TenantId == tenantId && t.Id == x.TemplateId).Select(t => t.Name).FirstOrDefault() })
+            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate, x.TemplateId })
             .ToListAsync(ct);
 
         var targetList = await db.TargetLists.AsNoTracking()
@@ -544,13 +544,6 @@ public sealed class AcquisitionController(
         }
     }
 
-    private static List<OutreachTemplate> CreateDefaultTemplates(Guid tenantId) =>
-    [
-        new OutreachTemplate { TenantId = tenantId, Name = "Logistics operational benchmark", Description = "Message 1 — initial outreach", SubjectTemplate = "{{company}}: reduce dispatch and delivery exceptions", BodyTemplate = "Hi {{contact}}, I noticed current growth signals at {{company}}. We help {{industry}} teams automate dispatch, warehouse and customer operations. Would a 25-minute operational demo be useful?" },
-        new OutreachTemplate { TenantId = tenantId, Name = "Operational benchmark follow-up", Description = "Message 2 — follow-up", SubjectTemplate = "Operational benchmark for {{company}}", BodyTemplate = "Hi {{contact}}, I prepared a short benchmark for teams operating across {{country}}. I can tailor the demo to your fleet, warehouse and delivery workflow." },
-        new OutreachTemplate { TenantId = tenantId, Name = "Close the loop", Description = "Message 3 — final follow-up", SubjectTemplate = "Should I close the loop on {{company}}?", BodyTemplate = "Hi {{contact}}, I don't want to keep filling your inbox if this isn't a priority. If improving dispatch, warehouse or delivery operations is on your roadmap, I'm happy to send a short example. Otherwise, I'll close the loop here." }
-    ];
-
     private static void MergeImportedProspect(Prospect prospect, ProspectImportRow row, string domain, string email, string batchSource, DateTime now)
     {
         prospect.CompanyName=Prefer(row.CompanyName, prospect.CompanyName);
@@ -633,7 +626,6 @@ public sealed record ProspectImportRow(
     string? OutreachStatus = null,
     string? DatasetOrigin = null);
 public sealed record CampaignStepInput(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate, Guid? TemplateId = null, string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
-public sealed record OutreachTemplateInput(string Name, string? Description, string SubjectTemplate, string BodyTemplate);
 public sealed record CampaignInput(Guid TargetListId, Guid? OfferId, string Name, string Goal, string SenderName, string SenderEmail, DateTime? StartsAtUtc, CampaignStepInput[] Steps);
 internal sealed record CampaignStepRules(string Qualification = "qualified", int MinimumScore = 70, string Industry = "", string Countries = "", int? CompanySizeMin = null, int? CompanySizeMax = null, string ContactRoles = "", bool StopOnReply = true);
 
