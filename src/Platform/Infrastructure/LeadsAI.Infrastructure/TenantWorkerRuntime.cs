@@ -12,6 +12,7 @@ public static class TenantWorkerKeys
     public const string AutonomousAcquisitionQueue = "autonomous-acquisition-queue";
     public const string AutonomousAcquisitionScheduler = "autonomous-acquisition-scheduler";
     public const string AutonomousAcquisitionEnrichment = "autonomous-acquisition-enrichment";
+    public const string OutreachDelivery = "outreach-delivery";
 }
 
 public sealed record TenantWorkerDefinition(string Key, string Name, string Description);
@@ -26,7 +27,8 @@ public sealed class TenantWorkerRuntime(AppDbContext db)
         new(TenantWorkerKeys.AutomationRetry, "Automation Retry", "Retries failed automation runs for this tenant."),
         new(TenantWorkerKeys.AutonomousAcquisitionQueue, "Autonomous Acquisition Queue", "Executes queued autonomous acquisition runs for this tenant."),
         new(TenantWorkerKeys.AutonomousAcquisitionScheduler, "Autonomous Acquisition Scheduler", "Schedules enabled autonomous acquisition agents for this tenant."),
-        new(TenantWorkerKeys.AutonomousAcquisitionEnrichment, "Autonomous Acquisition Enrichment", "Researches discovered prospects for this tenant.")
+        new(TenantWorkerKeys.AutonomousAcquisitionEnrichment, "Autonomous Acquisition Enrichment", "Researches discovered prospects for this tenant."),
+        new(TenantWorkerKeys.OutreachDelivery, "Outreach Delivery", "Sends only human-approved outreach messages for this tenant.")
     ];
 
     public async Task<IReadOnlySet<Guid>> EnabledTenantIdsAsync(string workerKey, CancellationToken ct = default)
