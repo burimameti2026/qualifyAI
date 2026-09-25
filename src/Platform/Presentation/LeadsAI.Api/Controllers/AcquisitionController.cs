@@ -440,8 +440,8 @@ public sealed class AcquisitionController(
             .FirstOrDefaultAsync(ct);
 
         var tasks = latestRun is null
-            ? new object[0]
-            : await db.AutonomousAcquisitionTasks.AsNoTracking()
+            ? Enumerable.Empty<object>().ToList()
+            : (await db.AutonomousAcquisitionTasks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.RunId == latestRun.Id)
                 .OrderBy(x => x.Sequence)
                 .Select(x => new
@@ -457,7 +457,7 @@ public sealed class AcquisitionController(
                     x.ResultJson,
                     x.Error
                 })
-                .ToListAsync(ct);
+                .ToListAsync(ct)).Cast<object>().ToList();
 
         return Ok(new { campaign, steps, icp, targetList, prospects, latestRun, tasks });
     }
