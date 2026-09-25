@@ -176,6 +176,8 @@ public static class AutonomousAcquisitionEndpoints
             return Results.Ok(new
             {
                 campaign,
+                latestRun,
+                currentStep = tasks.FirstOrDefault(x => x.Status is AutonomousAcquisitionTaskStatus.Running or AutonomousAcquisitionTaskStatus.Pending),
                 packageCode = campaign.PackageCode,
                 agent,
                 workflow = new
