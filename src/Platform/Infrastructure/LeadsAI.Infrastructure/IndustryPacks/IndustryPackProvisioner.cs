@@ -2,6 +2,7 @@ using System.Text.Json;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
+using LeadsAI.Infrastructure.Acquisition;
 
 namespace LeadsAI.Infrastructure.IndustryPacks;
 
@@ -42,7 +43,10 @@ public interface IIndustryPackProvisioner
     Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default);
 }
 
-public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProvisioner
+public sealed class IndustryPackProvisioner(
+    AppDbContext db,
+    IAutonomousAcquisitionTemplateRegistry templates,
+    IAutonomousAcquisitionWorkflowPlanner planner) : IIndustryPackProvisioner
 {
     private const string Version = "industry-pack.v1";
 
@@ -144,6 +148,11 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
         var icp = await EnsureIcpAsync(tenantId, pack, definition, ct);
         targetList.IcpProfileId = icp.Id;
 
+        var agent = await EnsureCampaignAgentAsync(tenantId, pack, definition, campaign, ct);
+        campaign.AgentId = agent.Id;
+        var runtimeTemplate = templates.Apply(agent);
+        await planner.EnsurePlanAsync(agent, runtimeTemplate, ct);
+
         var existingSteps = await db.CampaignSteps
             .Where(x => x.TenantId == tenantId && x.CampaignId == campaign.Id)
             .ToListAsync(ct);
@@ -179,6 +188,78 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
             campaign.Status.ToString(),
             "industry-pack",
             definition);
+    }
+
+    private async Task<AutonomousAcquisitionAgent> EnsureCampaignAgentAsync(
+        Guid tenantId,
+        IndustryPack pack,
+        CampaignReadyDefinition definition,
+        Campaign campaign,
+        CancellationToken ct)
+    {
+        var name = $"{definition.CampaignName} Agent";
+
+        var agent = campaign.AgentId.HasValue
+            ? await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct)
+            : null;
+
+        agent ??= await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Name == name, ct);
+
+        var runtimeConfig = JsonSerializer.Serialize(new
+        {
+            code = pack.Code,
+            name = pack.Name,
+            industry = definition.Industry,
+            region = definition.Region,
+            keywords = definition.Keywords,
+            signals = new[] { definition.Industry, pack.Code, "customer acquisition" },
+            minimumScore = definition.MinimumScore,
+            description = definition.Objective,
+            prospectType = "Company",
+            targetDefinition = $"Companies matching the {pack.Name} ICP.",
+            messages = definition.Steps.Select(x => new
+            {
+                step = x.StepNumber,
+                name = $"Step {x.StepNumber}",
+                subject = x.SubjectTemplate,
+                body = x.BodyTemplate,
+                delayHours = x.DelayHours,
+                requiresApproval = true
+            })
+        });
+
+        if (agent is null)
+        {
+            agent = new AutonomousAcquisitionAgent
+            {
+                TenantId = tenantId,
+                Name = name,
+                TemplateCode = pack.Code,
+                Industry = definition.Industry,
+                Region = definition.Region,
+                CountriesJson = JsonSerializer.Serialize(definition.Countries),
+                IcpJson = runtimeConfig,
+                MinimumScore = definition.MinimumScore,
+                DailyDiscoveryLimit = 50,
+                DailyEmailLimit = 10,
+                Status = AutonomousAgentStatus.Draft
+            };
+            db.AutonomousAcquisitionAgents.Add(agent);
+        }
+        else
+        {
+            agent.TemplateCode = pack.Code;
+            agent.Industry = definition.Industry;
+            agent.Region = definition.Region;
+            agent.CountriesJson = JsonSerializer.Serialize(definition.Countries);
+            agent.IcpJson = runtimeConfig;
+            agent.MinimumScore = definition.MinimumScore;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        return agent;
     }
 
     private async Task<IcpProfile> EnsureIcpAsync(Guid tenantId, IndustryPack pack, CampaignReadyDefinition definition, CancellationToken ct)
