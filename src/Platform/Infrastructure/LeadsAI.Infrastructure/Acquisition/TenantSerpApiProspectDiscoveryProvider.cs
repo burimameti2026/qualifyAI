@@ -36,6 +36,43 @@ public sealed class TenantSerpApiProspectDiscoveryProvider(
             !string.IsNullOrWhiteSpace(x.Value), ct);
     }
 
+    public async Task<DiscoveryVerificationResult> VerifyAsync(Guid? tenantId = null, CancellationToken ct = default)
+    {
+        if (!tenantId.HasValue || tenantId.Value == Guid.Empty)
+            return new DiscoveryVerificationResult(false, "Tenant context is required for SerpAPI verification.");
+
+        var apiKey = await db.TenantSettings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId.Value && x.Key == ApiKeySetting)
+            .Select(x => x.Value)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return new DiscoveryVerificationResult(false, "SerpAPI API key is not configured for this tenant.");
+
+        try
+        {
+            var account = await GetAccountUsageAsync(apiKey.Trim(), ct);
+            return new DiscoveryVerificationResult(
+                true,
+                null,
+                account.PlanName,
+                account.PlanSearchesLeft,
+                account.ThisMonthUsage);
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new DiscoveryVerificationResult(false, "SerpAPI verification timed out. Please try again.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new DiscoveryVerificationResult(false, $"SerpAPI could not be reached: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new DiscoveryVerificationResult(false, ex.Message);
+        }
+    }
+
     public async Task<IReadOnlyList<DiscoveryCandidate>> SearchAsync(IcpProfile icp, DiscoveryRunOptions options, CancellationToken ct = default)
     {
         var tenantId = tenant.Current?.Id ?? Guid.Empty;
