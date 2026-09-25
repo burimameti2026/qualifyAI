@@ -187,20 +187,23 @@ public sealed class IdentityBootstrapHostedService(
             return;
         }
 
-        var tenantId = ParseOptionalTenantId(configuration["FusionFleetSeed:Tenant:Id"])
-            ?? throw new InvalidOperationException("FusionFleetSeed:Tenant:Id is required when FusionFleetSeed is enabled.");
+        var configuredTenantId = ParseOptionalTenantId(configuration["FusionFleetSeed:Tenant:Id"]);
         var tenantSlug = configuration["FusionFleetSeed:Tenant:Slug"]?.Trim().ToLowerInvariant() ?? "fusionfleet";
         var tenantName = configuration["FusionFleetSeed:Tenant:Name"]?.Trim() ?? "FusionFleet";
         var contactEmail = configuration["FusionFleetSeed:Tenant:ContactEmail"]?.Trim().ToLowerInvariant()
             ?? "admin@fusionfleet.local";
 
-        var tenant = await dbContext.Tenants.FirstOrDefaultAsync(x => x.Id == tenantId, cancellationToken)
-            ?? await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
+        var tenant = configuredTenantId.HasValue
+            ? await dbContext.Tenants.FirstOrDefaultAsync(x => x.Id == configuredTenantId.Value, cancellationToken)
+            : null;
+        tenant ??= await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
         var tenantCreated = false;
 
         if (tenant is null)
         {
-            tenant = Tenant.Create(tenantId, tenantName, tenantSlug, contactEmail);
+            tenant = configuredTenantId.HasValue
+                ? Tenant.Create(configuredTenantId.Value, tenantName, tenantSlug, contactEmail)
+                : Tenant.Create(tenantName, tenantSlug, contactEmail);
             await dbContext.Tenants.AddAsync(tenant, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             tenantCreated = true;
