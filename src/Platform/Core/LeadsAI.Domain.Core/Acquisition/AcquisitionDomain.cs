@@ -57,6 +57,7 @@ public sealed class ProspectSignal : TenantEntity
 
 public sealed class TargetList : TenantEntity
 {
+    public Guid CampaignId { get; set; }
     public string Name { get; set; } = string.Empty;
     public Guid? IcpProfileId { get; set; }
     public string Description { get; set; } = string.Empty;
