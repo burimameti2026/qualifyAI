@@ -761,49 +761,27 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 
             modelBuilder.Entity("LeadsAI.Domain.Campaign", b =>
                 {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Goal")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("SenderEmail")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("SenderName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("StartsAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("TargetListId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("AgentId").HasColumnType("uniqueidentifier");
+                    b.Property<string>("Goal").IsRequired().HasColumnType("nvarchar(max)");
+                    b.Property<string>("Name").IsRequired().HasColumnType("nvarchar(max)");
+                    b.Property<string>("Objective").IsRequired().HasColumnType("nvarchar(2000)");
+                    b.Property<string>("PackageCode").IsRequired().HasColumnType("nvarchar(128)");
+                    b.Property<string>("PackageVersion").IsRequired().HasMaxLength(32).HasColumnType("nvarchar(32)");
+                    b.Property<string>("PlanJson").IsRequired().HasColumnType("nvarchar(max)");
+                    b.Property<string>("PlanStatus").IsRequired().HasColumnType("nvarchar(32)");
+                    b.Property<string>("SenderEmail").IsRequired().HasColumnType("nvarchar(max)");
+                    b.Property<string>("SenderName").IsRequired().HasColumnType("nvarchar(max)");
+                    b.Property<DateTime?>("StartsAtUtc").HasColumnType("datetime2");
+                    b.Property<int>("Status").HasColumnType("int");
+                    b.Property<Guid>("TargetListId").HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("TenantId").HasColumnType("uniqueidentifier");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime2");
                     b.HasKey("Id");
-
+                    b.HasIndex("TenantId", "AgentId");
                     b.HasIndex("TenantId", "Status", "StartsAtUtc");
-
-                    b.ToTable("Campaigns");
+                    b.ToTable("Campaigns", (string)null);
                 });
 
             modelBuilder.Entity("LeadsAI.Domain.CampaignRecipient", b =>
