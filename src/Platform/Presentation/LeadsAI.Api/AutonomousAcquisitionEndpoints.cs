@@ -177,7 +177,7 @@ public static class AutonomousAcquisitionEndpoints
             {
                 campaign,
                 latestRun,
-                currentStep = tasks.FirstOrDefault(x => x.Status is AutonomousAcquisitionTaskStatus.Running or AutonomousAcquisitionTaskStatus.Pending),
+                currentStep = tasks.FirstOrDefault(x => x.Status is AutonomousAgentTaskStatus.Running or AutonomousAgentTaskStatus.Pending),
                 packageCode = campaign.PackageCode,
                 agent,
                 workflow = new
