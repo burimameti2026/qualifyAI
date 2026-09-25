@@ -4645,6 +4645,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -4668,7 +4671,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "Name");
+                    b.HasIndex("TenantId", "CampaignId", "Name");
 
                     b.ToTable("TargetLists");
                 });
