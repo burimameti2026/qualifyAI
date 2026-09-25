@@ -15,8 +15,8 @@ public sealed record DiscoveryRunOptions(
     int MinimumScore = 70,
     string? TargetListName = null,
     bool CreateTargetList = true,
-    Guid? TenantId = null,
-    string? CountriesCsv = null);
+    string? CountriesCsv = null,
+    Guid? TenantId = null);
 
 public sealed record DiscoveryProviderStatus(string Name, bool Configured, string Description);
 
