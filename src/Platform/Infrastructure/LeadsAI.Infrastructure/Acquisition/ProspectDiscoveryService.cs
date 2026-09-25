@@ -133,7 +133,7 @@ public sealed class SerpApiProspectDiscoveryProvider(
 
         var countries = ParseCountries(options.CountriesCsv, icp.CountriesCsv);
         var maximumResults = Math.Clamp(options.MaximumResults, 1, 100);
-        var perCountry = Math.Max(5, (int)Math.Ceiling((double)maximumResults / Math.Max(1, countries.Count)));
+        var perCountry = Math.Clamp(Math.Max(10, (int)Math.Ceiling((double)maximumResults / Math.Max(1, countries.Count))), 10, 30);
         var candidates = new List<DiscoveryCandidate>();
 
         foreach (var country in countries)
@@ -249,11 +249,15 @@ public sealed class SerpApiProspectDiscoveryProvider(
     private static string GetString(JsonElement root, string property) =>
         root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
 
-    private static string BuildQuery(IcpProfile icp, DiscoveryRunOptions options) =>
-        string.Join(" ", new[] { icp.Industry, options.IntentKeywordsCsv }
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .SelectMany(x => x!.Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Take(8));
+    private static string BuildQuery(IcpProfile icp, DiscoveryRunOptions options)
+    {
+        var industries = (icp.Industry ?? string.Empty)
+            .Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(6);
+
+        var query = string.Join(" ", industries);
+        return string.IsNullOrWhiteSpace(query) ? "company" : $"{query} company";
+    }
 
     private static List<string> ParseCountries(string? selected, string fallback) =>
         (string.IsNullOrWhiteSpace(selected) ? fallback : selected)
