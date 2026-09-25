@@ -377,6 +377,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         var count = await db.Prospects.CountAsync(x =>
             x.TenantId == agent.TenantId &&
             x.CreatedAtUtc >= since &&
+            x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}" &&
             x.Status == ProspectStatus.Qualified, ct);
 
         CompleteTask(task, new
@@ -395,7 +396,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.BuildTargetList);
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.AgentId == agent.Id, ct);
+            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == run.CampaignId, ct);
 
         if (campaign is null)
         {
@@ -407,6 +408,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         var prospects = await db.Prospects
             .Where(x => x.TenantId == agent.TenantId &&
                         x.CreatedAtUtc >= since &&
+                        x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}" &&
                         x.Status == ProspectStatus.Qualified)
             .ToListAsync(ct);
 
