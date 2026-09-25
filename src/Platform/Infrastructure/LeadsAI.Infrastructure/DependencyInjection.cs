@@ -10,6 +10,7 @@ using LeadsAI.Infrastructure.Automation;
 using LeadsAI.Infrastructure.Email;
 using LeadsAI.Infrastructure.Demo;
 using LeadsAI.Persistence.SqlServer.Repositories;
+using LeadsAI.Infrastructure.IndustryPacks;
 
 namespace LeadsAI.Infrastructure;
 

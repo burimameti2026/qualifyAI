@@ -220,27 +220,30 @@ public sealed class IndustryPackProvisioner(AppDbContext db) : IIndustryPackProv
         var config = Parse(pack.TemplateJson);
         var industry = First(config.Industry, pack.Name);
         var region = First(config.Region, "Europe");
-        var countries = config.Countries.Count > 0 ? config.Countries : Array.Empty<string>();
+        // Fix for CS0173: ensure both branches return the same type (string[])
+        var countries = config.Countries.Count > 0 ? [..config.Countries] : Array.Empty<string>();
         var keywords = config.Keywords.Count > 0
-            ? config.Keywords
+            ? config.Keywords.ToArray()
             : new[] { pack.Name, pack.Code, "customer acquisition" };
 
         var campaignName = First(config.CampaignName, $"{pack.Name} Acquisition");
         var objective = First(config.Objective, $"Discover, qualify and engage high-fit {industry} prospects.");
         var goal = First(config.Goal, "book-demo");
 
-        var steps = config.Steps.Count > 0 ? config.Steps : new[]
-        {
-            new CampaignReadyStep(1, 0, "email",
-                "{{company}}: a better way to improve {{pain}}",
-                "Hi {{contact}},\n\nI noticed {{company}} operates in {{industry}}. We help teams improve {{pain}} with a focused workflow.\n\nWould a short introduction be useful?"),
-            new CampaignReadyStep(2, 48, "email",
-                "Re: {{company}} and {{pain}}",
-                "Hi {{contact}},\n\nFollowing up on my note about {{pain}}. If this is currently a priority, I can share a concise example of how the workflow works.\n\nWorth a look?"),
-            new CampaignReadyStep(3, 120, "email",
-                "Close the loop — {{company}}",
-                "Hi {{contact}},\n\nI will close the loop here. If improving {{pain}} becomes a priority, I would be happy to reconnect.\n\nBest,\n{{sender}}")
-        };
+        var steps = config.Steps.Count > 0
+            ? config.Steps.ToArray()
+            : new[]
+            {
+                new CampaignReadyStep(1, 0, "email",
+                    "{{company}}: a better way to improve {{pain}}",
+                    "Hi {{contact}},\n\nI noticed {{company}} operates in {{industry}}. We help teams improve {{pain}} with a focused workflow.\n\nWould a short introduction be useful?"),
+                new CampaignReadyStep(2, 48, "email",
+                    "Re: {{company}} and {{pain}}",
+                    "Hi {{contact}},\n\nFollowing up on my note about {{pain}}. If this is currently a priority, I can share a concise example of how the workflow works.\n\nWorth a look?"),
+                new CampaignReadyStep(3, 120, "email",
+                    "Close the loop — {{company}}",
+                    "Hi {{contact}},\n\nI will close the loop here. If improving {{pain}} becomes a priority, I would be happy to reconnect.\n\nBest,\n{{sender}}")
+            };
 
         return new CampaignReadyDefinition(
             pack.Id, pack.Code, pack.Name, industry, region, countries, keywords,
