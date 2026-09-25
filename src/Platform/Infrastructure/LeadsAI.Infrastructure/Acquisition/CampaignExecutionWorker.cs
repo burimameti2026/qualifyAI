@@ -21,7 +21,7 @@ public sealed class CampaignExecutionWorker(IServiceScopeFactory scopes, ILogger
                 await using var rootScope = scopes.CreateAsyncScope();
                 var services = rootScope.ServiceProvider;
                 var runtime = services.GetRequiredService<TenantWorkerRuntime>();
-                var tenants = await runtime.EnabledActiveTenantsAsync(TenantWorkerKeys.AcquisitionCampaign, stoppingToken);
+                var tenants = await runtime.ActiveCampaignTenantsAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
                 {
