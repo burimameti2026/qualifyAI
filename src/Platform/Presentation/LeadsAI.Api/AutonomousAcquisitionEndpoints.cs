@@ -89,7 +89,21 @@ public static class AutonomousAcquisitionEndpoints
                 package = new { template.Code, template.Name, template.Description, template.ProspectType, template.TargetDefinition },
                 objective = campaign.Objective,
                 agent = new { agent.Id, agent.Name },
-                tasks = tasks.Select(t => new { t.Sequence, t.Type, t.Name, t.RequiresApproval }),
+                workflow = new
+                {
+                    name = $"{template.Name} acquisition workflow",
+                    steps = tasks.Select(t => new
+                    {
+                        sequence = t.Sequence,
+                        key = t.Type,
+                        name = t.Name,
+                        purpose = ReadTaskPurpose(t.ConfigurationJson),
+                        input = ReadTaskInput(t.ConfigurationJson),
+                        nextStep = ReadTaskNext(t.ConfigurationJson),
+                        requiresApproval = t.RequiresApproval
+                    })
+                },
+                tasks = tasks.Select(t => new { t.Id, t.Sequence, t.Type, t.Name, t.Status, t.RequiresApproval, t.ConfigurationJson, t.ResultJson }),
                 messages = template.OutreachTemplates.Select(m => new { m.Step, m.Name, m.Subject, m.Body, m.DelayHours, m.RequiresApproval })
             });
             campaign.PlanStatus = "ready";
@@ -132,7 +146,31 @@ public static class AutonomousAcquisitionEndpoints
                 .OrderBy(x => x.StepNumber)
                 .ToListAsync(ct);
 
-            return Results.Ok(new { campaign, agent, tasks, steps });
+            return Results.Ok(new
+            {
+                campaign,
+                packageCode = campaign.PackageCode,
+                agent,
+                workflow = new
+                {
+                    name = agent is null ? "Campaign workflow" : $"{agent.Name} workflow",
+                    steps = tasks.Select(t => new
+                    {
+                        sequence = t.Sequence,
+                        key = t.Type,
+                        name = t.Name,
+                        purpose = ReadTaskPurpose(t.ConfigurationJson),
+                        input = ReadTaskInput(t.ConfigurationJson),
+                        status = t.Status,
+                        nextStep = ReadTaskNext(t.ConfigurationJson),
+                        requiresApproval = t.RequiresApproval,
+                        result = t.ResultJson,
+                        error = t.Error
+                    })
+                },
+                tasks,
+                steps
+            });
         });
 
         g.MapPost("/tenants/{tenantId}/campaigns/{id}/approve", async (
@@ -294,6 +332,27 @@ public static class AutonomousAcquisitionEndpoints
         });
 
         return endpoints;
+    }
+
+    private static string ReadTaskPurpose(string json) => ReadTaskObjectProperty(json, "purpose");
+    private static string ReadTaskNext(string json) => ReadTaskObjectProperty(json, "nextStep");
+    private static object ReadTaskInput(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            return doc.RootElement.TryGetProperty("input", out var value) ? value.Clone() : new { };
+        }
+        catch { return new { }; }
+    }
+    private static string ReadTaskObjectProperty(string json, string property)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            return doc.RootElement.TryGetProperty(property, out var value) ? value.GetString() ?? string.Empty : string.Empty;
+        }
+        catch { return string.Empty; }
     }
 
     private static async Task<IResult> SetStatus(
