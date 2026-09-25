@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LeadsAI.Persistence.SqlServer.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial : Migration
+    public partial class intialcreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -259,6 +259,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     AgentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    CampaignId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Status = table.Column<int>(type: "int", nullable: false),
                     IsManual = table.Column<bool>(type: "bit", nullable: false),
                     Query = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
@@ -301,6 +302,33 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_AutonomousAcquisitionAgents", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AutonomousAcquisitionTasks",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    AgentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    RunId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    Sequence = table.Column<int>(type: "int", nullable: false),
+                    Type = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    RequiresApproval = table.Column<bool>(type: "bit", nullable: false),
+                    ConfigurationJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ResultJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Error = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    AttemptCount = table.Column<int>(type: "int", nullable: false),
+                    StartedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CompletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AutonomousAcquisitionTasks", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -386,6 +414,12 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TargetListId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    AgentId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    PackageCode = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    PackageVersion = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
+                    Objective = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
+                    PlanJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    PlanStatus = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Goal = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Status = table.Column<int>(type: "int", nullable: false),
@@ -2168,6 +2202,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    CampaignId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     IcpProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
@@ -2554,9 +2589,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_AutonomousAcquisitionAgentRuns_AgentId_ScheduledAtUtc",
+                name: "IX_AutonomousAcquisitionAgentRuns_AgentId_CampaignId_ScheduledAtUtc",
                 table: "AutonomousAcquisitionAgentRuns",
-                columns: new[] { "AgentId", "ScheduledAtUtc" });
+                columns: new[] { "AgentId", "CampaignId", "ScheduledAtUtc" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_AutonomousAcquisitionAgentRuns_TenantId_Status",
@@ -2566,6 +2601,18 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_AutonomousAcquisitionAgents_TenantId_Status",
                 table: "AutonomousAcquisitionAgents",
+                columns: new[] { "TenantId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AutonomousAcquisitionTasks_TenantId_AgentId_RunId_Sequence",
+                table: "AutonomousAcquisitionTasks",
+                columns: new[] { "TenantId", "AgentId", "RunId", "Sequence" },
+                unique: true,
+                filter: "[RunId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AutonomousAcquisitionTasks_TenantId_Status",
+                table: "AutonomousAcquisitionTasks",
                 columns: new[] { "TenantId", "Status" });
 
             migrationBuilder.CreateIndex(
@@ -2885,9 +2932,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_TargetLists_TenantId_Name",
+                name: "IX_TargetLists_TenantId_CampaignId_Name",
                 table: "TargetLists",
-                columns: new[] { "TenantId", "Name" });
+                columns: new[] { "TenantId", "CampaignId", "Name" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_TargetMarkets_TenantId_CatalogProductId_CountryCode",
@@ -2992,6 +3039,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 
             migrationBuilder.DropTable(
                 name: "AutonomousAcquisitionAgents");
+
+            migrationBuilder.DropTable(
+                name: "AutonomousAcquisitionTasks");
 
             migrationBuilder.DropTable(
                 name: "BillingEvents");
