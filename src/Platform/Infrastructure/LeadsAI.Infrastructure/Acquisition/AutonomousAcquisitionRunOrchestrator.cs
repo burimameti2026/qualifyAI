@@ -16,7 +16,8 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     IAutonomousAcquisitionTemplateRegistry templates,
     IEnumerable<IProspectDiscoveryProvider> providers,
     IAutonomousAcquisitionBackendService backend,
-    ITenantContext tenantContext) : IAutonomousAcquisitionRunOrchestrator
+    ITenantContext tenantContext,
+    IAutonomousAcquisitionWorkflowPlanner planner) : IAutonomousAcquisitionRunOrchestrator
 {
     public async Task ExecuteAsync(Guid runId, CancellationToken ct = default)
     {
@@ -44,6 +45,13 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         try
         {
             var template = templates.Apply(agent);
+            var tasks = await planner.EnsurePlanAsync(agent, template, ct);
+            var discoveryTask = tasks.First(x => x.Type == AutonomousAgentTaskTypes.Discover);
+            discoveryTask.Status = AutonomousAgentTaskStatus.Running;
+            discoveryTask.AttemptCount++;
+            discoveryTask.StartedAtUtc = DateTime.UtcNow;
+            discoveryTask.UpdatedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
             var countries = ReadCountries(agent.CountriesJson);
             var country = countries.Count == 0
                 ? string.Empty
@@ -133,6 +141,10 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 });
             }
 
+            discoveryTask.Status = AutonomousAgentTaskStatus.Completed;
+            discoveryTask.ResultJson = JsonSerializer.Serialize(new { discovered = run.DiscoveredCount, nextTask = AutonomousAgentTaskTypes.Qualify });
+            discoveryTask.CompletedAtUtc = DateTime.UtcNow;
+            discoveryTask.UpdatedAtUtc = DateTime.UtcNow;
             agent.LastRunAtUtc = now;
             agent.UpdatedAtUtc = now;
             run.Status = AutonomousAgentRunStatus.Completed;
@@ -141,6 +153,14 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         }
         catch (Exception ex)
         {
+            var failedTask = await db.AutonomousAcquisitionTasks.FirstOrDefaultAsync(x => x.TenantId == run.TenantId && x.AgentId == run.AgentId && x.Status == AutonomousAgentTaskStatus.Running, CancellationToken.None);
+            if (failedTask is not null)
+            {
+                failedTask.Status = AutonomousAgentTaskStatus.Failed;
+                failedTask.Error = ex.Message;
+                failedTask.CompletedAtUtc = DateTime.UtcNow;
+                failedTask.UpdatedAtUtc = DateTime.UtcNow;
+            }
             run.Status = AutonomousAgentRunStatus.Failed;
             run.Error = ex.Message;
             run.CompletedAtUtc = DateTime.UtcNow;

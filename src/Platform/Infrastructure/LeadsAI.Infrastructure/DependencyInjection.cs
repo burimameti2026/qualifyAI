@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<ProspectDiscoveryService>();
         services.AddSingleton<IAutonomousAcquisitionTemplateRegistry, AutonomousAcquisitionTemplateRegistry>();
         services.AddScoped<IAutonomousAcquisitionBackendService, AutonomousAcquisitionBackendService>();
+        services.AddScoped<IAutonomousAcquisitionWorkflowPlanner, AutonomousAcquisitionWorkflowPlanner>();
         services.AddScoped<IAutonomousAcquisitionRunOrchestrator, AutonomousAcquisitionRunOrchestrator>();
         services.AddHttpClient<SerpApiProspectDiscoveryProvider>(c =>
         {
