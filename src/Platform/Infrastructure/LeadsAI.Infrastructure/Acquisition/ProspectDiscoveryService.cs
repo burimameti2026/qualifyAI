@@ -246,36 +246,6 @@ public sealed class SerpApiAccountUsage
     public int AccountRateLimitPerHour { get; init; }
 }
 
-public sealed class SerpApiAccountUsage
-{
-    public string PlanName { get; init; } = string.Empty;
-
-    public int SearchesPerMonth
-    {
-        get; init;
-    }
-
-    public int PlanSearchesLeft
-    {
-        get; init;
-    }
-
-    public int ThisMonthUsage
-    {
-        get; init;
-    }
-
-    public int ThisHourSearches
-    {
-        get; init;
-    }
-
-    public int AccountRateLimitPerHour
-    {
-        get; init;
-    }
-}
-
 public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProspectDiscoveryProvider> providers)
 {
     public IReadOnlyList<DiscoveryProviderStatus> ProviderStatus() => providers
