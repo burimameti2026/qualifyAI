@@ -281,19 +281,6 @@ public static class AutonomousAcquisitionEndpoints
         });
 
 
-            if (run is null) return Results.NotFound();
-            if (run.Status != AutonomousAgentRunStatus.Failed)
-                return Results.BadRequest(new { error = "Only failed runs can be retried." });
-
-            run.Status = AutonomousAgentRunStatus.Queued;
-            run.Error = null;
-            run.StartedAtUtc = null;
-            run.CompletedAtUtc = null;
-            run.ScheduledAtUtc = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
-            return Results.Accepted(
-                $"/api/autonomous-acquisition/tenants/{tenantId}/agents/{id}/runs/{run.Id}", run);
-        });
 
         g.MapGet("/tenants/{tenantId}/agents/{id}/tasks", async (
             Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
@@ -317,38 +304,6 @@ public static class AutonomousAcquisitionEndpoints
 
 
 
-            if (agent is null) return Results.NotFound();
-            if (agent.Status is AutonomousAgentStatus.Stopped)
-                return Results.BadRequest(new { error = "Agent is stopped." });
-            if (agent.Status is AutonomousAgentStatus.Draft or AutonomousAgentStatus.Paused or AutonomousAgentStatus.Failed)
-            {
-                agent.Status = AutonomousAgentStatus.Active;
-                agent.UpdatedAtUtc = DateTime.UtcNow;
-            }
-
-            var campaign = await db.Campaigns
-                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AgentId == id, ct);
-            if (campaign is null)
-                return Results.BadRequest(new { error = "Agent is not linked to a campaign container." });
-            if (campaign.Status is CampaignStatus.Stopped or CampaignStatus.Completed)
-                return Results.BadRequest(new { error = $"Campaign is {campaign.Status}." });
-            if (campaign.Status is CampaignStatus.Draft or CampaignStatus.Scheduled)
-                campaign.Start();
-
-            var run = new AutonomousAcquisitionAgentRun
-            {
-                TenantId = tenantId,
-                AgentId = id,
-                CampaignId = campaign.Id,
-                IsManual = true,
-                Status = AutonomousAgentRunStatus.Queued
-            };
-
-            db.AutonomousAcquisitionAgentRuns.Add(run);
-            await db.SaveChangesAsync(ct);
-            return Results.Accepted(
-                $"/api/autonomous-acquisition/tenants/{tenantId}/agents/{id}/runs/{run.Id}", run);
-        });
 
         return endpoints;
     }
