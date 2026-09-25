@@ -95,7 +95,7 @@ public sealed class DevelopmentSeedService(
     }
 
 
-
+}
 public sealed class DevelopmentSeedHostedService(
     IServiceScopeFactory scopeFactory,
     IConfiguration configuration,

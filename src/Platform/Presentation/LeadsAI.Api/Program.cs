@@ -39,8 +39,7 @@ builder.Services.AddScoped<KnowledgeGapService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
 builder.Services.AddScoped<WorkspacePackageInstaller>();
-builder.Services.AddScoped<FusionFleetPackageProvisioner>();
-builder.Services.AddScoped<QualifyAiAcquisitionPackageProvisioner>();
+
 builder.Services.AddScoped<RealisticScenarioService>();
 builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>();
 builder.Services.Configure<RevenueAutomationOptions>(builder.Configuration.GetSection("RevenueAutomation"));
