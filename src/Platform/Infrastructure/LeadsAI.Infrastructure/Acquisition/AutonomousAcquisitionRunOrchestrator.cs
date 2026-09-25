@@ -50,9 +50,21 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         if (tenantContext.Current?.Id != run.TenantId)
             throw new InvalidOperationException("Autonomous acquisition run must execute inside its tenant context.");
 
+        var claimed = await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == run.TenantId &&
+                        x.Id == run.Id &&
+                        (x.Status == AutonomousAgentRunStatus.Queued ||
+                         x.Status == AutonomousAgentRunStatus.WaitingApproval))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AutonomousAgentRunStatus.Running)
+                .SetProperty(x => x.StartedAtUtc, x => x.StartedAtUtc ?? DateTime.UtcNow)
+                .SetProperty(x => x.Error, (string?)null), ct);
+
+        if (claimed == 0)
+            return;
+
         run.Status = AutonomousAgentRunStatus.Running;
         run.StartedAtUtc ??= DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
 
         try
         {
