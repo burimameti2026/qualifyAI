@@ -20,12 +20,10 @@ public sealed class DevelopmentSeedService(
         if (!configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
             return;
 
-        var tenantIdValue = configuration["DevelopmentSeed:TenantId"]
-            ?? configuration["TenantBootstrap:FindLeadsAI:TenantId"];
-
-        if (!Guid.TryParse(tenantIdValue, out var tenantId))
+        var tenantSlug = configuration["DevelopmentSeed:TenantSlug"]?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(tenantSlug))
         {
-            logger.LogWarning("Development seed is enabled but no valid development TenantId is configured.");
+            logger.LogWarning("Development seed is enabled but no TenantSlug is configured.");
             return;
         }
 
@@ -35,24 +33,36 @@ public sealed class DevelopmentSeedService(
 
             var entitlement = await db.TenantEntitlements
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
+                .FirstOrDefaultAsync(x =>
+                    x.TenantSlug == tenantSlug &&
+                    x.TenantStatus == "active" &&
+                    x.LicenseStatus == "active",
+                    cancellationToken);
 
-            if (entitlement is not null &&
-                entitlement.TenantStatus.Equals("active", StringComparison.OrdinalIgnoreCase) &&
-                entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
+            if (entitlement is not null)
             {
-                await EnsureIndustryPackCampaignAsync(tenantId, cancellationToken);
+                logger.LogInformation(
+                    "Development seed resolved tenant {TenantSlug} to {TenantId}.",
+                    tenantSlug,
+                    entitlement.TenantId);
+
+                await EnsureIndustryPackCampaignAsync(entitlement.TenantId, cancellationToken);
                 return;
             }
+
+            logger.LogInformation(
+                "Development seed waiting for active entitlement for tenant {TenantSlug}. Attempt {Attempt}/30.",
+                tenantSlug,
+                attempt);
 
             if (attempt < 30)
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
         logger.LogError(
-            "Development seed could not continue because tenant {TenantId} did not receive an active entitlement projection. " +
+            "Development seed could not continue because tenant {TenantSlug} did not receive an active entitlement projection. " +
             "Identity bootstrap/outbox or Platform RabbitMQ consumers must be investigated.",
-            tenantId);
+            tenantSlug);
     }
 
     private async Task EnsureIndustryPackCampaignAsync(
