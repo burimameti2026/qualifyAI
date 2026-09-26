@@ -104,13 +104,14 @@ public sealed class WorkspacePackageInstaller(
 
         await db.SaveChangesAsync(ct);
 
-        return await SnapshotAsync(tenantId, package.Id, $"{package.Name} profile", ct);
+        return await SnapshotAsync(tenantId, package.Id, $"{package.Name} profile", alreadyInstalled, ct);
     }
 
     private async Task<WorkspacePackageInstallResult> SnapshotAsync(
         Guid tenantId,
         string packageId,
         string scenario,
+        bool alreadyInstalled,
         CancellationToken ct)
         => new(
             packageId,
