@@ -39,8 +39,19 @@ public sealed class LicenseChangeOrchestrator(AppDbContext db, IModuleRegistry r
         if(removed.Length>0)
             await deactivation.DeactivateAsync(tenantId, removed, cancellationToken);
 
-        if(added.Length>0)
-            await provisioning.ProvisionAsync(tenantId, added, cancellationToken);
+        try
+        {
+            if (added.Length > 0)
+                await provisioning.ProvisionAsync(tenantId, added, cancellationToken);
+        }
+        catch
+        {
+            if (entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
+                entitlement.TenantStatus = "provisioning_failed";
+
+            await db.SaveChangesAsync(cancellationToken);
+            throw;
+        }
 
         var requiredRows = await db.TenantModuleProvisionings
             .AsNoTracking()
