@@ -16,7 +16,7 @@ public sealed class AutonomousAcquisitionAgent
 
 public sealed class AutonomousAcquisitionAgentRun
 {
- public Guid Id { get; set; }=Guid.NewGuid(); public Guid TenantId { get; set; } public Guid AgentId { get; set; } public Guid CampaignId { get; set; }
+ public Guid Id { get; set; }=Guid.NewGuid(); public Guid TenantId { get; set; } public Guid AgentId { get; set; } public Guid? CampaignId { get; set; }
  public AutonomousAgentRunStatus Status { get; set; }=AutonomousAgentRunStatus.Queued; public bool IsManual { get; set; }
  public string? Query { get; set; } public DateTime ScheduledAtUtc { get; set; }=DateTime.UtcNow; public DateTime? StartedAtUtc { get; set; } public DateTime? CompletedAtUtc { get; set; }
  public int DiscoveredCount { get; set; } public int QualifiedCount { get; set; } public int HighScoreCount { get; set; } public int EmailsQueuedCount { get; set; } public int EmailsSentCount { get; set; }
