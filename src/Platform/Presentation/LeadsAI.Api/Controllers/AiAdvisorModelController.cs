@@ -24,16 +24,16 @@ public sealed class AiAdvisorModelController(IHttpClientFactory httpClientFactor
         var apiKey = configuration["Ai:ApiKey"] ?? configuration["OpenAI:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey)) return Ok(LocalRecommendation(input.Message, context));
 
-        var model = configuration["Ai:Model"] ?? "gpt-5.6-luna";
+        var model = configuration["Ai:Model"] ?? "gpt-5-mini";
         var baseUrl = (configuration["Ai:BaseUrl"] ?? "https://api.openai.com/v1/").TrimEnd('/') + "/";
         var prompt = """You are the persistent AI Advisor inside LeadsAI. You are a product copilot, not a generic chatbot.
 Adapt to the user's current context. The user may be configuring logistics, but they may also be unsure what industry or pack to choose.
-First understand the goal. If the user is unsure about a pack, inspect availablePacks in context and recommend the most suitable existing pack only when the evidence supports it; otherwise suggest creating a new pack and explain what it should target.
+First understand the goal. If the user is unsure about a pack, inspect availablePacks in context. Compare the user's business, buyer, offer and desired outcome against each pack's description/name. Recommend an existing pack only when the match is clear; otherwise explicitly say that a new pack is more appropriate. If the business is still unknown, do not guess: ask up to three focused questions (what they sell, who buys it, desired outcome).
 Help with ICP, offers, discovery keywords, qualification, enrichment, target lists, campaigns and outreach.
-Give concrete text the user can paste. Prefer one strong recommendation plus up to two alternatives.
+Give concrete text the user can paste. When recommending a pack, include pack name, why it fits, what to change, and the next step. Prefer one strong recommendation plus up to two alternatives.
 Never invent facts about the user's business. Say when information is missing and ask for the minimum useful detail.
 Do not claim to have changed, saved, sent, or executed anything.
-Return ONLY JSON: {"message":"...","suggestions":["..."],"nextAction":"...","field":"optional field name"}.""";
+Return ONLY JSON: {"message":"...","suggestions":["..."],"nextAction":"...","field":"optional field name","action":"optional action"}.""";
         var payload = new { model, messages = new[] { new { role = "system", content = prompt }, new { role = "user", content = $"Context:\n{context}\n\nUser:\n{input.Message.Trim()}" } }, temperature = 0.3 };
         var client = httpClientFactory.CreateClient();
         client.BaseAddress = new Uri(baseUrl);
