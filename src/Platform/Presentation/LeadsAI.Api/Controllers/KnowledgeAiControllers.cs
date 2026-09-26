@@ -8,6 +8,7 @@ using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
+using DomainAiAgent = LeadsAI.Domain.AiAgent;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -69,11 +70,11 @@ public sealed class AiController(ISender sender, ITenantContext tenant, IAiToolR
 
     [HttpPost("agents")]
     [RequirePermission(QualifyAiPermissions.AgentsManage)]
-    public async Task<IActionResult> CreateAgent(AiAgent input, CancellationToken ct) => Ok(await sender.Send(new CreateAiAgentCommand(tenant.TenantId(), input), ct));
+    public async Task<IActionResult> CreateAgent(DomainAiAgent input, CancellationToken ct) => Ok(await sender.Send(new CreateAiAgentCommand(tenant.TenantId(), input), ct));
 
     [HttpPut("agents/{id:guid}")]
     [RequirePermission(QualifyAiPermissions.AgentsManage)]
-    public async Task<IActionResult> UpdateAgent(Guid id, AiAgent input, CancellationToken ct)
+    public async Task<IActionResult> UpdateAgent(Guid id, DomainAiAgent input, CancellationToken ct)
         => (await sender.Send(new UpdateAiAgentCommand(tenant.TenantId(), id, input), ct)) is { } x ? Ok(x) : NotFound();
 
     [HttpPost("agents/{id:guid}/test")]
