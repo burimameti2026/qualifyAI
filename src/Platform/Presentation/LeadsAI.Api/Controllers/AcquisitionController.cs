@@ -188,6 +188,7 @@ public sealed class AcquisitionController(
                     x.RequiresApproval,
                     x.StartedAtUtc,
                     x.CompletedAtUtc,
+                    x.ConfigurationJson,
                     x.ResultJson,
                     x.Error
                 })
