@@ -33,6 +33,7 @@ public sealed class TenantLifecycleReconciliationWorker(IServiceScopeFactory sco
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var orchestrator = scope.ServiceProvider.GetRequiredService<ILicenseChangeOrchestrator>();
+                var lifecycle = scope.ServiceProvider.GetRequiredService<ITenantLifecycleOrchestrator>();
                 var events = scope.ServiceProvider.GetRequiredService<ITenantLifecycleEventStore>();
                 var alerts = scope.ServiceProvider.GetRequiredService<ITenantAlertService>();
                 var now = DateTime.UtcNow;
@@ -87,6 +88,14 @@ public sealed class TenantLifecycleReconciliationWorker(IServiceScopeFactory sco
                     try
                     {
                         await orchestrator.ReconcileAsync(tenantId, stoppingToken);
+                        var entitlement = await db.TenantEntitlements.AsNoTracking()
+                            .SingleOrDefaultAsync(x => x.TenantId == tenantId, stoppingToken);
+                        if (entitlement is not null && entitlement.LicenseStatus == "active")
+                        {
+                            var modules = JsonSerializer.Deserialize<string[]>(entitlement.ModulesJson) ?? Array.Empty<string>();
+                            if (modules.Length > 0)
+                                await lifecycle.ActivateAsync(new TenantLifecycleRequest(tenantId, modules), stoppingToken);
+                        }
                         events.Record(new(tenantId, "reconciliation", "completed", "Tenant lifecycle reconciliation completed", DateTime.UtcNow));
                     }
                     catch (Exception ex)
