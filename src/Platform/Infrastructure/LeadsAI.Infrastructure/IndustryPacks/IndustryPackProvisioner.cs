@@ -41,7 +41,7 @@ public sealed record IndustryPackProvisioningResult(
 
 public interface IIndustryPackProvisioner
 {
-    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default, string? scenarioCode = null);
+    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default, string? scenarioCode = null, Guid? icpProfileId = null);
 }
 
 public sealed class IndustryPackProvisioner(
@@ -51,7 +51,7 @@ public sealed class IndustryPackProvisioner(
 {
     private const string Version = "industry-pack.v1";
 
-    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default, string? scenarioCode = null)
+    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default, string? scenarioCode = null, Guid? icpProfileId = null)
     {
         // SQL Server uses a retrying execution strategy. The entire transaction must
         // execute inside that strategy so a transient failure can safely retry the
@@ -161,7 +161,15 @@ public sealed class IndustryPackProvisioner(
             db.Campaigns.Add(campaign);
         }
 
-        var icp = await EnsureIcpAsync(tenantId, pack, definition, ct);
+        var icp = icpProfileId.HasValue
+            ? await db.IcpProfiles.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == icpProfileId.Value && x.Active, ct)
+            : await EnsureIcpAsync(tenantId, pack, definition, ct);
+
+        if (icp is null)
+            throw new InvalidOperationException(
+                $"ICP profile '{icpProfileId}' was not found or is inactive for tenant '{tenantId}'.");
+
         targetList.IcpProfileId = icp.Id;
 
         var agent = await EnsureCampaignAgentAsync(tenantId, pack, definition, campaign, ct);
