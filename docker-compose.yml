@@ -129,7 +129,7 @@ services:
       Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-leadsai}:${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
       Mongo__Database: LeadsAI_Knowledge
       OpenRouter__BaseUrl: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1/}
-      OpenRouter__Model: ${OPENROUTER_MODEL:-openrouter/free}
+      OpenRouter__Model: ${OPENROUTER_MODEL:-qwen/qwen3.8-27b:free}
       OpenRouter__ApiKey: ${OPENROUTER_API_KEY:-}
       OpenRouter__Referer: ${OPENROUTER_REFERER:-https://leadsai.app}
       OpenRouter__Title: ${OPENROUTER_TITLE:-LeadsAI}
