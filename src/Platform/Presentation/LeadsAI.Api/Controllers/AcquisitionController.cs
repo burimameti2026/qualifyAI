@@ -305,22 +305,27 @@ public sealed class AcquisitionController(
         Guid? runId = null;
         var strategy = db.Database.CreateExecutionStrategy();
 
-        await strategy.ExecuteAsync(async () =>
+        try
         {
-            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
-            var campaign = await db.Campaigns
-                .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-            if (campaign is null)
-                throw new KeyNotFoundException($"Campaign '{id}' was not found.");
+                var campaign = await db.Campaigns
+                    .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+                if (campaign is null)
+                    throw new KeyNotFoundException($"Campaign '{id}' was not found.");
 
-            campaign.Start();
-            var run = await QueueCampaignRunAsync(campaign, isManual: true, ct);
-            runId = run?.Id;
+                campaign.Start();
+                var run = await QueueCampaignRunAsync(campaign, isManual: true, ct);
+                runId = run?.Id;
 
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-        });
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            });
+        }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
 
         return Ok(new
         {
