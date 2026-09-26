@@ -42,34 +42,72 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> Icp(CancellationToken ct)
     {
-        var tenantId = TenantId;
-        var rows = await db.IcpProfiles
-            .AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
+        var rows = await db.IcpProfiles.AsNoTracking()
+            .Where(x => x.TenantId == TenantId)
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
-        return Ok(rows);
+
+        return Ok(rows.Select(x => new
+        {
+            x.Id,
+            x.TenantId,
+            x.Name,
+            x.Industry,
+            x.CountriesCsv,
+            x.MinimumEmployees,
+            x.MaximumEmployees,
+            x.IntentKeywordsCsv,
+            x.CriteriaJson,
+            x.Active,
+            x.LastDiscoveryAtUtc,
+            minimumScore = ReadMinimumScore(x.CriteriaJson)
+        }));
     }
 
     [HttpPost("icp")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> SaveIcp(IcpProfile input, CancellationToken ct)
+    public async Task<IActionResult> SaveIcp([FromBody] IcpSaveRequest input, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(input.Name))
             return BadRequest(new { error = "ICP name is required." });
 
-        input.Id = Guid.NewGuid();
-        input.TenantId = TenantId;
-        input.CreatedAtUtc = input.UpdatedAtUtc = DateTime.UtcNow;
-        input.Name = input.Name.Trim();
-        input.Industry = input.Industry?.Trim() ?? string.Empty;
-        input.CountriesCsv = input.CountriesCsv?.Trim() ?? string.Empty;
-        input.IntentKeywordsCsv = input.IntentKeywordsCsv?.Trim() ?? string.Empty;
-        input.CriteriaJson = string.IsNullOrWhiteSpace(input.CriteriaJson) ? "{}" : input.CriteriaJson;
+        var tenantId = TenantId;
+        IcpProfile? profile = null;
+        if (input.Id.HasValue && input.Id.Value != Guid.Empty)
+            profile = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == input.Id.Value, ct);
 
-        db.IcpProfiles.Add(input);
+        var isNew = profile is null;
+        profile ??= new IcpProfile { Id = Guid.NewGuid(), TenantId = tenantId };
+
+        profile.Name = input.Name.Trim();
+        profile.Industry = input.Industry?.Trim() ?? string.Empty;
+        profile.CountriesCsv = input.CountriesCsv?.Trim() ?? string.Empty;
+        profile.IntentKeywordsCsv = input.IntentKeywordsCsv?.Trim() ?? string.Empty;
+        profile.MinimumEmployees = input.MinimumEmployees;
+        profile.MaximumEmployees = input.MaximumEmployees;
+        profile.CriteriaJson = NormalizeCriteria(input.CriteriaJson, input.MinimumScore);
+        profile.Active = input.Active;
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+
+        if (isNew)
+            db.IcpProfiles.Add(profile);
+
         await db.SaveChangesAsync(ct);
-        return Created($"/api/acquisition/icp/{input.Id}", input);
+        return Ok(new
+        {
+            profile.Id,
+            profile.TenantId,
+            profile.Name,
+            profile.Industry,
+            profile.CountriesCsv,
+            profile.MinimumEmployees,
+            profile.MaximumEmployees,
+            profile.IntentKeywordsCsv,
+            profile.CriteriaJson,
+            profile.Active,
+            profile.LastDiscoveryAtUtc,
+            minimumScore = ReadMinimumScore(profile.CriteriaJson)
+        });
     }
 
     [HttpGet("prospects")]
@@ -641,6 +679,38 @@ public sealed class AcquisitionController(
         return run;
     }
 
+    private static int ReadMinimumScore(string? criteriaJson)
+    {
+        if (string.IsNullOrWhiteSpace(criteriaJson)) return 70;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(criteriaJson);
+            if (document.RootElement.TryGetProperty("minimumScore", out var value) && value.TryGetInt32(out var score))
+                return Math.Clamp(score, 0, 100);
+        }
+        catch (System.Text.Json.JsonException) { }
+        return 70;
+    }
+
+    private static string NormalizeCriteria(string? criteriaJson, int minimumScore)
+    {
+        var score = Math.Clamp(minimumScore, 0, 100);
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(criteriaJson) ? "{}" : criteriaJson);
+            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var map = new Dictionary<string, object?>();
+                foreach (var property in document.RootElement.EnumerateObject())
+                    map[property.Name] = property.Value.Clone();
+                map["minimumScore"] = score;
+                return System.Text.Json.JsonSerializer.Serialize(map);
+            }
+        }
+        catch (System.Text.Json.JsonException) { }
+        return System.Text.Json.JsonSerializer.Serialize(new { minimumScore = score });
+    }
+
     private static string NormalizeDomain(string? value)
     {
         var domain = (value??string.Empty).Trim().ToLowerInvariant();
@@ -653,6 +723,18 @@ public sealed class AcquisitionController(
 
 
 }
+
+public sealed record IcpSaveRequest(
+    Guid? Id,
+    string Name,
+    string? Industry,
+    string? CountriesCsv,
+    int? MinimumEmployees,
+    int? MaximumEmployees,
+    string? IntentKeywordsCsv,
+    string? CriteriaJson,
+    bool Active = true,
+    int MinimumScore = 70);
 
 public sealed record CampaignPlanRequest(string PlanJson);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
