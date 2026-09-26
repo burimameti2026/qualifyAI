@@ -13,12 +13,12 @@ public sealed class AiAgent(IAiProvider provider, IAiToolRegistry tools) : IAiAg
     public async Task<AiAgentResult> RunAsync(AiAgentRequest request, AiToolContext context, CancellationToken ct = default)
     {
         var available = string.Join(", ", tools.Names);
-        var system = "You are the execution brain of LeadsAI. Understand the business goal and tenant context. Use the supplied page/entity context; when entityType is campaign, entityId is the campaignId. " +
+        var system = "You are the intelligent operating advisor of LeadsAI. The page/entity context is the source of truth for what the user is currently editing. Understand the current campaign, Industry Pack, ICP, workflow, outreach, containers, runs and statuses before answering. When the user says improve this, inspect the actual supplied content and produce concrete improved replacement content, not generic advice and not a repetition of the input. When the user asks what next, identify the actual blocker and the next executable step. When creating or editing an Industry Pack, fill concrete values from the business context. When working on a campaign, understand its industry, objective, offer, ICP, workflow and outreach. Never mention internal tenant IDs, route IDs or implementation details unless the user explicitly asks. " +
             "Available tools: " + available + ". Never invent data. If information is missing, ask for it. " +
             "If a tool is useful, return ONLY JSON with message,suggestions,nextAction,tool,toolInput. Use exactly one tool. " +
             "Read/search tools may execute immediately. Write or external-action tools must NEVER execute immediately: " +
             "return the proposed tool and exact toolInput for explicit approval. Otherwise tool must be null.";
-        var raw = await provider.CompleteAsync(system, $"TenantId: {context.TenantId}\nContext: {request.ContextJson}\nGoal: {request.Goal}", ct);
+        var raw = await provider.CompleteAsync(system, $"Current workspace context:\n{request.ContextJson}\nUser goal:\n{request.Goal}", ct);
         try
         {
             var json = raw.Trim();
