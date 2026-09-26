@@ -10,6 +10,7 @@ using LeadsAI.Persistence.SqlServer;
 namespace LeadsAI.Api.Controllers;
 
 public sealed record ProvisionIndustryPackRequest(string? ScenarioCode);
+public sealed record IndustryPackRequest(string Code, string Name, string? Description, string? TemplateJson);
 
 [ApiController]
 [Authorize]
@@ -72,6 +73,70 @@ public sealed class IndustryPacksController(
                 campaignStatus = campaign?.Status.ToString()
             };
         }));
+    }
+
+
+    [HttpPost]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Create(IndustryPackRequest input, CancellationToken ct)
+    {
+        var code = input.Code?.Trim().ToLowerInvariant();
+        var name = input.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { error = "Code and name are required." });
+        if (!System.Text.RegularExpressions.Regex.IsMatch(code, "^[a-z0-9][a-z0-9-]*$"))
+            return BadRequest(new { error = "Code may contain lowercase letters, numbers and hyphens only." });
+        if (await db.IndustryPacks.AnyAsync(x => x.Code == code, ct))
+            return Conflict(new { error = "An Industry Pack with this code already exists." });
+        var template = string.IsNullOrWhiteSpace(input.TemplateJson) ? "{}" : input.TemplateJson!;
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(template);
+            if (json.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return BadRequest(new { error = "TemplateJson must be a JSON object." });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return BadRequest(new { error = "TemplateJson is not valid JSON." });
+        }
+        var pack = new IndustryPack { Id = Guid.NewGuid(), Code = code, Name = name, Description = input.Description?.Trim() ?? string.Empty, TemplateJson = template };
+        db.IndustryPacks.Add(pack);
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/industry-packs/{pack.Id}", pack);
+    }
+
+    [HttpPut("{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Update(Guid id, IndustryPackRequest input, CancellationToken ct)
+    {
+        var pack = await db.IndustryPacks.SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (pack is null) return NotFound(new { error = "Industry pack was not found." });
+        var code = input.Code?.Trim().ToLowerInvariant();
+        var name = input.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { error = "Code and name are required." });
+        if (!System.Text.RegularExpressions.Regex.IsMatch(code, "^[a-z0-9][a-z0-9-]*$"))
+            return BadRequest(new { error = "Code may contain lowercase letters, numbers and hyphens only." });
+        if (await db.IndustryPacks.AnyAsync(x => x.Id != id && x.Code == code, ct))
+            return Conflict(new { error = "An Industry Pack with this code already exists." });
+        var template = string.IsNullOrWhiteSpace(input.TemplateJson) ? "{}" : input.TemplateJson!;
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(template);
+            if (json.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return BadRequest(new { error = "TemplateJson must be a JSON object." });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return BadRequest(new { error = "TemplateJson is not valid JSON." });
+        }
+        pack.Code = code;
+        pack.Name = name;
+        pack.Description = input.Description?.Trim() ?? string.Empty;
+        pack.TemplateJson = template;
+        pack.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Ok(pack);
     }
 
     [HttpPost("{id:guid}/install")]
