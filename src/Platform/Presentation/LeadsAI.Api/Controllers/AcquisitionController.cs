@@ -326,6 +326,47 @@ public sealed class AcquisitionController(
         }
     }
 
+    [HttpPut("campaigns/{id:guid}/messages")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> SaveCampaignMessages(Guid id, CampaignMessagesRequest input, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+        if (input.Steps is null || input.Steps.Count == 0)
+            return BadRequest(new { detail = "At least one outreach message template is required." });
+
+        var steps = input.Steps.OrderBy(x => x.StepNumber).ToList();
+        if (steps.Any(x => x.StepNumber <= 0 || string.IsNullOrWhiteSpace(x.SubjectTemplate) || string.IsNullOrWhiteSpace(x.BodyTemplate)))
+            return BadRequest(new { detail = "Every message needs a step number, subject and body." });
+
+        var existing = await db.CampaignSteps
+            .Where(x => x.TenantId == TenantId && x.CampaignId == id)
+            .ToListAsync(ct);
+        if (existing.Count > 0) db.CampaignSteps.RemoveRange(existing);
+
+        db.CampaignSteps.AddRange(steps.Select(x => new CampaignStep
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            CampaignId = id,
+            StepNumber = x.StepNumber,
+            DelayHours = Math.Max(0, x.DelayHours),
+            Channel = string.IsNullOrWhiteSpace(x.Channel) ? "email" : x.Channel.Trim(),
+            SubjectTemplate = x.SubjectTemplate.Trim(),
+            BodyTemplate = x.BodyTemplate.Trim()
+        }));
+
+        campaign.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var saved = await db.CampaignSteps.AsNoTracking()
+            .Where(x => x.TenantId == TenantId && x.CampaignId == id)
+            .OrderBy(x => x.StepNumber)
+            .Select(x => new { x.Id, x.StepNumber, x.DelayHours, x.Channel, x.SubjectTemplate, x.BodyTemplate })
+            .ToListAsync(ct);
+        return Ok(saved);
+    }
+
     [HttpPost("campaigns/{id:guid}/pause")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Pause(Guid id, CancellationToken ct)
@@ -737,6 +778,8 @@ public sealed record IcpSaveRequest(
     int MinimumScore = 70);
 
 public sealed record CampaignPlanRequest(string PlanJson);
+public sealed record CampaignMessagesRequest(IReadOnlyList<CampaignMessageStepRequest> Steps);
+public sealed record CampaignMessageStepRequest(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
 public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
 public sealed record CampaignActivityItem(Guid Id, DateTime AtUtc, string Type, string Status, string Title, string Detail);
