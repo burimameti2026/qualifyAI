@@ -48,7 +48,7 @@ public static class AutonomousAcquisitionEndpoints
 
             var duplicate = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x =>
                 x.TenantId == tenantId && x.AgentId == agent.Id && x.CampaignId == campaign.Id &&
-                x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval, ct);
+                (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running || x.Status == AutonomousAgentRunStatus.WaitingApproval), ct);
             if (duplicate) return Results.Conflict(new { error = "An acquisition run is already queued, running, or waiting for approval." });
 
             var run = new AutonomousAcquisitionAgentRun
@@ -105,7 +105,7 @@ public static class AutonomousAcquisitionEndpoints
             {
                 campaign,
                 latestRun,
-                currentStep = tasks.FirstOrDefault(x => x.Status is AutonomousAgentTaskStatus.Running or AutonomousAgentTaskStatus.Pending),
+                currentStep = tasks.FirstOrDefault(x => (x.Status == AutonomousAgentTaskStatus.Running || x.Status == AutonomousAgentTaskStatus.Pending)),
                 packageCode = campaign.PackageCode,
                 agent,
                 workflow = new
@@ -187,13 +187,13 @@ public static class AutonomousAcquisitionEndpoints
             var campaign = await db.Campaigns.SingleOrDefaultAsync(
                 x => x.TenantId == tenantId && x.Id == input.CampaignId, ct);
             if (campaign is null) return Results.NotFound(new { detail = "Campaign was not found." });
-            if (campaign.Status is CampaignStatus.Paused or CampaignStatus.Stopped or CampaignStatus.Completed)
+            if ((campaign.Status == CampaignStatus.Paused || campaign.Status == CampaignStatus.Stopped || campaign.Status == CampaignStatus.Completed))
                 return Results.Conflict(new { detail = "The campaign is not runnable in its current status." });
 
             var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
                 x => x.TenantId == tenantId && x.Id == id, ct);
             if (agent is null) return Results.NotFound(new { detail = "Agent was not found." });
-            if (agent.Status is AutonomousAgentStatus.Stopped)
+            if ((agent.Status == AutonomousAgentStatus.Stopped))
                 return Results.Conflict(new { detail = "The autonomous acquisition agent is stopped." });
 
             var active = await db.AutonomousAcquisitionAgentRuns.AnyAsync(
