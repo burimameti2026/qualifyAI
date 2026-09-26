@@ -57,13 +57,25 @@ public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory sc
             .Select(x => x.Id)
             .ToListAsync(ct);
 
-        var orchestrator = scope.ServiceProvider.GetRequiredService<IAutonomousAcquisitionRunOrchestrator>();
-        foreach (var id in ids)
-        {
-            if (ct.IsCancellationRequested) break;
-            try { await orchestrator.ExecuteAsync(id, ct); }
-            catch (Exception ex) { log.LogError(ex, "Autonomous acquisition run {RunId} failed", id); }
-        }
+        await Parallel.ForEachAsync(
+            ids,
+            new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct },
+            async (id, token) =>
+            {
+                await using var runScope = rootServices.CreateAsyncScope();
+                var runTenantContext = runScope.ServiceProvider.GetRequiredService<ITenantContext>();
+                runTenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
+
+                try
+                {
+                    var orchestrator = runScope.ServiceProvider.GetRequiredService<IAutonomousAcquisitionRunOrchestrator>();
+                    await orchestrator.ExecuteAsync(id, token);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Autonomous acquisition run {RunId} failed", id);
+                }
+            });
     }
 }
 
@@ -126,7 +138,9 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         var timeZone = ResolveTimeZone(timeZoneId);
         var pendingAgentIds = await db.AutonomousAcquisitionAgentRuns
             .Where(x => x.TenantId == tenantId &&
-                        (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running))
+                        (x.Status == AutonomousAgentRunStatus.Queued ||
+                         x.Status == AutonomousAgentRunStatus.Running ||
+                         x.Status == AutonomousAgentRunStatus.WaitingApproval))
             .Select(x => x.AgentId)
             .Distinct()
             .ToListAsync(ct);
@@ -163,6 +177,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
             });
 
             pending.Add(agent.Id);
+            agent.LastRunAtUtc = nowUtc;
             agent.UpdatedAtUtc = nowUtc;
             changed = true;
         }
