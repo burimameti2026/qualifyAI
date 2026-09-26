@@ -204,7 +204,7 @@ public sealed class IndustryPacksController(
             var json = raw.Trim();
             if (json.StartsWith("```", StringComparison.Ordinal))
             {
-                var first = json.IndexOf('\\n');
+                var first = json.IndexOf('\n');
                 var last = json.LastIndexOf("```", StringComparison.Ordinal);
                 if (first >= 0 && last > first) json = json[(first + 1)..last].Trim();
             }
