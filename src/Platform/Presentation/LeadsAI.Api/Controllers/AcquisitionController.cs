@@ -511,7 +511,7 @@ public sealed class AcquisitionController(
             PackageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? campaign.PackageCode : input.PackageCode.Trim(),
             PackageVersion = string.IsNullOrWhiteSpace(input.PackageVersion) ? campaign.PackageVersion : input.PackageVersion.Trim(),
             ConfigurationJson = string.IsNullOrWhiteSpace(input.ConfigurationJson) ? "{}" : input.ConfigurationJson,
-            Status = CampaignContainerStatus.Stopped
+            Status = CampaignContainerStatus.Pending
         };
 
         db.AutonomousAcquisitionAgents.Add(agent);
