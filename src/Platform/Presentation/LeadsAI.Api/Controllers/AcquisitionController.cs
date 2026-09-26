@@ -130,7 +130,7 @@ public sealed class AcquisitionController(
             from member in db.TargetListMembers.AsNoTracking()
             join prospect in db.Prospects.AsNoTracking() on member.ProspectId equals prospect.Id
             where member.TenantId == tenantId && member.TargetListId == campaign.TargetListId && prospect.TenantId == tenantId
-            orderby prospect.PriorityScore descending, prospect.CompanyName
+            orderby prospect.FitScore descending, prospect.IntentScore descending, prospect.CompanyName
             select new
             {
                 prospect.Id,
