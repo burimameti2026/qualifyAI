@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using LeadsAI.Persistence.SqlServer.Projections;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Infrastructure;
@@ -49,6 +51,34 @@ public sealed class TenantLifecycleReconciliationWorker(IServiceScopeFactory sco
                     .Select(x => x.TenantId)
                     .Distinct()
                     .ToListAsync(stoppingToken);
+
+                // Also reconcile tenants whose entitlement projection is still
+                // provisioning/failed even when no module row currently needs retry.
+                var entitlementTenants = await db.TenantEntitlements
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.TenantId != Guid.Empty &&
+                        x.LicenseStatus == "active" &&
+                        x.TenantStatus != "active")
+                    .Select(x => new { x.TenantId, x.ModulesJson })
+                    .ToListAsync(stoppingToken);
+
+                foreach (var entitlement in entitlementTenants)
+                {
+                    if (tenantIds.Contains(entitlement.TenantId))
+                        continue;
+
+                    try
+                    {
+                        var modules = JsonSerializer.Deserialize<string[]>(entitlement.ModulesJson) ?? Array.Empty<string>();
+                        if (modules.Length > 0)
+                            tenantIds.Add(entitlement.TenantId);
+                    }
+                    catch (JsonException)
+                    {
+                        logger.LogWarning("Invalid ModulesJson for tenant {TenantId}", entitlement.TenantId);
+                    }
+                }
 
                 foreach (var tenantId in tenantIds)
                 {
