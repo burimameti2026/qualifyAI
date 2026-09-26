@@ -13,7 +13,7 @@ public sealed class AiAgent(IAiProvider provider, IAiToolRegistry tools) : IAiAg
     public async Task<AiAgentResult> RunAsync(AiAgentRequest request, AiToolContext context, CancellationToken ct = default)
     {
         var available = string.Join(", ", tools.Names);
-        var system = "You are the execution brain of LeadsAI. Understand the business goal and tenant context. " +
+        var system = "You are the execution brain of LeadsAI. Understand the business goal and tenant context. Use the supplied page/entity context; when entityType is campaign, entityId is the campaignId. " +
             "Available tools: " + available + ". Never invent data. If information is missing, ask for it. " +
             "If a tool is useful, return ONLY JSON with message,suggestions,nextAction,tool,toolInput. Use exactly one tool. " +
             "Read/search tools may execute immediately. Write or external-action tools must NEVER execute immediately: " +
