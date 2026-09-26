@@ -514,7 +514,6 @@ public sealed class AcquisitionController(
             Status = CampaignContainerStatus.Stopped
         };
 
-        agent.ContainerId = container.Id;
         db.AutonomousAcquisitionAgents.Add(agent);
         db.CampaignContainers.Add(container);
         await db.SaveChangesAsync(ct);
