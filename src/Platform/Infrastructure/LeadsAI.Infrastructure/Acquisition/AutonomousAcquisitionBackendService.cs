@@ -57,7 +57,31 @@ public sealed class AutonomousAcquisitionBackendService(AppDbContext db):IAutono
  }
  public async Task<bool> CanContactAsync(Guid tenantId,Prospect p,int dailyLimit,CancellationToken ct=default){if(await IsSuppressed(tenantId,p,ct))return false;if(string.IsNullOrWhiteSpace(p.Email)||p.Email.EndsWith(".example",StringComparison.OrdinalIgnoreCase))return false;var sent=await db.UsageRecords.CountAsync(x=>x.TenantId==tenantId&&x.Meter=="emails_sent"&&x.CreatedAtUtc>=DateTime.UtcNow.Date,ct);return sent<Math.Max(1,dailyLimit);}
  public async Task RecordReplyFeedbackAsync(Guid tenantId,Guid prospectId,string classification,int sentiment,CancellationToken ct=default){var p=await db.Prospects.SingleOrDefaultAsync(x=>x.TenantId==tenantId&&x.Id==prospectId,ct);if(p is null)return;p.Status=classification.Equals("interested",StringComparison.OrdinalIgnoreCase)?ProspectStatus.Replied:ProspectStatus.Nurturing;p.OutreachStatus=classification;db.AutonomousAcquisitionAgentMemories.Add(new AutonomousAcquisitionAgentMemory{TenantId=tenantId,AgentId=Guid.Empty,Category="feedback",Key=$"reply:{prospectId:N}:{DateTime.UtcNow.Ticks}",Value=JsonSerializer.Serialize(new{classification,sentiment})});await Audit(tenantId,"autonomous.reply.feedback",prospectId,new{classification,sentiment},ct);await db.SaveChangesAsync(ct);}
- public async Task RetryFailedRunAsync(Guid runId,CancellationToken ct=default){var r=await db.AutonomousAcquisitionAgentRuns.SingleOrDefaultAsync(x=>x.Id==runId,ct);if(r is null||r.Status!=AutonomousAgentRunStatus.Failed)return;r.Status=AutonomousAgentRunStatus.Queued;r.Error=null;r.CompletedAtUtc=null;await Audit(r.TenantId,"autonomous.run.retry",r.Id,new{runId},ct);await db.SaveChangesAsync(ct);}
+ public async Task RetryFailedRunAsync(Guid runId,CancellationToken ct=default)
+ {
+  var run=await db.AutonomousAcquisitionAgentRuns.SingleOrDefaultAsync(x=>x.Id==runId,ct);
+  if(run is null||run.Status!=AutonomousAgentRunStatus.Failed)return;
+
+  var campaign=await db.Campaigns.SingleOrDefaultAsync(
+      x=>x.TenantId==run.TenantId&&x.Id==run.CampaignId,ct);
+  if(campaign is null||campaign.Status!=CampaignStatus.Running)
+      return;
+
+  var agent=await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
+      x=>x.TenantId==run.TenantId&&x.Id==run.AgentId,ct);
+  if(agent is null)
+      return;
+
+  run.Status=AutonomousAgentRunStatus.Queued;
+  run.Error=null;
+  run.CompletedAtUtc=null;
+  run.StartedAtUtc=null;
+  agent.Status=AutonomousAgentStatus.Active;
+  agent.UpdatedAtUtc=DateTime.UtcNow;
+
+  await Audit(run.TenantId,"autonomous.run.retry",run.Id,new{runId},ct);
+  await db.SaveChangesAsync(ct);
+ }
  async Task<bool> IsSuppressed(Guid tenantId,Prospect p,CancellationToken ct){if(p.Status==ProspectStatus.Suppressed)return true;if(!string.IsNullOrWhiteSpace(p.Email)){var contactId=p.ContactId??await db.Contacts.Where(x=>x.TenantId==tenantId&&x.Email==p.Email).Select(x=>(Guid?)x.Id).FirstOrDefaultAsync(ct);if(contactId.HasValue)return await db.ConsentRecords.AnyAsync(x=>x.TenantId==tenantId&&x.ContactId==contactId&&x.Type=="marketing"&&!x.Granted,ct);}return false;}
  Task Audit(Guid tenantId,string action,Guid entityId,object data,CancellationToken ct){db.AuditLogs.Add(new AuditLog{TenantId=tenantId,Action=action,EntityType="AutonomousAcquisition",EntityId=entityId.ToString(),DataJson=JsonSerializer.Serialize(data)});return Task.CompletedTask;}
  static List<string> Read(string json){try{return JsonSerializer.Deserialize<List<string>>(json)??[];}catch{return[];}}
