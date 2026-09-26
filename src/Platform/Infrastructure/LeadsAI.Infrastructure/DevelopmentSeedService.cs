@@ -13,6 +13,7 @@ namespace LeadsAI.Infrastructure.Demo;
 public sealed class DevelopmentSeedService(
     AppDbContext db,
     IIndustryPackProvisioner industryPackProvisioner,
+    WorkspacePackages.WorkspacePackageInstaller workspacePackageInstaller,
     IConfiguration configuration,
     ILogger<DevelopmentSeedService> logger)
 {
@@ -47,6 +48,7 @@ public sealed class DevelopmentSeedService(
                     tenantSlug,
                     entitlement.TenantId);
 
+                await workspacePackageInstaller.InstallAsync(entitlement.TenantId, "logistics", cancellationToken);
                 await EnsureIndustryPackCampaignAsync(entitlement.TenantId, cancellationToken);
                 return;
             }
