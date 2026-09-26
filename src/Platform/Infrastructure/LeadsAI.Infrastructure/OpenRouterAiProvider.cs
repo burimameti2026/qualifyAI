@@ -10,19 +10,19 @@ public sealed class OpenRouterAiProvider(HttpClient http, IConfiguration configu
 {
     public async Task<string> CompleteAsync(string system, string user, CancellationToken ct = default)
     {
-        var apiKey = configuration["Ai:ApiKey"] ?? configuration["OpenRouter:ApiKey"];
+        var apiKey = configuration["OpenRouter:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
-            throw new InvalidOperationException("Online AI is not configured. Set Ai:ApiKey (OpenRouter) in environment configuration.");
+            throw new InvalidOperationException("Online AI is not configured. Set OpenRouter:ApiKey via OPENROUTER_API_KEY in Docker Compose environment.");
 
-        var baseUrl = (configuration["Ai:BaseUrl"] ?? "https://openrouter.ai/api/v1/").TrimEnd('/') + "/";
-        var model = configuration["Ai:Model"] ?? "openrouter/free";
+        var baseUrl = (configuration["OpenRouter:BaseUrl"] ?? "https://openrouter.ai/api/v1/").TrimEnd('/') + "/";
+        var model = configuration["OpenRouter:Model"] ?? "openrouter/free";
 
         http.BaseAddress = new Uri(baseUrl);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         http.DefaultRequestHeaders.Remove("HTTP-Referer");
-        http.DefaultRequestHeaders.TryAddWithoutValidation("HTTP-Referer", configuration["Ai:Referer"] ?? "https://leadsai.app");
+        http.DefaultRequestHeaders.TryAddWithoutValidation("HTTP-Referer", configuration["OpenRouter:Referer"] ?? "https://leadsai.app");
         http.DefaultRequestHeaders.Remove("X-Title");
-        http.DefaultRequestHeaders.TryAddWithoutValidation("X-Title", configuration["Ai:Title"] ?? "LeadsAI");
+        http.DefaultRequestHeaders.TryAddWithoutValidation("X-Title", configuration["OpenRouter:Title"] ?? "LeadsAI");
 
         var payload = new
         {
@@ -68,7 +68,6 @@ public sealed class OpenRouterAiProvider(HttpClient http, IConfiguration configu
         }
         catch
         {
-            // Keep the application error stable when the provider response is not JSON.
         }
 
         return "The provider did not return a usable response.";
