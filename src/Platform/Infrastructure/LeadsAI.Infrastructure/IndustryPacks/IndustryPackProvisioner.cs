@@ -40,7 +40,7 @@ public sealed record IndustryPackProvisioningResult(
 
 public interface IIndustryPackProvisioner
 {
-    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, string? scenarioCode = null, CancellationToken ct = default);
+    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default, string? scenarioCode = null);
 }
 
 public sealed class IndustryPackProvisioner(
@@ -50,7 +50,7 @@ public sealed class IndustryPackProvisioner(
 {
     private const string Version = "industry-pack.v1";
 
-    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, string? scenarioCode = null, CancellationToken ct = default)
+    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default, string? scenarioCode = null)
     {
         // SQL Server uses a retrying execution strategy. The entire transaction must
         // execute inside that strategy so a transient failure can safely retry the
