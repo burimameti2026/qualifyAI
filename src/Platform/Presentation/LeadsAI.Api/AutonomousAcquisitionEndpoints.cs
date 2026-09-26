@@ -233,5 +233,5 @@ public static class AutonomousAcquisitionEndpoints
         catch { return string.Empty; }
     }
 
-
+    private sealed record RunRequest(Guid CampaignId);
 }
