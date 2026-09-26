@@ -36,7 +36,8 @@ public sealed record IndustryPackProvisioningResult(
     Guid CampaignId,
     string CampaignStatus,
     string ProvisioningMode,
-    CampaignReadyDefinition Definition);
+    CampaignReadyDefinition Definition,
+    bool AlreadyProvisioned);
 
 public interface IIndustryPackProvisioner
 {
@@ -73,6 +74,7 @@ public sealed class IndustryPackProvisioner(
 
         var installed = await db.TenantIndustryPacks.SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.IndustryPackId == industryPackId, ct);
+        var alreadyInstalled = installed is not null && installed.Enabled;
 
         if (installed is null)
         {
@@ -201,7 +203,8 @@ public sealed class IndustryPackProvisioner(
             campaign.Id,
             campaign.Status.ToString(),
             "industry-pack",
-            definition);
+            definition,
+            alreadyInstalled);
         });
     }
 
