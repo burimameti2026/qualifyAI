@@ -13,18 +13,22 @@ public static class AutonomousAcquisitionEndpoints
     public static IEndpointRouteBuilder MapAutonomousAcquisition(this IEndpointRouteBuilder endpoints)
     {
         var g = endpoints.MapGroup("/api/autonomous-acquisition")
-            .RequireAuthorization()
-            .RequireModule(QualifyAiModules.Crm);
+            .RequireAuthorization("qai:module:" + QualifyAiModules.Crm);
 
-        g.AddEndpointFilter(async (ctx, next) =>
+        g.AddEndpointFilter((ctx, next) =>
         {
             if (ctx.HttpContext.Request.RouteValues.TryGetValue("tenantId", out var raw) &&
                 Guid.TryParse(raw?.ToString(), out var routeTenant))
             {
-                var current = ctx.HttpContext.RequestServices.GetRequiredService<ITenantContext>().TenantId();
-                if (routeTenant != current) return Results.Forbid();
+                var current = ctx.HttpContext.RequestServices
+                    .GetRequiredService<ITenantContext>()
+                    .TenantId();
+
+                if (routeTenant != current)
+                    return ValueTask.FromResult<object?>(Results.Forbid());
             }
-            return await next(ctx);
+
+            return next(ctx);
         });
 
         g.MapGet("/tenants/{tenantId}/campaigns", async (
