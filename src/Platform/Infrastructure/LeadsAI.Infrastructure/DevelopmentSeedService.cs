@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using LeadsAI.Infrastructure.IndustryPacks;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.Domain;
@@ -79,16 +80,43 @@ public sealed class DevelopmentSeedService(
         }
 
         var pack = await db.IndustryPacks
-            .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Code == code, cancellationToken);
 
         if (pack is null)
         {
-            logger.LogWarning(
-                "Development seed requested IndustryPackCode '{IndustryPackCode}', but no IndustryPack exists. " +
-                "Seed the IndustryPack first; no workspace package will be created.",
-                code);
-            return;
+            pack = new IndustryPack
+            {
+                Id = Guid.NewGuid(),
+                Code = code,
+                Name = "FusionFleet Mk Logistics Sales",
+                Description = "Campaign-ready logistics prospecting blueprint for FusionFleet Mk.",
+                TemplateJson = JsonSerializer.Serialize(new
+                {
+                    version = 1,
+                    industry = "Logistics & Transport",
+                    purpose = "Find and qualify logistics companies for FusionFleet.",
+                    offer = "Fleet and transport operations software.",
+                    audience = "Logistics companies, transport operators, freight forwarders and 3PL providers.",
+                    minimumScore = 70,
+                    discovery = new { provider = "serpapi", keywords = new[] { "logistics companies", "transport companies", "freight forwarders", "3PL providers", "warehouse operators" } },
+                    qualification = new { minimumScore = 70 },
+                    enrichment = new { enabled = true },
+                    targetList = new { enabled = true },
+                    outreach = new { definition = "Personalized B2B outreach after qualification; human approval before delivery." },
+                    approvalRequired = true,
+                    scenarios = new[]
+                    {
+                        new { name = "Logistics Companies", code = "logistics-companies" },
+                        new { name = "Transport Companies", code = "transport-companies" },
+                        new { name = "Freight Forwarders", code = "freight-forwarders" },
+                        new { name = "3PL Providers", code = "3pl-providers" },
+                        new { name = "Warehouse Operators", code = "warehouse-operators" }
+                    }
+                })
+            };
+            db.IndustryPacks.Add(pack);
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Development seed created IndustryPack {IndustryPackCode}.", code);
         }
 
         var result = await industryPackProvisioner.ProvisionAsync(
