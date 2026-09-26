@@ -21,7 +21,7 @@ public sealed class LicenseChangeOrchestrator(AppDbContext db, IModuleRegistry r
         // IMPORTANT: this can run in the same unit of work as UpsertTenantAsync/UpsertLicenseAsync,
         // called *before* SaveChangesAsync. A plain tracked query against the DbSet always hits the
         // database and won't see an entity that was only Add()'d/mutated in this context and never
-        // saved — so a brand-new tenant's entitlement (created moments earlier in the same call)
+        // saved â€” so a brand-new tenant's entitlement (created moments earlier in the same call)
         // would incorrectly appear missing. Check the local ChangeTracker first.
         var entitlement = FindTrackedEntitlement(tenantId)
             ??await db.TenantEntitlements.SingleOrDefaultAsync(x => x.TenantId==tenantId, cancellationToken)
@@ -33,8 +33,29 @@ public sealed class LicenseChangeOrchestrator(AppDbContext db, IModuleRegistry r
         var existingCodes = existing.Select(x => x.ModuleCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var added = resolved.Where(x => !existingCodes.Contains(x)).OrderBy(x => x).ToArray();
         var removed = existingCodes.Where(x => !resolved.Contains(x)).OrderBy(x => x).ToArray();
-        if(removed.Length>0) await deactivation.DeactivateAsync(tenantId, removed, cancellationToken);
-        if(added.Length>0) await provisioning.ProvisionAsync(tenantId, added, cancellationToken);
+        if (entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
+            entitlement.TenantStatus = "provisioning";
+
+        if(removed.Length>0)
+            await deactivation.DeactivateAsync(tenantId, removed, cancellationToken);
+
+        if(added.Length>0)
+            await provisioning.ProvisionAsync(tenantId, added, cancellationToken);
+
+        var requiredRows = await db.TenantModuleProvisionings
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && resolved.Contains(x.ModuleCode))
+            .ToListAsync(cancellationToken);
+
+        var failed = requiredRows
+            .Where(x => !x.Status.Equals("completed", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.ModuleCode)
+            .ToArray();
+
+        if (entitlement.LicenseStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
+            entitlement.TenantStatus = failed.Length == 0 ? "active" : "provisioning_failed";
+
+        await db.SaveChangesAsync(cancellationToken);
         return new LicenseChangeResult(tenantId, added, removed, added);
     }
 
