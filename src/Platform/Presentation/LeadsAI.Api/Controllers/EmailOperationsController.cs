@@ -289,8 +289,8 @@ public sealed class EmailOperationsController(
         var task = await db.CrmTasks.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}", ct);
         if (task is not null) task.Completed = true;
         message.Status = OutreachStatus.Suppressed;
-        await RequeueWaitingApprovalRunIfReadyAsync(message.CampaignId, ct);
         await db.SaveChangesAsync(ct);
+        await RequeueWaitingApprovalRunIfReadyAsync(message.CampaignId, ct);
         return Ok(new { message.Id, message.Status, rejected = true });
     }
 
@@ -309,6 +309,7 @@ public sealed class EmailOperationsController(
             return BadRequest(new { detail = "Request approval before approving this message." });
 
         task.Completed = true;
+        await db.SaveChangesAsync(ct);
         await RequeueWaitingApprovalRunIfReadyAsync(message.CampaignId, ct);
         await db.SaveChangesAsync(ct);
 
