@@ -316,17 +316,34 @@ public sealed class IdentityBootstrapHostedService(
         // license version changes.
         {
             var snapshotAtUtc = DateTime.UtcNow;
-            outbox.Add(new TenantCreatedIntegrationEvent(
-                StableEventId("fusionfleet:tenant-created:" + tenant.Id),
-                snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
+            var tenantCreatedEventId = StableEventId("fusionfleet:tenant-created:" + tenant.Id);
+            var licenseChangedEventId = StableEventId($"fusionfleet:license:{license.Id}:version:{license.Version}");
+            var existingOutboxIds = await dbContext.OutboxMessages
+                .AsNoTracking()
+                .Where(x => x.Id == tenantCreatedEventId || x.Id == licenseChangedEventId)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
 
-            outbox.Add(new TenantLicenseChangedIntegrationEvent(
-                StableEventId($"fusionfleet:license:{license.Id}:version:{license.Version}"),
-                snapshotAtUtc, tenant.Id, tenant.Slug, license.Id, license.Plan,
-                license.Status.ToString().ToLowerInvariant(), license.MaxUsers, license.StartsAtUtc,
-                license.ExpiresAtUtc, license.Version, license.Modules.Select(x => x.Code).ToArray()));
+            // The snapshot event ids are deterministic. Do not enqueue the same
+            // event twice when IdentityBootstrap restarts against an existing DB.
+            if (!existingOutboxIds.Contains(tenantCreatedEventId))
+            {
+                outbox.Add(new TenantCreatedIntegrationEvent(
+                    tenantCreatedEventId,
+                    snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
+            }
 
-            await dbContext.SaveChangesAsync(cancellationToken);
+            if (!existingOutboxIds.Contains(licenseChangedEventId))
+            {
+                outbox.Add(new TenantLicenseChangedIntegrationEvent(
+                    licenseChangedEventId,
+                    snapshotAtUtc, tenant.Id, tenant.Slug, license.Id, license.Plan,
+                    license.Status.ToString().ToLowerInvariant(), license.MaxUsers, license.StartsAtUtc,
+                    license.ExpiresAtUtc, license.Version, license.Modules.Select(x => x.Code).ToArray()));
+            }
+
+            if (existingOutboxIds.Count < 2)
+                await dbContext.SaveChangesAsync(cancellationToken);
         }
 
         logger.LogInformation(
