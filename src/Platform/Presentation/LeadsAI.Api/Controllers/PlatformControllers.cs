@@ -119,18 +119,24 @@ public sealed class IndustryPacksController(
 
         var provisioned = await db.Campaigns.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.PackageCode != null && x.PackageCode != string.Empty)
-            .Select(x => x.PackageCode)
+            .Select(x => new { x.Id, x.PackageCode })
             .ToListAsync(ct);
 
-        return Ok(packs.Select(pack => new
+        return Ok(packs.Select(pack =>
         {
-            pack.Id,
-            pack.Code,
-            pack.Name,
-            pack.Description,
-            pack.TemplateJson,
-            installed = installed.Contains(pack.Id),
-            provisioned = provisioned.Contains($"industry-pack:{pack.Code.Trim().ToLowerInvariant()}")
+            var marker = $"industry-pack:{pack.Code.Trim().ToLowerInvariant()}";
+            var campaign = provisioned.FirstOrDefault(x => x.PackageCode == marker);
+            return new
+            {
+                pack.Id,
+                pack.Code,
+                pack.Name,
+                pack.Description,
+                pack.TemplateJson,
+                installed = installed.Contains(pack.Id),
+                provisioned = campaign is not null,
+                campaignId = campaign?.Id
+            };
         }));
     }
 
