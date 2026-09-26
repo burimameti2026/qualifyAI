@@ -179,7 +179,7 @@ public sealed class WorkspacePackagesController(ITenantContext tenant, Workspace
             package.Version,
             tenantId,
             installed = true,
-            alreadyInstalled = false,
+            alreadyInstalled = result.AlreadyInstalled,
             included = package.Included,
             result
         });
