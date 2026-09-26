@@ -58,18 +58,25 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
         using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(inputJson) ? "{}" : inputJson);
         var root = doc.RootElement;
         var agentText = root.TryGetProperty("agentId", out var a) ? a.GetString() : null;
+        var campaignText = root.TryGetProperty("campaignId", out var c) ? c.GetString() : null;
         if (!Guid.TryParse(agentText, out var agentId))
             return new(false, "{}", "agentId is required.");
+        if (!Guid.TryParse(campaignText, out var campaignId))
+            return new(false, "{}", "campaignId is required.");
 
         var agent = await db.AutonomousAcquisitionAgents
             .SingleOrDefaultAsync(x => x.TenantId == context.TenantId && x.Id == agentId, ct);
         if (agent is null) return new(false, "{}", "agentId does not belong to this tenant.");
+        var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == context.TenantId && x.Id == campaignId, ct);
+        if (campaign is null) return new(false, "{}", "campaignId does not belong to this tenant.");
+        if (campaign.Status is CampaignStatus.Paused or CampaignStatus.Stopped or CampaignStatus.Completed)
+            return new(false, "{}", "The campaign is not runnable in its current status.");
         if (agent.Status is AutonomousAgentStatus.Stopped)
             return new(false, "{}", "The autonomous acquisition agent is stopped.");
 
         var existing = await db.AutonomousAcquisitionAgentRuns
-            .AnyAsync(x => x.TenantId == context.TenantId && x.AgentId == agentId &&
-                           x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running, ct);
+            .AnyAsync(x => x.TenantId == context.TenantId && x.AgentId == agentId && x.CampaignId == campaignId &&
+                           x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval, ct);
         if (existing) return new(false, "{}", "This agent already has a queued or running acquisition run.");
 
         var run = new AutonomousAcquisitionAgentRun
@@ -77,6 +84,7 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
             Id = Guid.NewGuid(),
             TenantId = context.TenantId,
             AgentId = agentId,
+            CampaignId = campaignId,
             IsManual = true,
             Status = AutonomousAgentRunStatus.Queued,
             ScheduledAtUtc = DateTime.UtcNow
@@ -88,6 +96,7 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
         {
             run.Id,
             run.AgentId,
+            run.CampaignId,
             run.Status,
             run.ScheduledAtUtc,
             message = "Acquisition run queued. The worker will execute discovery and qualification."
