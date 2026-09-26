@@ -66,7 +66,7 @@ public sealed class AiController(ISender sender, ITenantContext tenant, IAiToolR
 {
     [HttpGet("agents")]
     [RequirePermission(QualifyAiPermissions.AgentsRead)]
-    public Task<IReadOnlyList<AiAgent>> Agents(CancellationToken ct) => sender.Send(new ListAiAgentsQuery(tenant.TenantId()), ct);
+    public Task<IReadOnlyList<DomainAiAgent>> Agents(CancellationToken ct) => sender.Send(new ListAiAgentsQuery(tenant.TenantId()), ct);
 
     [HttpPost("agents")]
     [RequirePermission(QualifyAiPermissions.AgentsManage)]
