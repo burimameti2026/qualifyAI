@@ -78,9 +78,8 @@ public static class DependencyInjection
         services.AddHostedService<CampaignExecutionWorker>();
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<IKnowledgeRetriever, SqlKnowledgeRetriever>();
-        services.AddScoped<LocalAiProvider>();
-        services.AddHttpClient<OpenAiProvider>();
-        services.AddScoped<IAiProvider>(sp => sp.GetRequiredService<OpenAiProvider>());
+        services.AddHttpClient<OllamaAiProvider>();
+        services.AddScoped<IAiProvider>(sp => sp.GetRequiredService<OllamaAiProvider>());
         services.AddScoped<IAiAgent, AiAgent>();
         services.AddScoped<IAiTool, CreateLeadTool>();
         services.AddScoped<IAiTool, CreateTicketTool>();
