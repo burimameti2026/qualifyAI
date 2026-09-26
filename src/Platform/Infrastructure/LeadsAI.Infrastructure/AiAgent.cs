@@ -7,7 +7,7 @@ public sealed class AiAgent(IAiProvider provider, IAiToolRegistry tools) : IAiAg
 {
     private static readonly HashSet<string> ApprovalRequiredTools = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CreateLead", "CreateTicket", "CreateIcp", "CreateCampaign", "CreateTargetList", "RunAutonomousAcquisition"
+        "CreateLead", "CreateTicket", "CreateIcp", "CreateCampaign", "CreateTargetList", "StartCampaign", "RunAutonomousAcquisition"
     };
 
     public async Task<AiAgentResult> RunAsync(AiAgentRequest request, AiToolContext context, CancellationToken ct = default)
