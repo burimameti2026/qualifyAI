@@ -9,11 +9,11 @@ using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api.Controllers;
 
+public sealed record ProvisionIndustryPackRequest(string? ScenarioCode);
+
 [ApiController]
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
-public sealed record ProvisionIndustryPackRequest(string? ScenarioCode);
-
 [Route("api/industry-packs")]
 public sealed class IndustryPacksController(
     AppDbContext db,
