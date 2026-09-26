@@ -9,7 +9,7 @@ using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api.Controllers;
 
-public sealed record ProvisionIndustryPackRequest(string? ScenarioCode);
+public sealed record ProvisionIndustryPackRequest(string? ScenarioCode, Guid? IcpProfileId);
 public sealed record IndustryPackRequest(string Code, string Name, string? Description, string? TemplateJson);
 
 [ApiController]
@@ -154,6 +154,14 @@ public sealed class IndustryPacksController(
             return NotFound(new { error = "Industry pack was not found." });
 
         var result = await provisioner.ProvisionAsync(tenantId, id, ct, input?.ScenarioCode);
+        if (input?.IcpProfileId is Guid icpId)
+        {
+            var icpExists = await db.IcpProfiles.AnyAsync(x => x.TenantId == tenantId && x.Id == icpId && x.Active, ct);
+            if (!icpExists) return BadRequest(new { error = "Selected ICP was not found or is inactive." });
+            var targetList = await db.TargetLists.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == result.TargetListId, ct);
+            if (targetList is not null) targetList.IcpProfileId = icpId;
+            await db.SaveChangesAsync(ct);
+        }
 
         return Ok(new
         {
