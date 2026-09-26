@@ -49,6 +49,52 @@ public sealed class CreateTargetListTool(AppDbContext db) : IAiTool
     }
 }
 
+public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
+{
+    public string Name => "RunAutonomousAcquisition";
+
+    public async Task<AiToolResult> ExecuteAsync(AiToolContext context, string inputJson, CancellationToken ct = default)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(inputJson) ? "{}" : inputJson);
+        var root = doc.RootElement;
+        var agentText = root.TryGetProperty("agentId", out var a) ? a.GetString() : null;
+        if (!Guid.TryParse(agentText, out var agentId))
+            return new(false, "{}", "agentId is required.");
+
+        var agent = await db.AutonomousAcquisitionAgents
+            .SingleOrDefaultAsync(x => x.TenantId == context.TenantId && x.Id == agentId, ct);
+        if (agent is null) return new(false, "{}", "agentId does not belong to this tenant.");
+        if (agent.Status is AutonomousAgentStatus.Stopped)
+            return new(false, "{}", "The autonomous acquisition agent is stopped.");
+
+        var existing = await db.AutonomousAcquisitionAgentRuns
+            .AnyAsync(x => x.TenantId == context.TenantId && x.AgentId == agentId &&
+                           x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running, ct);
+        if (existing) return new(false, "{}", "This agent already has a queued or running acquisition run.");
+
+        var run = new AutonomousAcquisitionAgentRun
+        {
+            Id = Guid.NewGuid(),
+            TenantId = context.TenantId,
+            AgentId = agentId,
+            IsManual = true,
+            Status = AutonomousAgentRunStatus.Queued,
+            ScheduledAtUtc = DateTime.UtcNow
+        };
+        db.AutonomousAcquisitionAgentRuns.Add(run);
+        await db.SaveChangesAsync(ct);
+
+        return new(true, JsonSerializer.Serialize(new
+        {
+            run.Id,
+            run.AgentId,
+            run.Status,
+            run.ScheduledAtUtc,
+            message = "Acquisition run queued. The worker will execute discovery and qualification."
+        }));
+    }
+}
+
 public sealed class CreateCampaignTool(AppDbContext db) : IAiTool
 {
     public string Name => "CreateCampaign";
