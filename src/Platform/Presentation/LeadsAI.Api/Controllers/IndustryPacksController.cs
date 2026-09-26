@@ -12,9 +12,9 @@ namespace LeadsAI.Api.Controllers;
 [ApiController]
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
-[Route("api/industry-packs")]
 public sealed record ProvisionIndustryPackRequest(string? ScenarioCode);
 
+[Route("api/industry-packs")]
 public sealed class IndustryPacksController(
     AppDbContext db,
     ITenantContext tenant,
