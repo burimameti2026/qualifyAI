@@ -40,7 +40,7 @@ public sealed record IndustryPackProvisioningResult(
 
 public interface IIndustryPackProvisioner
 {
-    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default);
+    Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, string? scenarioCode = null, CancellationToken ct = default);
 }
 
 public sealed class IndustryPackProvisioner(
@@ -50,7 +50,7 @@ public sealed class IndustryPackProvisioner(
 {
     private const string Version = "industry-pack.v1";
 
-    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, CancellationToken ct = default)
+    public async Task<IndustryPackProvisioningResult> ProvisionAsync(Guid tenantId, Guid industryPackId, string? scenarioCode = null, CancellationToken ct = default)
     {
         // SQL Server uses a retrying execution strategy. The entire transaction must
         // execute inside that strategy so a transient failure can safely retry the
@@ -60,7 +60,7 @@ public sealed class IndustryPackProvisioner(
             .SingleOrDefaultAsync(x => x.Id == industryPackId, ct)
             ?? throw new InvalidOperationException($"Industry pack '{industryPackId}' was not found.");
 
-        var definition = BuildDefinition(pack);
+        var definition = BuildDefinition(pack, scenarioCode);
         var strategy = db.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
@@ -165,7 +165,7 @@ public sealed class IndustryPackProvisioner(
         var agent = await EnsureCampaignAgentAsync(tenantId, pack, definition, campaign, ct);
         campaign.AgentId = agent.Id;
         var runtimeTemplate = templates.Apply(agent);
-        await planner.EnsurePlanAsync(agent, runtimeTemplate, ct);
+        await planner.EnsurePlanAsync(agent, runtimeTemplate, ct, campaign.PlanJson);
 
         var existingSteps = await db.CampaignSteps
             .Where(x => x.TenantId == tenantId && x.CampaignId == campaign.Id)
@@ -311,7 +311,7 @@ public sealed class IndustryPackProvisioner(
         return icp;
     }
 
-    private static CampaignReadyDefinition BuildDefinition(IndustryPack pack)
+    private static CampaignReadyDefinition BuildDefinition(IndustryPack pack, string? scenarioCode)
     {
         var config = Parse(pack.TemplateJson);
         var industry = First(config.Industry, pack.Name);
@@ -341,10 +341,43 @@ public sealed class IndustryPackProvisioner(
                     "Hi {{contact}},\n\nI will close the loop here. If improving {{pain}} becomes a priority, I would be happy to reconnect.\n\nBest,\n{{sender}}")
             };
 
+        var scenario = Scenario(pack.Code, scenarioCode);
+        if (scenario is not null)
+        {
+            industry = scenario.Industry;
+            keywords = scenario.Keywords;
+            campaignName = scenario.CampaignName;
+            objective = scenario.Objective;
+        }
+
         return new CampaignReadyDefinition(
             pack.Id, pack.Code, pack.Name, industry, region, countries, keywords,
             Math.Clamp(config.MinimumScore, 0, 100), campaignName, objective, goal,
             config.SenderName, config.SenderEmail, steps);
+    }
+
+
+    private sealed record ScenarioDefinition(string Industry, string[] Keywords, string CampaignName, string Objective);
+
+    private static ScenarioDefinition? Scenario(string packCode, string? scenarioCode)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioCode))
+            return null;
+
+        var code = scenarioCode.Trim().ToLowerInvariant();
+        if (!packCode.Contains("fusionfleet", StringComparison.OrdinalIgnoreCase) &&
+            !packCode.Contains("logistics", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return code switch
+        {
+            "logistics-companies" => new("Logistics", ["logistics companies", "logistics providers"], "Find Logistics Companies", "Discover and qualify logistics companies that fit the campaign ICP."),
+            "transport-companies" => new("Transport", ["transport companies", "road transport companies"], "Find Transport Companies", "Discover and qualify transport companies that fit the campaign ICP."),
+            "freight-forwarders" => new("Freight Forwarding", ["freight forwarders", "freight forwarding companies"], "Find Freight Forwarders", "Discover and qualify freight forwarding companies that fit the campaign ICP."),
+            "3pl-providers" => new("3PL", ["3PL providers", "third party logistics companies"], "Find 3PL Providers", "Discover and qualify third-party logistics providers."),
+            "warehouse-operators" => new("Warehousing", ["warehouse operators", "warehouse logistics companies"], "Find Warehouse Operators", "Discover and qualify warehouse operators."),
+            _ => null
+        };
     }
 
     private static PackConfig Parse(string? json)
