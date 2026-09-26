@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace LeadsAI.Persistence.SqlServer.Migrations
 {
+    [Migration("20260926170000_AddCampaignToAutonomousAcquisitionRuns")]
     public partial class AddCampaignToAutonomousAcquisitionRuns : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
