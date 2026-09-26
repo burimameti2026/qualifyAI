@@ -38,6 +38,65 @@ public sealed class AcquisitionController(
         });
     }
 
+    [HttpGet("icp")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> Icp(CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var rows = await db.IcpProfiles
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+        return Ok(rows);
+    }
+
+    [HttpPost("icp")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> SaveIcp(IcpProfile input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name))
+            return BadRequest(new { error = "ICP name is required." });
+
+        input.Id = Guid.NewGuid();
+        input.TenantId = TenantId;
+        input.CreatedAtUtc = input.UpdatedAtUtc = DateTime.UtcNow;
+        input.Name = input.Name.Trim();
+        input.Industry = input.Industry?.Trim() ?? string.Empty;
+        input.CountriesCsv = input.CountriesCsv?.Trim() ?? string.Empty;
+        input.IntentKeywordsCsv = input.IntentKeywordsCsv?.Trim() ?? string.Empty;
+        input.CriteriaJson = string.IsNullOrWhiteSpace(input.CriteriaJson) ? "{}" : input.CriteriaJson;
+
+        db.IcpProfiles.Add(input);
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/acquisition/icp/{input.Id}", input);
+    }
+
+    [HttpGet("prospects")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> Prospects([FromQuery] int minimumScore = 0, CancellationToken ct = default)
+    {
+        var threshold = Math.Clamp(minimumScore, 0, 100) * 100;
+        var rows = await db.Prospects
+            .AsNoTracking()
+            .Where(x => x.TenantId == TenantId && x.FitScore * 55 + x.IntentScore * 45 >= threshold)
+            .OrderByDescending(x => x.FitScore * 55 + x.IntentScore * 45)
+            .ToListAsync(ct);
+        return Ok(rows);
+    }
+
+    [HttpGet("target-lists")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> TargetLists(CancellationToken ct)
+    {
+        var rows = await db.TargetLists
+            .AsNoTracking()
+            .Where(x => x.TenantId == TenantId)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+        return Ok(rows);
+    }
+
     [HttpGet("discovery/providers")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
