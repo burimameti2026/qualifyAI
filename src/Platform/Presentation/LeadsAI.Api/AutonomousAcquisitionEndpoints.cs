@@ -32,6 +32,35 @@ public static class AutonomousAcquisitionEndpoints
             return next(ctx);
         });
 
+        g.MapPost("/campaigns/{campaignId}/run", async (Guid campaignId, AppDbContext db, ITenantContext tenantContext, CancellationToken ct) =>
+        {
+            var tenantId = tenantContext.Current?.Id ?? Guid.Empty;
+            if (tenantId == Guid.Empty) return Results.Forbid();
+
+            var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaignId, ct);
+            if (campaign is null) return Results.NotFound();
+            if (!campaign.AgentId.HasValue) return Results.BadRequest(new { error = "Campaign has no autonomous acquisition agent." });
+            if (campaign.Status != CampaignStatus.Running) return Results.BadRequest(new { error = "Campaign must be running before an acquisition run can start." });
+
+            var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct);
+            if (agent is null) return Results.BadRequest(new { error = "Campaign agent was not found." });
+            if (agent.Status != AutonomousAgentStatus.Active) return Results.BadRequest(new { error = "Autonomous acquisition agent must be active." });
+
+            var duplicate = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x =>
+                x.TenantId == tenantId && x.AgentId == agent.Id && x.CampaignId == campaign.Id &&
+                x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval, ct);
+            if (duplicate) return Results.Conflict(new { error = "An acquisition run is already queued, running, or waiting for approval." });
+
+            var run = new AutonomousAcquisitionAgentRun
+            {
+                TenantId = tenantId, AgentId = agent.Id, CampaignId = campaign.Id,
+                IsManual = true, Status = AutonomousAgentRunStatus.Queued, ScheduledAtUtc = DateTime.UtcNow
+            };
+            db.AutonomousAcquisitionAgentRuns.Add(run);
+            await db.SaveChangesAsync(ct);
+            return Results.Accepted($"/api/autonomous-acquisition/campaigns/{campaign.Id}/runs/{run.Id}", run);
+        });
+
         g.MapGet("/tenants/{tenantId}/campaigns", async (
             Guid tenantId, AppDbContext db, CancellationToken ct) =>
             Results.Ok(await db.Campaigns
