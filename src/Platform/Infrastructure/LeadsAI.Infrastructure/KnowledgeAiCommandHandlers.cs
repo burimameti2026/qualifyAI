@@ -69,7 +69,7 @@ public sealed class CreateAiAgentCommandHandler(IKnowledgeAiRepository repositor
     public async Task<DomainAiAgent> Handle(CreateAiAgentCommand command, CancellationToken ct)
     {
         await EnsureKnowledgeBaseAsync(command.TenantId, command.Agent.KnowledgeBaseId, ct);
-        var agent = AiAgent.Create(command.TenantId, command.Agent.Name, command.Agent.Role, command.Agent.Instructions,
+        var agent = DomainAiAgent.Create(command.TenantId, command.Agent.Name, command.Agent.Role, command.Agent.Instructions,
             command.Agent.Tone, command.Agent.Model, command.Agent.LanguagesCsv, command.Agent.Active, command.Agent.KnowledgeBaseId);
         repository.AddAiAgent(agent);
         await unitOfWork.SaveChangesAsync(ct);
