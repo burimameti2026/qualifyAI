@@ -338,6 +338,8 @@ public sealed class AcquisitionController(
         var steps = input.Steps.OrderBy(x => x.StepNumber).ToList();
         if (steps.Any(x => x.StepNumber <= 0 || string.IsNullOrWhiteSpace(x.SubjectTemplate) || string.IsNullOrWhiteSpace(x.BodyTemplate)))
             return BadRequest(new { detail = "Every message needs a step number, subject and body." });
+        if (steps.Select(x => x.StepNumber).Distinct().Count() != steps.Count)
+            return BadRequest(new { detail = "Message step numbers must be unique." });
 
         var existing = await db.CampaignSteps
             .Where(x => x.TenantId == TenantId && x.CampaignId == id)
