@@ -94,6 +94,9 @@ public sealed class DevelopmentSeedService(
                 {
                     version = 1,
                     industry = "Logistics & Transport",
+                    region = "Balkans",
+                    countries = new[] { "MK", "AL", "XK" },
+                    languages = new[] { "en", "mk", "sq" },
                     purpose = "Find and qualify logistics companies for FusionFleet.",
                     offer = "Fleet and transport operations software.",
                     audience = "Logistics companies, transport operators, freight forwarders and 3PL providers.",
@@ -122,7 +125,8 @@ public sealed class DevelopmentSeedService(
         var result = await industryPackProvisioner.ProvisionAsync(
             tenantId,
             pack.Id,
-            cancellationToken);
+            cancellationToken,
+            scenarioCode: "logistics-companies");
 
         logger.LogInformation(
             "Provisioned industry pack {IndustryPackCode} for tenant {TenantId}. Campaign {CampaignId}, TargetList {TargetListId}.",
