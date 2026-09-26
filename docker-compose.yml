@@ -128,6 +128,12 @@ services:
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD:-LeadsAI_Redis_ChangeMe!},abortConnect=false"
       Mongo__ConnectionString: "mongodb://${MONGO_ROOT_USER:-leadsai}:${MONGO_ROOT_PASSWORD:-LeadsAI_Mongo_ChangeMe!}@mongodb:27017/?authSource=admin"
       Mongo__Database: LeadsAI_Knowledge
+      AI__Provider: ${AI_PROVIDER:-OpenRouter}
+      AI__BaseUrl: ${AI_BASE_URL:-https://openrouter.ai/api/v1/}
+      AI__Model: ${AI_MODEL:-openrouter/free}
+      AI__ApiKey: ${OPENROUTER_API_KEY:-}
+      AI__Referer: ${AI_REFERER:-https://leadsai.app}
+      AI__Title: ${AI_TITLE:-LeadsAI}
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
       ProspectDiscovery__SerpApi__ApiKey: ${SERPAPI_API_KEY:-}
       ProspectDiscovery__SerpApi__MonthlySafetyLimit: ${SERPAPI_LIMIT:-200}
