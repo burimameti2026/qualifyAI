@@ -153,14 +153,19 @@ public sealed class IndustryPacksController(
         if (!await db.IndustryPacks.AnyAsync(x => x.Id == id, ct))
             return NotFound(new { error = "Industry pack was not found." });
 
-        var result = await provisioner.ProvisionAsync(tenantId, id, ct, input?.ScenarioCode);
-        if (input?.IcpProfileId is Guid icpId)
+        IndustryPackProvisioningResult result;
+        try
         {
-            var icpExists = await db.IcpProfiles.AnyAsync(x => x.TenantId == tenantId && x.Id == icpId && x.Active, ct);
-            if (!icpExists) return BadRequest(new { error = "Selected ICP was not found or is inactive." });
-            var targetList = await db.TargetLists.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == result.TargetListId, ct);
-            if (targetList is not null) targetList.IcpProfileId = icpId;
-            await db.SaveChangesAsync(ct);
+            result = await provisioner.ProvisionAsync(
+                tenantId,
+                id,
+                ct,
+                input?.ScenarioCode,
+                input?.IcpProfileId);
+        }
+        catch (InvalidOperationException exception) when (input?.IcpProfileId is not null)
+        {
+            return BadRequest(new { error = exception.Message });
         }
 
         return Ok(new
