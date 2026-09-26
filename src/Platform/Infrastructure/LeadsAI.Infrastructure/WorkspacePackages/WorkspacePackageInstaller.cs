@@ -12,7 +12,8 @@ public sealed record WorkspacePackageInstallResult(
     int Opportunities,
     int Meetings,
     int Tickets,
-    int Automations);
+    int Automations,
+    bool AlreadyInstalled);
 
 public sealed class WorkspacePackageInstaller(
     AppDbContext db,
@@ -56,6 +57,21 @@ public sealed class WorkspacePackageInstaller(
         const string key = "workspace.installed-package";
         var existing = await db.TenantSettings.SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.Key == key, ct);
+
+        var alreadyInstalled = false;
+        if (existing is not null && !string.IsNullOrWhiteSpace(existing.Value))
+        {
+            try
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(existing.Value);
+                alreadyInstalled = document.RootElement.TryGetProperty("packageId", out var packageIdElement) &&
+                                   string.Equals(packageIdElement.GetString(), package.Id, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Treat malformed legacy state as not installed and repair it below.
+            }
+        }
 
         var value = System.Text.Json.JsonSerializer.Serialize(new
         {
@@ -104,5 +120,6 @@ public sealed class WorkspacePackageInstaller(
             await db.Opportunitys.CountAsync(x => x.TenantId == tenantId, ct),
             await db.MeetingBookings.CountAsync(x => x.TenantId == tenantId, ct),
             await db.Tickets.CountAsync(x => x.TenantId == tenantId, ct),
-            await db.AutomationRules.CountAsync(x => x.TenantId == tenantId, ct));
+            await db.AutomationRules.CountAsync(x => x.TenantId == tenantId, ct),
+            alreadyInstalled);
 }
