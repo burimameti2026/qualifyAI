@@ -6,13 +6,13 @@ using LeadsAI.Application;
 
 namespace LeadsAI.Infrastructure;
 
-public sealed class OpenAiProvider(HttpClient http, IConfiguration configuration, LocalAiProvider fallback) : IAiProvider
+public sealed class OpenAiProvider(HttpClient http, IConfiguration configuration) : IAiProvider
 {
     public async Task<string> CompleteAsync(string system, string user, CancellationToken ct = default)
     {
         var apiKey = configuration["Ai:ApiKey"] ?? configuration["OpenAI:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
-            return await fallback.CompleteAsync(system, user, ct);
+            throw new InvalidOperationException("AI provider is not configured. Set Ai:ApiKey or OpenAI:ApiKey.");
 
         var model = configuration["Ai:Model"] ?? "gpt-5-mini";
         var baseUrl = (configuration["Ai:BaseUrl"] ?? "https://api.openai.com/v1/").TrimEnd('/') + "/";
@@ -27,7 +27,8 @@ public sealed class OpenAiProvider(HttpClient http, IConfiguration configuration
                 new { role = "system", content = system },
                 new { role = "user", content = user }
             },
-            temperature = 0.3
+            temperature = 0.3,
+            response_format = new { type = "json_object" }
         };
 
         using var response = await http.PostAsync(
