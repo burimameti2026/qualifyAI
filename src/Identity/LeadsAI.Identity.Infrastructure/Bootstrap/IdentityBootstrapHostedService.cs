@@ -197,7 +197,6 @@ public sealed class IdentityBootstrapHostedService(
             ? await dbContext.Tenants.FirstOrDefaultAsync(x => x.Id == configuredTenantId.Value, cancellationToken)
             : null;
         tenant ??= await dbContext.Tenants.FirstOrDefaultAsync(x => x.Slug == tenantSlug, cancellationToken);
-        var tenantCreated = false;
 
         if (tenant is null)
         {
@@ -206,14 +205,12 @@ public sealed class IdentityBootstrapHostedService(
                 : Tenant.Create(tenantName, tenantSlug, contactEmail);
             await dbContext.Tenants.AddAsync(tenant, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
-            tenantCreated = true;
             logger.LogInformation("Provisioned FusionFleet tenant {TenantSlug} ({TenantId}).", tenant.Slug, tenant.Id);
         }
 
         var license = await dbContext.Licenses
             .Include(x => x.Modules)
             .FirstOrDefaultAsync(x => x.TenantId == tenant.Id, cancellationToken);
-        var licenseCreated = false;
 
         if (license is null)
         {
@@ -232,7 +229,6 @@ public sealed class IdentityBootstrapHostedService(
 
             await dbContext.Licenses.AddAsync(license, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
-            licenseCreated = true;
             logger.LogInformation("Provisioned FusionFleet license {LicenseId}.", license.Id);
         }
 
