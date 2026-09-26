@@ -198,7 +198,7 @@ public static class AutonomousAcquisitionEndpoints
 
             var active = await db.AutonomousAcquisitionAgentRuns.AnyAsync(
                 x => x.TenantId == tenantId && x.AgentId == id && x.CampaignId == input.CampaignId &&
-                     x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval, ct);
+                     (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running || x.Status == AutonomousAgentRunStatus.WaitingApproval), ct);
             if (active) return Results.Conflict(new { detail = "An acquisition run is already active for this campaign." });
 
             var run = new AutonomousAcquisitionAgentRun

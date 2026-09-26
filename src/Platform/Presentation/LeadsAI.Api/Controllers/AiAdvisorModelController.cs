@@ -22,7 +22,8 @@ public sealed class AiAdvisorModelController(IAiProvider provider) : ControllerB
         var user = $"Context:\n{context}\n\nUser:\n{input.Message.Trim()}";
         try
         {
-            var prompt = "You are the LeadsAI AI advisor. Return JSON with message, suggestions, nextAction, and field. Help the user complete their current workflow using the supplied context.";\n            var raw = await provider.CompleteAsync(prompt, user, ct);
+            var prompt = "You are the LeadsAI AI advisor. Return JSON with message, suggestions, nextAction, and field. Help the user complete their current workflow using the supplied context.";
+            var raw = await provider.CompleteAsync(prompt, user, ct);
             return Ok(Parse(raw));
         }
         catch (Exception ex)
