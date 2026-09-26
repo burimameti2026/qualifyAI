@@ -37,6 +37,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         builder.Entity<BillingEventRecord>(entity => { entity.ToTable("BillingEvents"); entity.HasKey(x => x.Id); entity.Property(x => x.Provider).HasMaxLength(64).IsRequired(); entity.Property(x => x.ExternalEventId).HasMaxLength(256).IsRequired(); entity.Property(x => x.Type).HasMaxLength(128).IsRequired(); entity.Property(x => x.Status).HasMaxLength(64).IsRequired(); entity.Property(x => x.DataJson).HasMaxLength(4000); entity.HasIndex(x => new { x.Provider, x.ExternalEventId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.OccurredAtUtc }); });
         builder.Entity<TenantBillingSubscriptionRecord>(entity => { entity.ToTable("TenantBillingSubscriptions"); entity.HasKey(x => x.Id); entity.Property(x => x.Provider).HasMaxLength(64).IsRequired(); entity.Property(x => x.ExternalSubscriptionId).HasMaxLength(256).IsRequired(); entity.Property(x => x.Plan).HasMaxLength(128).IsRequired(); entity.Property(x => x.Status).HasMaxLength(64).IsRequired(); entity.HasIndex(x => new { x.Provider, x.ExternalSubscriptionId }).IsUnique(); entity.HasIndex(x => x.TenantId).IsUnique(); });
         builder.Entity<TenantBillingInvoiceRecord>(entity => { entity.ToTable("TenantBillingInvoices"); entity.HasKey(x => x.Id); entity.Property(x => x.Provider).HasMaxLength(64).IsRequired(); entity.Property(x => x.ExternalInvoiceId).HasMaxLength(256).IsRequired(); entity.Property(x => x.Status).HasMaxLength(64).IsRequired(); entity.Property(x => x.Currency).HasMaxLength(8).IsRequired(); entity.Property(x => x.AmountDue).HasPrecision(18,2); entity.Property(x => x.AmountPaid).HasPrecision(18,2); entity.HasIndex(x => new { x.Provider, x.ExternalInvoiceId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.UpdatedAtUtc }); });
+        builder.Entity<QualificationFlow>(entity =>
+        {
+            entity.ToTable("QualificationFlows");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Trigger).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.AutomationRuleIdsJson).IsRequired();
+            entity.Property(x => x.ContainerIdsJson).IsRequired();
+            entity.HasIndex(x => new { x.TenantId, x.CampaignId });
+            entity.HasIndex(x => new { x.TenantId, x.PipelineId });
+        });
         builder.Entity<TenantBillingLifecycleRecord>(entity => { entity.ToTable("TenantBillingLifecycles"); entity.HasKey(x => x.TenantId); entity.Property(x => x.State).HasMaxLength(64).IsRequired(); entity.Property(x => x.LastPaymentState).HasMaxLength(128); entity.HasIndex(x => new { x.State, x.NextRetryAtUtc }); });
         builder.Entity<AutonomousAcquisitionAgentMemory>(entity => { entity.ToTable("AutonomousAcquisitionAgentMemories"); entity.HasKey(x => x.Id); entity.Property(x => x.Key).HasMaxLength(256).IsRequired(); entity.Property(x => x.Category).HasMaxLength(64).IsRequired(); entity.Property(x => x.Value).HasMaxLength(4000).IsRequired(); entity.HasIndex(x => new { x.TenantId, x.AgentId, x.Category, x.Key }).IsUnique(); });
     }
