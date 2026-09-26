@@ -594,6 +594,6 @@ public sealed class AcquisitionController(
 
 }
 
-public sealed record DeliveryConfirmation(string ProviderMessageId);
+public sealed record CampaignPlanRequest(string PlanJson);\npublic sealed record DeliveryConfirmation(string ProviderMessageId);
 public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
 public sealed record CampaignActivityItem(Guid Id, DateTime AtUtc, string Type, string Status, string Title, string Detail);
