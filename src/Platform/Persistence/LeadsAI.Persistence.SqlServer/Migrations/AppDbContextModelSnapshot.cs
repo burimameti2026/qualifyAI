@@ -597,6 +597,65 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     b.ToTable("AutonomousAcquisitionAgentMemories", (string)null);
                 });
 
+            modelBuilder.Entity("LeadsAI.Domain.CampaignContainer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastStartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastStoppedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PackageCode")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("PackageVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CampaignId");
+
+                    b.HasIndex("TenantId", "AgentId")
+                        .IsUnique();
+
+                    b.ToTable("CampaignContainers", (string)null);
+                });
+
             modelBuilder.Entity("LeadsAI.Domain.AutonomousAcquisitionAgentRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -607,6 +666,9 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContainerId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("CompletedAtUtc")
