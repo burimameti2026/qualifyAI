@@ -146,8 +146,12 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             run.Status = AutonomousAgentRunStatus.Failed;
             run.Error = ex.Message;
             run.CompletedAtUtc = DateTime.UtcNow;
-            agent.Status = AutonomousAgentStatus.Failed;
-            agent.UpdatedAtUtc = DateTime.UtcNow;
+
+            // A failed run is an execution failure, not a permanent agent lifecycle failure.
+            // Keep the agent active while its campaign is still running so the next scheduled/manual run can recover.
+            if (agent.Status == AutonomousAgentStatus.Active)
+                agent.UpdatedAtUtc = DateTime.UtcNow;
+
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
