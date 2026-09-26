@@ -436,6 +436,173 @@ public sealed class AcquisitionController(
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
+    [HttpGet("campaigns/{id:guid}/containers")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> Containers(Guid id, CancellationToken ct)
+    {
+        var exists = await db.Campaigns.AnyAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (!exists) return NotFound();
+
+        var rows = await db.CampaignContainers.AsNoTracking()
+            .Where(x => x.TenantId == TenantId && x.CampaignId == id)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Select(x => new
+            {
+                x.Id,
+                x.CampaignId,
+                x.AgentId,
+                x.Name,
+                x.PackageCode,
+                x.PackageVersion,
+                x.Status,
+                x.ConfigurationJson,
+                x.LastStartedAtUtc,
+                x.LastStoppedAtUtc,
+                x.CreatedAtUtc,
+                x.UpdatedAtUtc,
+                runs = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
+                activeRuns = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
+                    (r.Status == AutonomousAgentRunStatus.Queued || r.Status == AutonomousAgentRunStatus.Running ||
+                     r.Status == AutonomousAgentRunStatus.WaitingApproval || r.Status == AutonomousAgentRunStatus.Paused))
+            })
+            .ToListAsync(ct);
+
+        return Ok(rows);
+    }
+
+    [HttpPost("campaigns/{id:guid}/containers")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> CreateContainer(Guid id, CampaignContainerCreateRequest input, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (campaign is null) return NotFound();
+
+        var sourceAgent = campaign.AgentId.HasValue
+            ? await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
+                x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct)
+            : null;
+
+        var agent = new AutonomousAcquisitionAgent
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            Name = string.IsNullOrWhiteSpace(input.Name) ? $"{campaign.Name} Container Agent" : $"{input.Name.Trim()} Agent",
+            TemplateCode = sourceAgent?.TemplateCode ?? "custom",
+            Industry = sourceAgent?.Industry ?? string.Empty,
+            Region = sourceAgent?.Region ?? "Europe",
+            CountriesJson = sourceAgent?.CountriesJson ?? "[]",
+            IcpJson = sourceAgent?.IcpJson ?? "{}",
+            MinimumScore = sourceAgent?.MinimumScore ?? 70,
+            DailyDiscoveryLimit = sourceAgent?.DailyDiscoveryLimit ?? 50,
+            DailyEmailLimit = sourceAgent?.DailyEmailLimit ?? 10,
+            RunTimeUtc = sourceAgent?.RunTimeUtc ?? new TimeOnly(8, 0),
+            Status = AutonomousAgentStatus.Draft,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+
+        var container = new CampaignContainer
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            CampaignId = campaign.Id,
+            AgentId = agent.Id,
+            Name = string.IsNullOrWhiteSpace(input.Name) ? $"{campaign.Name} Container" : input.Name.Trim(),
+            PackageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? campaign.PackageCode : input.PackageCode.Trim(),
+            PackageVersion = string.IsNullOrWhiteSpace(input.PackageVersion) ? campaign.PackageVersion : input.PackageVersion.Trim(),
+            ConfigurationJson = string.IsNullOrWhiteSpace(input.ConfigurationJson) ? "{}" : input.ConfigurationJson,
+            Status = CampaignContainerStatus.Stopped
+        };
+
+        agent.ContainerId = container.Id;
+        db.AutonomousAcquisitionAgents.Add(agent);
+        db.CampaignContainers.Add(container);
+        await db.SaveChangesAsync(ct);
+
+        return CreatedAtAction(nameof(Containers), new { id = campaign.Id }, new
+        {
+            container.Id,
+            container.CampaignId,
+            container.AgentId,
+            container.Name,
+            container.PackageCode,
+            container.PackageVersion,
+            container.Status
+        });
+    }
+
+    [HttpPost("campaigns/{campaignId:guid}/containers/{containerId:guid}/start")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> StartContainer(Guid campaignId, Guid containerId, CancellationToken ct)
+    {
+        var container = await db.CampaignContainers.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
+        if (container is null) return NotFound();
+
+        var campaign = await db.Campaigns.FirstAsync(x => x.TenantId == TenantId && x.Id == campaignId, ct);
+        if (campaign.Status is CampaignStatus.Completed or CampaignStatus.Stopped)
+            return Conflict(new { code = "campaign_not_restartable", detail = $"Campaign is {campaign.Status} and cannot start a container." });
+
+        var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Id == container.AgentId, ct);
+        if (agent is null) return NotFound();
+
+        container.Status = CampaignContainerStatus.Running;
+        container.LastStartedAtUtc = DateTime.UtcNow;
+        container.LastStoppedAtUtc = null;
+        container.UpdatedAtUtc = DateTime.UtcNow;
+        agent.Status = AutonomousAgentStatus.Active;
+        agent.UpdatedAtUtc = DateTime.UtcNow;
+
+        var run = new AutonomousAcquisitionAgentRun
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            AgentId = agent.Id,
+            CampaignId = campaignId,
+            ContainerId = container.Id,
+            IsManual = true,
+            Status = AutonomousAgentRunStatus.Queued,
+            ScheduledAtUtc = DateTime.UtcNow
+        };
+        db.AutonomousAcquisitionAgentRuns.Add(run);
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { container.Id, container.Status, runId = run.Id });
+    }
+
+    [HttpPost("campaigns/{campaignId:guid}/containers/{containerId:guid}/stop")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> StopContainer(Guid campaignId, Guid containerId, CancellationToken ct)
+    {
+        var container = await db.CampaignContainers.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
+        if (container is null) return NotFound();
+
+        container.Status = CampaignContainerStatus.Stopped;
+        container.LastStoppedAtUtc = DateTime.UtcNow;
+        container.UpdatedAtUtc = DateTime.UtcNow;
+
+        var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Id == container.AgentId, ct);
+        if (agent is not null)
+        {
+            agent.Status = AutonomousAgentStatus.Stopped;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == TenantId && x.ContainerId == container.Id &&
+                (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running ||
+                 x.Status == AutonomousAgentRunStatus.WaitingApproval || x.Status == AutonomousAgentRunStatus.Paused))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AutonomousAgentRunStatus.Cancelled)
+                .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { container.Id, container.Status });
+    }
+
     [HttpGet("campaigns/{id:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignActivity(Guid id, CancellationToken ct)
@@ -779,7 +946,7 @@ public sealed record IcpSaveRequest(
     bool Active = true,
     int MinimumScore = 70);
 
-public sealed record CampaignPlanRequest(string PlanJson);
+public sealed record CampaignContainerCreateRequest(string? Name, string? PackageCode, string? PackageVersion, string? ConfigurationJson);\npublic sealed record CampaignPlanRequest(string PlanJson);
 public sealed record CampaignMessagesRequest(IReadOnlyList<CampaignMessageStepRequest> Steps);
 public sealed record CampaignMessageStepRequest(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
