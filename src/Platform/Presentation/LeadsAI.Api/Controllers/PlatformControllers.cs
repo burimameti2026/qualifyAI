@@ -1,3 +1,4 @@
+using LeadsAI.Infrastructure.IndustryPacks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
