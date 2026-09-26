@@ -103,7 +103,8 @@ public sealed class RevenueController(ISender sender, ITenantContext tenant) : C
 public sealed class IndustryPacksController(
     AppDbContext db,
     ITenantContext tenant,
-    IIndustryPackProvisioner provisioner) : ControllerBase
+    IIndustryPackProvisioner provisioner,
+    IAiProvider provider) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
