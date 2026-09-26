@@ -52,7 +52,7 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant) :
             ContainerIdsJson = "[]"
         };
 
-        db.Workflows.Add(flow);
+        db.QualificationFlows.Add(flow);
         await db.SaveChangesAsync(ct);
         return Created($"/api/workflows/{flow.Id}", flow);
     }
