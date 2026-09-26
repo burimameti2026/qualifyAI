@@ -75,7 +75,7 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
 
         var existing = await db.AutonomousAcquisitionAgentRuns
             .AnyAsync(x => x.TenantId == context.TenantId && x.AgentId == agentId && x.CampaignId == campaignId &&
-                           x.Status is AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.Running or AutonomousAgentRunStatus.WaitingApproval, ct);
+                           (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running || x.Status == AutonomousAgentRunStatus.WaitingApproval), ct);
         if (existing) return new(false, "{}", "This agent already has a queued or running acquisition run.");
 
         var run = new AutonomousAcquisitionAgentRun
