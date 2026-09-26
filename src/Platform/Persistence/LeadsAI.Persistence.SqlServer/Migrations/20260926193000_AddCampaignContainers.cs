@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace LeadsAI.Persistence.SqlServer.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20260926193000_AddCampaignContainers")]
 public partial class AddCampaignContainers : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
