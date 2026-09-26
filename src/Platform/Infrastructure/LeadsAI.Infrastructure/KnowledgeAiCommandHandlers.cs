@@ -2,6 +2,7 @@ using MediatR;
 using LeadsAI.Application.Abstractions.Persistence;
 using LeadsAI.Application.Commands.Modules;
 using LeadsAI.Domain;
+using DomainAiAgent = LeadsAI.Domain.AiAgent;
 
 namespace LeadsAI.Infrastructure;
 
@@ -63,9 +64,9 @@ public sealed class UpdateKnowledgeGapCommandHandler(IKnowledgeAiRepository repo
 }
 
 public sealed class CreateAiAgentCommandHandler(IKnowledgeAiRepository repository, IBusinessUnitOfWork unitOfWork)
-    : IRequestHandler<CreateAiAgentCommand, AiAgent>
+    : IRequestHandler<CreateAiAgentCommand, DomainAiAgent>
 {
-    public async Task<AiAgent> Handle(CreateAiAgentCommand command, CancellationToken ct)
+    public async Task<DomainAiAgent> Handle(CreateAiAgentCommand command, CancellationToken ct)
     {
         await EnsureKnowledgeBaseAsync(command.TenantId, command.Agent.KnowledgeBaseId, ct);
         var agent = AiAgent.Create(command.TenantId, command.Agent.Name, command.Agent.Role, command.Agent.Instructions,
@@ -83,9 +84,9 @@ public sealed class CreateAiAgentCommandHandler(IKnowledgeAiRepository repositor
 }
 
 public sealed class UpdateAiAgentCommandHandler(IKnowledgeAiRepository repository, IBusinessUnitOfWork unitOfWork)
-    : IRequestHandler<UpdateAiAgentCommand, AiAgent?>
+    : IRequestHandler<UpdateAiAgentCommand, DomainAiAgent?>
 {
-    public async Task<AiAgent?> Handle(UpdateAiAgentCommand command, CancellationToken ct)
+    public async Task<DomainAiAgent?> Handle(UpdateAiAgentCommand command, CancellationToken ct)
     {
         var agent = await repository.GetAiAgentAsync(command.TenantId, command.Id, ct);
         if (agent is null) return null;
