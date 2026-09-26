@@ -86,6 +86,7 @@ public sealed class AutonomousAcquisitionAgentRun
     public Guid TenantId { get; set; }
     public Guid AgentId { get; set; }
     public Guid CampaignId { get; set; }
+    public Guid? ContainerId { get; set; }
     public AutonomousAgentRunStatus Status { get; set; } = AutonomousAgentRunStatus.Queued;
     public bool IsManual { get; set; }
     public string? Query { get; set; }
