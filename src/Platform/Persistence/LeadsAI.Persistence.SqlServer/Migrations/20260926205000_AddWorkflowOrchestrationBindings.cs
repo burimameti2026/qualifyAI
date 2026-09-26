@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace LeadsAI.Persistence.SqlServer.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20260926205000_AddWorkflowOrchestrationBindings")]
 public partial class AddWorkflowOrchestrationBindings : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
