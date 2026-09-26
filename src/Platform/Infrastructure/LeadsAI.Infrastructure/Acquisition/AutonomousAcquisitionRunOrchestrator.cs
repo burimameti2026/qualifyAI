@@ -85,8 +85,8 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         {
             var template = templates.Apply(agent);
             template = ApplyCampaignPlan(campaign, agent, template);
-            await planner.EnsurePlanAsync(agent, template, ct);
-            var tasks = await EnsureRunTasksAsync(run, agent, template, ct);
+            await planner.EnsurePlanAsync(agent, template, ct, campaign.PlanJson);
+            var tasks = await EnsureRunTasksAsync(run, agent, template, campaign.PlanJson, ct);
             var now = DateTime.UtcNow;
 
             var awaitingApproval = false;
@@ -708,6 +708,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         AutonomousAcquisitionAgentRun run,
         AutonomousAcquisitionAgent agent,
         AutonomousAcquisitionTemplate template,
+        string campaignPlanJson,
         CancellationToken ct)
     {
         var existing = await db.AutonomousAcquisitionTasks
@@ -716,7 +717,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             .ToListAsync(ct);
         if (existing.Count > 0) return existing;
 
-        var definitions = await planner.EnsurePlanAsync(agent, template, ct);
+        var definitions = await planner.EnsurePlanAsync(agent, template, ct, campaignPlanJson);
         var instances = definitions.Select(d => new AutonomousAcquisitionTask
         {
             TenantId = run.TenantId,
