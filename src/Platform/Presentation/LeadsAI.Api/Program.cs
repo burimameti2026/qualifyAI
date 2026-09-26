@@ -44,6 +44,8 @@ builder.Services.AddHostedService<AutomationSchedulerWorker>();
 builder.Services.Configure<AutomationRetryOptions>(builder.Configuration.GetSection("AutomationRetry"));
 builder.Services.AddHostedService<AutomationRetryWorker>();
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<PlatformApiExceptionHandler>();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
@@ -55,6 +57,7 @@ builder.Services.AddQualifyAiResourceServer(builder.Configuration);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
 
 var app = builder.Build();
+app.UseExceptionHandler();
 app.MapDefaultEndpoints();
 app.UseCors();
 app.UseSwagger();
