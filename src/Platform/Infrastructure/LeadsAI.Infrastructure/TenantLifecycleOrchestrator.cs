@@ -27,7 +27,16 @@ public sealed class TenantLifecycleOrchestrator(AppDbContext db, IModuleRegistry
         entitlement.TenantStatus = "provisioning";
         await db.SaveChangesAsync(cancellationToken);
 
-        await provisioning.ProvisionAsync(request.TenantId, resolved, cancellationToken);
+        try
+        {
+            await provisioning.ProvisionAsync(request.TenantId, resolved, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            entitlement.TenantStatus = "provisioning_failed";
+            await db.SaveChangesAsync(cancellationToken);
+            throw;
+        }
 
         var rows = await db.TenantModuleProvisionings.Where(x => x.TenantId == request.TenantId && resolved.Contains(x.ModuleCode)).ToListAsync(cancellationToken);
         var failed = rows.Where(x => !x.Status.Equals("completed", StringComparison.OrdinalIgnoreCase)).Select(x => x.ModuleCode).ToArray();
