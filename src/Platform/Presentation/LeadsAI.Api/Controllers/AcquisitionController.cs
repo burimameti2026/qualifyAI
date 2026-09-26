@@ -945,7 +945,8 @@ public sealed record IcpSaveRequest(
     bool Active = true,
     int MinimumScore = 70);
 
-public sealed record CampaignContainerCreateRequest(string? Name, string? PackageCode, string? PackageVersion, string? ConfigurationJson);\npublic sealed record CampaignPlanRequest(string PlanJson);
+public sealed record CampaignContainerCreateRequest(string? Name, string? PackageCode, string? PackageVersion, string? ConfigurationJson);
+public sealed record CampaignPlanRequest(string PlanJson);
 public sealed record CampaignMessagesRequest(IReadOnlyList<CampaignMessageStepRequest> Steps);
 public sealed record CampaignMessageStepRequest(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
 public sealed record DeliveryConfirmation(string ProviderMessageId);
