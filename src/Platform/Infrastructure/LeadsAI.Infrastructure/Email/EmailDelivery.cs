@@ -96,21 +96,17 @@ public sealed class EmailDeliveryService(
         if (await IsSuppressedAsync(tenantId, prospect, ct)) return new(false, null, "Recipient is suppressed or has withdrawn marketing consent.");
         var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
         if (!await db.CrmTasks.AnyAsync(x => x.TenantId == tenantId && x.Title == approvalTitle && x.Completed, ct)) return new(false, null, "Human approval is required before sending.");
-        var claimed = await db.OutreachMessages
-            .Where(x => x.TenantId == tenantId && x.Id == messageId && x.Status == OutreachStatus.Queued)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, OutreachStatus.Sending)
-                .SetProperty(x => x.UpdatedAtUtc, DateTime.UtcNow), ct);
-        if (claimed == 0)
-            return new(false, null, "Outreach message was claimed by another delivery attempt.");
-        message = await db.OutreachMessages.FirstAsync(x => x.TenantId == tenantId && x.Id == messageId, ct);
         var dailyLimit = Math.Max(1, configuration.GetValue("Email:DailySendLimit", 10));
         var startOfDay = DateTime.UtcNow.Date;
-        var sentToday = await db.UsageRecords.CountAsync(x => x.TenantId == tenantId && x.Meter == "emails_sent" && x.CreatedAtUtc >= startOfDay, ct);
-        if (sentToday >= dailyLimit) return new(false, null, $"Daily outreach limit of {dailyLimit} messages has been reached.");
+        var sentToday = await db.UsageRecords.CountAsync(
+            x => x.TenantId == tenantId && x.Meter == "emails_sent" && x.CreatedAtUtc >= startOfDay, ct);
+        if (sentToday >= dailyLimit)
+            return new(false, null, $"Daily outreach limit of {dailyLimit} messages has been reached.");
+
         var providerName = configuration["Email:Provider"] ?? "disabled";
         var provider = providers.FirstOrDefault(x => x.Name.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-        if (provider is null) return new(false, null, $"Email provider '{providerName}' is not enabled.");
+        if (provider is null)
+            return new(false, null, $"Email provider '{providerName}' is not enabled.");
 
         var configuredSenders = await db.IntegrationConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Provider == "email-sender" && x.Status == IntegrationStatus.Connected)
@@ -125,6 +121,23 @@ public sealed class EmailDeliveryService(
         if (sender is null)
             return new(false, null, $"Campaign sender '{campaign.SenderEmail}' is not verified for provider '{providerName}'.");
 
+        // Re-check the campaign immediately before claiming delivery. Pause/stop must block new sends.
+        campaign = await db.Campaigns.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Id == message.CampaignId, ct);
+        if (campaign is null || campaign.Status != CampaignStatus.Running)
+            return new(false, null, "The campaign is not running.");
+
+        // Claim only after every pre-send validation succeeds. This prevents a message being left in
+        // Sending when a limit/provider/sender validation fails.
+        var claimed = await db.OutreachMessages
+            .Where(x => x.TenantId == tenantId && x.Id == messageId && x.Status == OutreachStatus.Queued)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, OutreachStatus.Sending)
+                .SetProperty(x => x.UpdatedAtUtc, DateTime.UtcNow), ct);
+        if (claimed == 0)
+            return new(false, null, "Outreach message was claimed by another delivery attempt.");
+
+        message = await db.OutreachMessages.FirstAsync(x => x.TenantId == tenantId && x.Id == messageId, ct);
         var fromName = string.IsNullOrWhiteSpace(sender.Name) ? campaign.SenderName : sender.Name;
         var result = await provider.SendAsync(new EmailEnvelope(
             sender.Email, fromName, prospect.Email, prospect.ContactName, message.Subject,
