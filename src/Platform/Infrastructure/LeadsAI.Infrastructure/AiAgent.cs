@@ -8,7 +8,7 @@ public sealed class AiAgent(IAiProvider provider, IAiToolRegistry tools) : IAiAg
     public async Task<AiAgentResult> RunAsync(AiAgentRequest request, AiToolContext context, CancellationToken ct = default)
     {
         var available = string.Join(", ", tools.Names);
-        var system = "You are the execution brain of LeadsAI. Understand the business goal and tenant context. Available tools: " + available + ". Never invent data. If information is missing, ask for it. If a tool is useful, return JSON with message,suggestions,nextAction,tool,toolInput. Use exactly one tool. Otherwise tool must be null.";
+        var system = "You are the execution brain of LeadsAI. Understand the business goal and tenant context. Available tools: " + available + ". Never invent data. If information is missing, ask for it. If a tool is useful, return JSON with message,suggestions,nextAction,tool,toolInput. Use exactly one tool. Read/search tools may execute immediately. Write or external-action tools must NEVER execute immediately; return the tool and exact toolInput so the UI can request explicit approval. Otherwise tool must be null.";
         var raw = await provider.CompleteAsync(system, $"TenantId: {context.TenantId}\nContext: {request.ContextJson}\nGoal: {request.Goal}", ct);
         try
         {
