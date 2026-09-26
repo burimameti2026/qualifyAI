@@ -359,7 +359,7 @@ public sealed class AcquisitionController(
 
             if (runIds.Count > 0)
                 await db.AutonomousAcquisitionTasks
-                    .Where(x => x.TenantId == tenantId && runIds.Contains(x.RunId))
+                    .Where(x => x.TenantId == tenantId && x.RunId.HasValue && runIds.Contains(x.RunId.Value))
                     .ExecuteDeleteAsync(ct);
 
             if (runIds.Count > 0)
