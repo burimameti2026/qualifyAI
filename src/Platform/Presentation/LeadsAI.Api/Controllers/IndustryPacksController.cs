@@ -13,6 +13,8 @@ namespace LeadsAI.Api.Controllers;
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
 [Route("api/industry-packs")]
+public sealed record ProvisionIndustryPackRequest(string? ScenarioCode);
+
 public sealed class IndustryPacksController(
     AppDbContext db,
     ITenantContext tenant,
@@ -79,14 +81,14 @@ public sealed class IndustryPacksController(
 
     [HttpPost("{id:guid}/provision")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> Provision(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Provision(Guid id, ProvisionIndustryPackRequest? input, CancellationToken ct)
     {
         var tenantId = tenant.TenantId();
 
         if (!await db.IndustryPacks.AnyAsync(x => x.Id == id, ct))
             return NotFound(new { error = "Industry pack was not found." });
 
-        var result = await provisioner.ProvisionAsync(tenantId, id, ct);
+        var result = await provisioner.ProvisionAsync(tenantId, id, input?.ScenarioCode, ct);
 
         return Ok(new
         {
