@@ -96,6 +96,8 @@ public sealed class IndustryPackProvisioner(
         var campaign = await db.Campaigns.SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.PackageCode == marker, ct);
 
+        var alreadyProvisioned = campaign is not null;
+
         if (campaign is null)
         {
             // Adopt an existing draft created by the old scenario provisioner instead of
@@ -212,7 +214,7 @@ public sealed class IndustryPackProvisioner(
             campaign.Status.ToString(),
             "industry-pack",
             definition,
-            alreadyInstalled);
+            alreadyProvisioned);
         });
     }
 
