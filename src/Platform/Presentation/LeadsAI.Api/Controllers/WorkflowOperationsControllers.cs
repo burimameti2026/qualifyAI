@@ -19,7 +19,7 @@ namespace LeadsAI.Api.Controllers;
 [Authorize]
 [RequireModule(QualifyAiModules.Automation)]
 [Route("api/workflows")]
-public sealed class WorkflowsController(ISender sender, ITenantContext tenant, AppDbContext db) : ControllerBase
+public sealed class WorkflowsController(ISender sender, ITenantContext tenant, AppDbContext db, AutomationActionExecutor executor) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.AutomationRead)]
@@ -55,6 +55,73 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
         db.QualificationFlows.Add(flow);
         await db.SaveChangesAsync(ct);
         return Created($"/api/workflows/{flow.Id}", flow);
+    }
+
+    [HttpPost("{id:guid}/run")]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public async Task<IActionResult> RunOrchestration(Guid id, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var flow = await db.QualificationFlows.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (flow is null) return NotFound();
+        if (!flow.Active) return Conflict(new { code = "workflow_inactive", detail = "The workflow is inactive and cannot be executed." });
+
+        var containerIds = ReadIds(flow.ContainerIdsJson);
+        var containers = await db.CampaignContainers
+            .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
+            .ToListAsync(ct);
+
+        var started = new List<object>();
+        foreach (var container in containers)
+        {
+            if (container.Status == CampaignContainerStatus.Running) continue;
+            var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == container.CampaignId, ct);
+            if (campaign is null) continue;
+            if (campaign.Status is CampaignStatus.Completed or CampaignStatus.Stopped)
+                return Conflict(new { code = "campaign_not_restartable", detail = $"Campaign '{campaign.Name}' is {campaign.Status} and cannot start container '{container.Name}'." });
+
+            var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == container.AgentId, ct);
+            if (agent is null) continue;
+            container.Status = CampaignContainerStatus.Running;
+            container.LastStartedAtUtc = DateTime.UtcNow;
+            container.LastStoppedAtUtc = null;
+            container.UpdatedAtUtc = DateTime.UtcNow;
+            agent.Status = AutonomousAgentStatus.Active;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+            var run = new AutonomousAcquisitionAgentRun
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, AgentId = agent.Id,
+                CampaignId = campaign.Id, ContainerId = container.Id, IsManual = true,
+                Status = AutonomousAgentRunStatus.Queued, ScheduledAtUtc = DateTime.UtcNow
+            };
+            db.AutonomousAcquisitionAgentRuns.Add(run);
+            started.Add(new { containerId = container.Id, container = container.Name, runId = run.Id });
+        }
+        await db.SaveChangesAsync(ct);
+
+        var automationIds = ReadIds(flow.AutomationRuleIdsJson);
+        var automationResults = new List<object>();
+        var rules = await db.AutomationRules.Where(x => x.TenantId == tenantId && automationIds.Contains(x.Id) && x.Active).ToListAsync(ct);
+        foreach (var rule in rules)
+        {
+            var run = AutomationRun.Create(tenantId, rule.Id, System.Text.Json.JsonSerializer.Serialize(new { workflowId = flow.Id, campaignId = flow.CampaignId }));
+            db.AutomationRuns.Add(run);
+            run.Start();
+            var result = await executor.ExecuteAsync(rule, run, ct);
+            if (result.Success) run.Complete(result.LogJson); else run.Fail(result.LogJson);
+            automationResults.Add(new { ruleId = rule.Id, rule = rule.Name, runId = run.Id, success = result.Success, error = result.Error });
+        }
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            workflowId = flow.Id,
+            campaignId = flow.CampaignId,
+            pipelineId = flow.PipelineId,
+            startedContainers = started,
+            automations = automationResults,
+            execution = "workflow-orchestration"
+        });
     }
 
     [HttpGet("{id:guid}/orchestration")]
