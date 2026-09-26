@@ -10,8 +10,7 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                 name: "CampaignId",
                 table: "AutonomousAcquisitionAgentRuns",
                 type: "uniqueidentifier",
-                nullable: false,
-                defaultValue: Guid.Empty);
+                nullable: true);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
