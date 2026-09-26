@@ -31,7 +31,6 @@ public sealed class OutreachDeliveryWorker(
                 await using var rootScope = scopes.CreateAsyncScope();
                 var services = rootScope.ServiceProvider;
                 var runtime = services.GetRequiredService<TenantWorkerRuntime>();
-                var delivery = services.GetRequiredService<EmailDeliveryService>();
                 var tenants = await runtime.ActiveCampaignTenantsAsync(stoppingToken);
 
                 foreach (var tenant in tenants)
@@ -39,10 +38,16 @@ public sealed class OutreachDeliveryWorker(
                     if (stoppingToken.IsCancellationRequested) break;
 
                     await using var tenantScope = services.CreateAsyncScope();
-                    var tenantContext = tenantScope.ServiceProvider.GetRequiredService<ITenantContext>();
+                    var tenantServices = tenantScope.ServiceProvider;
+                    var tenantContext = tenantServices.GetRequiredService<ITenantContext>();
                     tenantContext.Set(new CurrentTenant(tenant.Id, tenant.Slug));
 
-                    var db = tenantScope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    // Resolve every tenant-bound service after setting the tenant context.
+                    // Resolving EmailDeliveryService before this point would construct its
+                    // tenant-scoped AppDbContext against the wrong database connection.
+                    var delivery = tenantServices.GetRequiredService<EmailDeliveryService>();
+                    var db = tenantServices.GetRequiredService<AppDbContext>();
+
                     var approvedIds = await (
                         from message in db.OutreachMessages
                         join campaign in db.Campaigns
