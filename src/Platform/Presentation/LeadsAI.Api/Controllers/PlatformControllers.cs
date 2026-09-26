@@ -92,3 +92,126 @@ public sealed class RevenueController(ISender sender, ITenantContext tenant) : C
     [HttpGet("attribution")]
     public Task<IReadOnlyList<RevenueAttribution>> Attribution(CancellationToken ct) => sender.Send(new ListRevenueAttributionQuery(tenant.TenantId()), ct);
 }
+
+
+[ApiController]
+[Authorize]
+[RequireModule(QualifyAiModules.Crm)]
+[Route("api/industry-packs")]
+public sealed class IndustryPacksController(
+    AppDbContext db,
+    ITenantContext tenant,
+    IIndustryPackProvisioner provisioner) : ControllerBase
+{
+    [HttpGet]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        var packs = await db.IndustryPacks.AsNoTracking()
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+
+        var tenantId = tenant.TenantId();
+        var installed = await db.TenantIndustryPacks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Enabled)
+            .Select(x => x.IndustryPackId)
+            .ToListAsync(ct);
+
+        var provisioned = await db.Campaigns.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.PackageCode != null && x.PackageCode != string.Empty)
+            .Select(x => x.PackageCode)
+            .ToListAsync(ct);
+
+        return Ok(packs.Select(pack => new
+        {
+            pack.Id,
+            pack.Code,
+            pack.Name,
+            pack.Description,
+            pack.TemplateJson,
+            installed = installed.Contains(pack.Id),
+            provisioned = provisioned.Contains($"industry-pack:{pack.Code.Trim().ToLowerInvariant()}")
+        }));
+    }
+
+    [HttpPost]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Create([FromBody] IndustryPack input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Code) || string.IsNullOrWhiteSpace(input.Name))
+            return BadRequest(new { detail = "Industry Pack code and name are required." });
+
+        var code = input.Code.Trim().ToLowerInvariant();
+        if (await db.IndustryPacks.AnyAsync(x => x.Code == code, ct))
+            return Conflict(new { detail = $"Industry Pack code '{code}' already exists." });
+
+        var pack = new IndustryPack
+        {
+            Id = Guid.NewGuid(),
+            Code = code,
+            Name = input.Name.Trim(),
+            Description = input.Description?.Trim() ?? string.Empty,
+            TemplateJson = string.IsNullOrWhiteSpace(input.TemplateJson) ? "{}" : input.TemplateJson
+        };
+
+        db.IndustryPacks.Add(pack);
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/industry-packs/{pack.Id}", pack);
+    }
+
+    [HttpPut("{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] IndustryPack input, CancellationToken ct)
+    {
+        var pack = await db.IndustryPacks.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (pack is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(input.Code) || string.IsNullOrWhiteSpace(input.Name))
+            return BadRequest(new { detail = "Industry Pack code and name are required." });
+
+        var code = input.Code.Trim().ToLowerInvariant();
+        if (await db.IndustryPacks.AnyAsync(x => x.Id != id && x.Code == code, ct))
+            return Conflict(new { detail = $"Industry Pack code '{code}' already exists." });
+
+        pack.Code = code;
+        pack.Name = input.Name.Trim();
+        pack.Description = input.Description?.Trim() ?? string.Empty;
+        pack.TemplateJson = string.IsNullOrWhiteSpace(input.TemplateJson) ? "{}" : input.TemplateJson;
+        pack.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Ok(pack);
+    }
+
+    [HttpPost("{id:guid}/provision")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Provision(Guid id, [FromBody] IndustryPackProvisionRequest? input, CancellationToken ct)
+    {
+        try
+        {
+            var result = await provisioner.ProvisionAsync(
+                tenant.TenantId(), id, ct, input?.ScenarioCode, input?.IcpProfileId);
+            return Ok(new
+            {
+                result.IndustryPackId,
+                result.IndustryCode,
+                result.TargetListId,
+                result.CampaignId,
+                result.CampaignStatus,
+                result.ProvisioningMode,
+                result.Definition,
+                result.AlreadyProvisioned,
+                alreadyInstalled = result.AlreadyProvisioned
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/install")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public Task<IActionResult> Install(Guid id, CancellationToken ct)
+        => Provision(id, null, ct);
+}
+
+public sealed record IndustryPackProvisionRequest(string? ScenarioCode, Guid? IcpProfileId);
