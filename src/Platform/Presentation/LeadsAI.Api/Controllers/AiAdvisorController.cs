@@ -12,7 +12,7 @@ namespace LeadsAI.Api.Controllers;
 [RequireModule(QualifyAiModules.Ai)]
 [RequirePermission(QualifyAiPermissions.AgentsRead)]
 [Route("api/ai/advisor")]
-public sealed class AiAdvisorController(IAiProvider ai, ITenantContext tenant) : ControllerBase
+public sealed class AiAdvisorController(IAiProvider ai) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Advise([FromBody] AiAdvisorRequest input, CancellationToken ct)
@@ -33,6 +33,8 @@ You must:
 - tell the user what they should do next;
 - suggest exactly what to write when the user is editing text;
 - identify obvious gaps or weak configuration from the supplied context;
+- treat the Workflow Orchestrator as the central relationship between campaigns, pipelines, automation rules and campaign containers;
+- when the user says "improve this", inspect the actual current content and propose concrete replacement values;
 - give a concrete example when useful;
 - never claim that you changed or sent anything unless an action was actually executed;
 - do not invent database values that are not present in context;
@@ -48,7 +50,7 @@ Return ONLY valid JSON:
 Keep message under 1200 characters and suggestions to at most 3 items.
 """;
 
-        var user = $"Tenant: {tenant.TenantId()}\nCurrent workspace context:\n{contextJson}\n\nUser request:\n{input.Message.Trim()}";
+        var user = $"Current workspace context:\n{contextJson}\n\nUser request:\n{input.Message.Trim()}";
         var raw = await ai.CompleteAsync(system, user, ct);
         return Ok(ParseResponse(raw));
     }
