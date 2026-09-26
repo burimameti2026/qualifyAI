@@ -180,11 +180,20 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
         {
             using var document = JsonDocument.Parse(json);
 
-            if (!document.RootElement.TryGetProperty("stages", out var stages) ||
-                stages.ValueKind != JsonValueKind.Array)
+            // Graph nodes are the primary designer representation. Keep stages as a
+            // backward-compatible execution projection for the current runtime.
+            var source = document.RootElement.TryGetProperty("nodes", out var nodes) &&
+                         nodes.ValueKind == JsonValueKind.Array
+                ? nodes
+                : document.RootElement.TryGetProperty("stages", out var stages) &&
+                  stages.ValueKind == JsonValueKind.Array
+                    ? stages
+                    : default;
+
+            if (source.ValueKind != JsonValueKind.Array)
                 return [];
 
-            return stages.EnumerateArray()
+            var result = source.EnumerateArray()
                 .Select((stage, index) => new CampaignPlanStage(
                     ReadString(stage, "id"),
                     ReadString(stage, "type"),
@@ -197,6 +206,38 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
                     index + 1))
                 .Where(x => !string.IsNullOrWhiteSpace(x.Type))
                 .ToList();
+
+            // If edges exist, topologically order the executable projection so the
+            // runtime follows the same connections the user sees in the canvas.
+            if (document.RootElement.TryGetProperty("edges", out var edges) &&
+                edges.ValueKind == JsonValueKind.Array &&
+                result.Count > 1)
+            {
+                var byId = result.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
+                var next = edges.EnumerateArray()
+                    .Where(x => x.TryGetProperty("from", out _) && x.TryGetProperty("to", out _))
+                    .Select(x => (From: ReadString(x, "from"), To: ReadString(x, "to")))
+                    .Where(x => byId.ContainsKey(x.From) && byId.ContainsKey(x.To))
+                    .GroupBy(x => x.From, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(x => x.Key, x => x.First().To, StringComparer.OrdinalIgnoreCase);
+
+                var ordered = new List<CampaignPlanStage>();
+                var current = result.FirstOrDefault(x => !result.Any(y => next.TryGetValue(y.Id, out var target) &&
+                                                                            string.Equals(target, x.Id, StringComparison.OrdinalIgnoreCase)));
+                var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                while (current is not null && visited.Add(current.Id))
+                {
+                    ordered.Add(current);
+                    current = next.TryGetValue(current.Id, out var targetId) && byId.TryGetValue(targetId, out var target)
+                        ? target
+                        : null;
+                }
+
+                if (ordered.Count == result.Count)
+                    result = ordered.Select((x, index) => x with { Order = index + 1 }).ToList();
+            }
+
+            return result;
         }
         catch (JsonException)
         {
