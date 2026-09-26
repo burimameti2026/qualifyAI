@@ -27,8 +27,17 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
             .OrderBy(x => x.Sequence)
             .ToListAsync(ct);
 
-        if (existing.Count > 0)
+        // Campaign.PlanJson is the source of truth. Rebuild the reusable plan
+        // whenever a campaign definition is supplied so Designer edits cannot
+        // leave stale template-generated tasks behind.
+        if (string.IsNullOrWhiteSpace(campaignPlanJson) && existing.Count > 0)
             return existing;
+
+        if (!string.IsNullOrWhiteSpace(campaignPlanJson) && existing.Count > 0)
+        {
+            db.AutonomousAcquisitionTasks.RemoveRange(existing);
+            await db.SaveChangesAsync(ct);
+        }
 
         var countries = ReadCountries(agent.CountriesJson);
         var common = new
