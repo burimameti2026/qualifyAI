@@ -1,7 +1,10 @@
 namespace LeadsAI.Application;
 
 public sealed record AiAgentRequest(string Goal, string? ContextJson = null);
-public sealed record AiAgentResult(string Message, string[] Suggestions, string? NextAction, string? Tool, string? ToolResult, string? ToolInput = null, bool RequiresApproval = false);
+
+public sealed record AiToolAction(string Name, string InputJson, bool RequiresApproval, string Risk);
+
+public sealed record AiAgentResult(string Message, string[] Suggestions, string? NextAction, string? Tool, string? ToolResult, string? ToolInput = null, bool RequiresApproval = false, AiToolAction? Action = null);
 
 public interface IAiAgent
 {
