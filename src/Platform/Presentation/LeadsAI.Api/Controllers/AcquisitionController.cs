@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -224,24 +225,30 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Resume(Guid id, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-        if (campaign is null) return NotFound();
+        Guid? runId = null;
         try
         {
-            campaign.Status = CampaignStatus.Running;
-            if (campaign.AgentId.HasValue)
+            var strategy = db.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
             {
-                var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
-                    x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
-                if (agent is not null)
-                {
-                    agent.Status = AutonomousAgentStatus.Active;
-                    agent.UpdatedAtUtc = DateTime.UtcNow;
-                }
-            }
-            await db.SaveChangesAsync(ct);
-            return Ok(new { campaign.Id, campaign.Status });
+                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+                var campaign = await db.Campaigns
+                    .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+                if (campaign is null)
+                    throw new KeyNotFoundException($"Campaign '{id}' was not found.");
+
+                campaign.Resume();
+                var run = await QueueCampaignRunAsync(campaign, isManual: true, ct);
+                runId = run?.Id;
+
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            });
+
+            return Ok(new { id, status = CampaignStatus.Running, runId });
         }
+        catch (KeyNotFoundException) { return NotFound(); }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
@@ -295,24 +302,33 @@ public sealed class AcquisitionController(
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Start(Guid id, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-        if (campaign is null) return NotFound();
+        Guid? runId = null;
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        campaign.Start();
-
-        if (campaign.AgentId.HasValue)
+        await strategy.ExecuteAsync(async () =>
         {
-            var agent = await db.AutonomousAcquisitionAgents
-                .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
-            if (agent is not null)
-            {
-                agent.Status = AutonomousAgentStatus.Active;
-                agent.UpdatedAtUtc = DateTime.UtcNow;
-            }
-        }
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
-        await db.SaveChangesAsync(ct);
-        return Ok(new { campaign.Id, campaign.Status, execution = "campaign-runtime" });
+            var campaign = await db.Campaigns
+                .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+            if (campaign is null)
+                throw new KeyNotFoundException($"Campaign '{id}' was not found.");
+
+            campaign.Start();
+            var run = await QueueCampaignRunAsync(campaign, isManual: true, ct);
+            runId = run?.Id;
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        });
+
+        return Ok(new
+        {
+            id,
+            status = CampaignStatus.Running,
+            execution = "campaign-runtime",
+            runId
+        });
     }
 
     [HttpDelete("campaigns/{id:guid}")]
@@ -442,6 +458,69 @@ public sealed class AcquisitionController(
         {
             return BadRequest(new { detail = exception.Message });
         }
+    }
+
+    private async Task<AutonomousAcquisitionAgentRun?> QueueCampaignRunAsync(
+        Campaign campaign,
+        bool isManual,
+        CancellationToken ct)
+    {
+        if (!campaign.AgentId.HasValue)
+            return null;
+
+        var agent = await db.AutonomousAcquisitionAgents
+            .FirstOrDefaultAsync(
+                x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value,
+                ct);
+
+        if (agent is null)
+            return null;
+
+        agent.Status = AutonomousAgentStatus.Active;
+        agent.UpdatedAtUtc = DateTime.UtcNow;
+
+        var existing = await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == TenantId &&
+                        x.CampaignId == campaign.Id &&
+                        x.AgentId == agent.Id &&
+                        (x.Status == AutonomousAgentRunStatus.Queued ||
+                         x.Status == AutonomousAgentRunStatus.Running ||
+                         x.Status == AutonomousAgentRunStatus.WaitingApproval))
+            .OrderByDescending(x => x.ScheduledAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        if (existing is not null)
+            return existing;
+
+        var paused = await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == TenantId &&
+                        x.CampaignId == campaign.Id &&
+                        x.AgentId == agent.Id &&
+                        x.Status == AutonomousAgentRunStatus.Paused)
+            .OrderByDescending(x => x.ScheduledAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        if (paused is not null)
+        {
+            paused.Status = AutonomousAgentRunStatus.Queued;
+            paused.ScheduledAtUtc = DateTime.UtcNow;
+            paused.CompletedAtUtc = null;
+            paused.Error = null;
+            return paused;
+        }
+
+        var run = new AutonomousAcquisitionAgentRun
+        {
+            TenantId = TenantId,
+            AgentId = agent.Id,
+            CampaignId = campaign.Id,
+            IsManual = isManual,
+            Status = AutonomousAgentRunStatus.Queued,
+            ScheduledAtUtc = DateTime.UtcNow
+        };
+
+        db.AutonomousAcquisitionAgentRuns.Add(run);
+        return run;
     }
 
     private static string NormalizeDomain(string? value)
