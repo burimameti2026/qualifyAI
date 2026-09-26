@@ -19,7 +19,7 @@ namespace LeadsAI.Api.Controllers;
 [Authorize]
 [RequireModule(QualifyAiModules.Automation)]
 [Route("api/workflows")]
-public sealed class WorkflowsController(ISender sender, ITenantContext tenant) : ControllerBase
+public sealed class WorkflowsController(ISender sender, ITenantContext tenant, AppDbContext db) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.AutomationRead)]
