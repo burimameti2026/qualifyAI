@@ -94,7 +94,12 @@ public sealed class AcquisitionController(
                 completed = db.CampaignRecipients.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status=="completed"),
                 failed = db.CampaignRecipients.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status=="failed"),
                 queued = db.OutreachMessages.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==OutreachStatus.Queued),
-                sent = db.OutreachMessages.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==OutreachStatus.Sent||x.Status==OutreachStatus.Delivered||x.Status==OutreachStatus.Replied))
+                sent = db.OutreachMessages.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==OutreachStatus.Sent||x.Status==OutreachStatus.Delivered||x.Status==OutreachStatus.Replied)),
+                runs = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id),
+                runSuccess = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AutonomousAgentRunStatus.Completed),
+                runFailed = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AutonomousAgentRunStatus.Failed),
+                runPending = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==AutonomousAgentRunStatus.Queued||x.Status==AutonomousAgentRunStatus.WaitingApproval)),
+                runRunning = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AutonomousAgentRunStatus.Running)
             }).ToListAsync(ct);
         return Ok(campaigns);
     }
@@ -308,6 +313,87 @@ public sealed class AcquisitionController(
 
         await db.SaveChangesAsync(ct);
         return Ok(new { campaign.Id, campaign.Status, execution = "campaign-runtime" });
+    }
+
+    [HttpDelete("campaigns/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var campaign = await db.Campaigns
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+
+        if (campaign is null) return NotFound();
+
+        var targetListId = campaign.TargetListId;
+        var agentId = campaign.AgentId;
+
+        var runIds = await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == tenantId && x.CampaignId == id)
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
+        var messageIds = await db.OutreachMessages
+            .Where(x => x.TenantId == tenantId && x.CampaignId == id)
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+            if (messageIds.Count > 0)
+                await db.CrmTasks
+                    .Where(x => x.TenantId == tenantId &&
+                                messageIds.Contains(x.LeadId ?? Guid.Empty) &&
+                                x.Title.StartsWith("APPROVAL: Send outreach "))
+                    .ExecuteDeleteAsync(ct);
+
+            if (messageIds.Count > 0)
+                await db.OutreachMessages
+                    .Where(x => x.TenantId == tenantId && messageIds.Contains(x.Id))
+                    .ExecuteDeleteAsync(ct);
+
+            if (runIds.Count > 0)
+                await db.AutonomousAcquisitionTasks
+                    .Where(x => x.TenantId == tenantId && runIds.Contains(x.RunId))
+                    .ExecuteDeleteAsync(ct);
+
+            if (runIds.Count > 0)
+                await db.AutonomousAcquisitionAgentRuns
+                    .Where(x => x.TenantId == tenantId && runIds.Contains(x.Id))
+                    .ExecuteDeleteAsync(ct);
+
+            await db.CampaignRecipients
+                .Where(x => x.TenantId == tenantId && x.CampaignId == id)
+                .ExecuteDeleteAsync(ct);
+
+            await db.CampaignSteps
+                .Where(x => x.TenantId == tenantId && x.CampaignId == id)
+                .ExecuteDeleteAsync(ct);
+
+            await db.TargetListMembers
+                .Where(x => x.TenantId == tenantId && x.TargetListId == targetListId)
+                .ExecuteDeleteAsync(ct);
+
+            await db.Campaigns
+                .Where(x => x.TenantId == tenantId && x.Id == id)
+                .ExecuteDeleteAsync(ct);
+
+            if (agentId.HasValue)
+                await db.AutonomousAcquisitionAgents
+                    .Where(x => x.TenantId == tenantId && x.Id == agentId.Value)
+                    .ExecuteDeleteAsync(ct);
+
+            await db.TargetLists
+                .Where(x => x.TenantId == tenantId && x.Id == targetListId)
+                .ExecuteDeleteAsync(ct);
+
+            await transaction.CommitAsync(ct);
+        });
+
+        return NoContent();
     }
 
     [HttpPost("campaigns/{id:guid}/stop")]
