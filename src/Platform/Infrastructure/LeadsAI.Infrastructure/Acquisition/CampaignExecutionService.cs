@@ -8,86 +8,117 @@ public sealed class CampaignExecutionService(AppDbContext db)
 {
     public async Task<int> QueueDueMessagesAsync(Guid? tenantId, CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        var recipients = await db.CampaignRecipients
-            .Where(x => (!tenantId.HasValue || x.TenantId == tenantId.Value) &&
-                        x.Status == "active" && x.NextRunAtUtc <= now)
-            .OrderBy(x => x.NextRunAtUtc)
-            .Take(100)
-            .ToListAsync(cancellationToken);
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        var queued = 0;
-        foreach (var recipient in recipients)
+        return await strategy.ExecuteAsync(async () =>
         {
-            var campaign = await db.Campaigns.FirstOrDefaultAsync(
-                x => x.Id == recipient.CampaignId && x.TenantId == recipient.TenantId && x.Status == CampaignStatus.Running,
-                cancellationToken);
-            if (campaign is null) continue;
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-            var prospect = await db.Prospects.FirstOrDefaultAsync(
-                x => x.Id == recipient.ProspectId && x.TenantId == recipient.TenantId,
-                cancellationToken);
-            if (prospect is null || prospect.Status == ProspectStatus.Suppressed)
-            {
-                recipient.Status = "suppressed";
-                continue;
-            }
-
-            if (prospect.Status != ProspectStatus.Qualified || string.IsNullOrWhiteSpace(prospect.Email) || prospect.Email.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
-            {
-                recipient.Status = prospect.Status == ProspectStatus.Suppressed ? "suppressed" : "not-ready";
-                recipient.NextRunAtUtc = null;
-                continue;
-            }
-
-            var steps = await db.CampaignSteps
-                .Where(x => x.TenantId == recipient.TenantId && x.CampaignId == campaign.Id && x.StepNumber > recipient.CurrentStep)
-                .OrderBy(x => x.StepNumber)
+            var now = DateTime.UtcNow;
+            var recipients = await db.CampaignRecipients
+                .Where(x => (!tenantId.HasValue || x.TenantId == tenantId.Value) &&
+                            x.Status == "active" && x.NextRunAtUtc <= now)
+                .OrderBy(x => x.NextRunAtUtc)
+                .Take(100)
                 .ToListAsync(cancellationToken);
-            var step = steps.FirstOrDefault(x => Matches(prospect, ParseRules(x.RulesJson)));
-            if (step is null)
-            {
-                recipient.Status = "completed";
-                recipient.NextRunAtUtc = null;
-                continue;
-            }
 
-            var message = new OutreachMessage
+            var queued = 0;
+            foreach (var recipient in recipients)
             {
-                TenantId = recipient.TenantId,
-                CampaignId = campaign.Id,
-                ProspectId = prospect.Id,
-                CampaignStepId = step.Id,
-                Channel = step.Channel,
-                Subject = RenderTemplate(step.SubjectTemplate, prospect),
-                Body = RenderTemplate(step.BodyTemplate, prospect),
-                Status = OutreachStatus.Queued
-            };
-            db.OutreachMessages.Add(message);
+                // Atomically claim the recipient so concurrent worker instances cannot
+                // create duplicate outreach messages for the same campaign step.
+                var claimed = await db.CampaignRecipients
+                    .Where(x => x.TenantId == recipient.TenantId &&
+                                x.Id == recipient.Id &&
+                                x.Status == "active" &&
+                                x.NextRunAtUtc <= now)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.Status, "processing"), cancellationToken);
 
-            var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
-            if (!await db.CrmTasks.AnyAsync(
-                    x => x.TenantId == recipient.TenantId &&
-                         x.Title == approvalTitle &&
-                         !x.Completed,
-                    cancellationToken))
-            {
-                db.CrmTasks.Add(new CrmTask
+                if (claimed == 0)
+                    continue;
+
+                var campaign = await db.Campaigns.FirstOrDefaultAsync(
+                    x => x.Id == recipient.CampaignId && x.TenantId == recipient.TenantId && x.Status == CampaignStatus.Running,
+                    cancellationToken);
+                if (campaign is null)
+                {
+                    recipient.Status = "active";
+                    continue;
+                }
+
+                var prospect = await db.Prospects.FirstOrDefaultAsync(
+                    x => x.Id == recipient.ProspectId && x.TenantId == recipient.TenantId,
+                    cancellationToken);
+                if (prospect is null || prospect.Status == ProspectStatus.Suppressed)
+                {
+                    recipient.Status = "suppressed";
+                    recipient.NextRunAtUtc = null;
+                    continue;
+                }
+
+                if (prospect.Status != ProspectStatus.Qualified ||
+                    string.IsNullOrWhiteSpace(prospect.Email) ||
+                    prospect.Email.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
+                {
+                    recipient.Status = prospect.Status == ProspectStatus.Suppressed ? "suppressed" : "not-ready";
+                    recipient.NextRunAtUtc = null;
+                    continue;
+                }
+
+                var steps = await db.CampaignSteps
+                    .Where(x => x.TenantId == recipient.TenantId &&
+                                x.CampaignId == campaign.Id &&
+                                x.StepNumber > recipient.CurrentStep)
+                    .OrderBy(x => x.StepNumber)
+                    .ToListAsync(cancellationToken);
+
+                var step = steps.FirstOrDefault(x => Matches(prospect, ParseRules(x.RulesJson)));
+                if (step is null)
+                {
+                    recipient.Status = "completed";
+                    recipient.NextRunAtUtc = null;
+                    continue;
+                }
+
+                var message = new OutreachMessage
                 {
                     TenantId = recipient.TenantId,
-                    Title = approvalTitle,
-                    DueAtUtc = DateTime.UtcNow.AddHours(4)
-                });
+                    CampaignId = campaign.Id,
+                    ProspectId = prospect.Id,
+                    CampaignStepId = step.Id,
+                    Channel = step.Channel,
+                    Subject = RenderTemplate(step.SubjectTemplate, prospect),
+                    Body = RenderTemplate(step.BodyTemplate, prospect),
+                    Status = OutreachStatus.Queued
+                };
+                db.OutreachMessages.Add(message);
+
+                var approvalTitle = $"APPROVAL: Send outreach {message.Id}";
+                if (!await db.CrmTasks.AnyAsync(
+                        x => x.TenantId == recipient.TenantId &&
+                             x.Title == approvalTitle &&
+                             !x.Completed,
+                        cancellationToken))
+                {
+                    db.CrmTasks.Add(new CrmTask
+                    {
+                        TenantId = recipient.TenantId,
+                        Title = approvalTitle,
+                        DueAtUtc = DateTime.UtcNow.AddHours(4)
+                    });
+                }
+
+                recipient.CurrentStep = step.StepNumber;
+                recipient.Status = "awaiting-delivery";
+                recipient.NextRunAtUtc = null;
+                queued++;
             }
 
-            recipient.CurrentStep = step.StepNumber;
-            recipient.Status = "awaiting-delivery";
-            recipient.NextRunAtUtc = null;
-            queued++;
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-        return queued;
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return queued;
+        });
     }
 
     public async Task<bool> ConfirmDeliveryAsync(Guid tenantId, Guid messageId, string providerMessageId, CancellationToken cancellationToken)
