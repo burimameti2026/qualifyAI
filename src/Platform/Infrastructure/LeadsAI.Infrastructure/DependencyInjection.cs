@@ -91,6 +91,7 @@ public static class DependencyInjection
         services.AddScoped<IAiTool, GetCampaignTool>();
         services.AddScoped<IAiTool, CreateTargetListTool>();
         services.AddScoped<IAiTool, CreateCampaignTool>();
+        services.AddScoped<IAiTool, RunAutonomousAcquisitionTool>();
         services.AddScoped<IAiToolRegistry, AiToolRegistry>();
         services.AddScoped<IIntegrationRegistry, IntegrationRegistry>();
         services.AddScoped<SalesAutomationService>();
