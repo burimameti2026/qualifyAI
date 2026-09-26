@@ -198,8 +198,7 @@ public sealed class IndustryPacksController(
                 result.CampaignStatus,
                 result.ProvisioningMode,
                 result.Definition,
-                result.AlreadyProvisioned,
-                alreadyInstalled = result.AlreadyProvisioned
+                result.AlreadyProvisioned
             });
         }
         catch (InvalidOperationException ex)
