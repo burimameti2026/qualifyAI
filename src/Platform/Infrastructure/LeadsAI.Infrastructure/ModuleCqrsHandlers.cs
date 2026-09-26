@@ -5,6 +5,7 @@ using LeadsAI.Application.Commands.Modules;
 using LeadsAI.Application.Queries.Modules;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
+using DomainAiAgent = LeadsAI.Domain.AiAgent;
 
 namespace LeadsAI.Infrastructure;
 
@@ -12,7 +13,7 @@ public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRep
     IRequestHandler<ListKnowledgeBasesQuery, IReadOnlyList<KnowledgeBase>>,
     IRequestHandler<ListKnowledgeDocumentsQuery, IReadOnlyList<KnowledgeDocument>>,
     IRequestHandler<ListKnowledgeGapsQuery, IReadOnlyList<KnowledgeGap>>,
-    IRequestHandler<ListAiAgentsQuery, IReadOnlyList<AiAgent>>,
+    IRequestHandler<ListAiAgentsQuery, IReadOnlyList<DomainAiAgent>>,
     IRequestHandler<GetWorkflowDesignerQuery, WorkflowDesignerDto>,
     IRequestHandler<ListWorkflowsQuery, IReadOnlyList<QualificationFlow>>,
     IRequestHandler<GetSalesPipelinesQuery, SalesPipelinesDto>,
@@ -35,7 +36,7 @@ public sealed class BusinessModuleQueryHandlers(AppDbContext db, IKnowledgeAiRep
     public Task<IReadOnlyList<KnowledgeBase>> Handle(ListKnowledgeBasesQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeBasesAsync(q.TenantId, ct);
     public Task<IReadOnlyList<KnowledgeDocument>> Handle(ListKnowledgeDocumentsQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeDocumentsAsync(q.TenantId, ct);
     public Task<IReadOnlyList<KnowledgeGap>> Handle(ListKnowledgeGapsQuery q, CancellationToken ct) => knowledgeAi.ListKnowledgeGapsAsync(q.TenantId, ct);
-    public Task<IReadOnlyList<AiAgent>> Handle(ListAiAgentsQuery q, CancellationToken ct) => knowledgeAi.ListAiAgentsAsync(q.TenantId, ct);
+    public Task<IReadOnlyList<DomainAiAgent>> Handle(ListAiAgentsQuery q, CancellationToken ct) => knowledgeAi.ListAiAgentsAsync(q.TenantId, ct);
     public async Task<WorkflowDesignerDto> Handle(GetWorkflowDesignerQuery q, CancellationToken ct) => new(await workflowAutomation.ListWorkflowNodesAsync(q.TenantId, q.FlowId, cancellationToken: ct), await workflowAutomation.ListWorkflowEdgesAsync(q.TenantId, q.FlowId, cancellationToken: ct));
     public Task<IReadOnlyList<QualificationFlow>> Handle(ListWorkflowsQuery q, CancellationToken ct) => workflowAutomation.ListWorkflowsAsync(q.TenantId, ct);
     public async Task<SalesPipelinesDto> Handle(GetSalesPipelinesQuery q, CancellationToken ct) => new(await db.Pipelines.AsNoTracking().Where(x => x.TenantId == q.TenantId).ToListAsync(ct), await db.PipelineStages.AsNoTracking().Where(x => x.TenantId == q.TenantId).OrderBy(x => x.SortOrder).ToListAsync(ct));
