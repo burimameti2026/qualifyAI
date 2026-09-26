@@ -1,4 +1,6 @@
 using LeadsAI.Infrastructure.IndustryPacks;
+using LeadsAI.Application;
+using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
@@ -187,6 +189,41 @@ public sealed class IndustryPacksController(
         return Ok(pack);
     }
 
+    [HttpPost("ai/build")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> BuildWithAi([FromBody] IndustryPackAiBuildRequest input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Prompt) || input.Prompt.Trim().Length < 3)
+            return BadRequest(new { detail = "Describe the business, offer and customers you want this Industry Pack to target." });
+
+        var system = "You are the LeadsAI Industry Pack Builder. Turn the user business description into a complete, usable acquisition pack. Return ONLY valid JSON with exactly these fields: code, name, description, industry, purpose, offer, audience, discoveryProvider, keywords, minimumScore, enrichmentEnabled, targetListEnabled, outreach, approvalRequired, scenarios. Fill every field with a concrete value. keywords and scenarios are comma-separated strings. discoveryProvider must be serpapi or manual; use serpapi for prospect discovery unless manual is explicitly requested. minimumScore is 0-100 and defaults to 70. Enrichment and target list should normally be true. approvalRequired should normally be true for outbound communication. code is lowercase kebab-case. outreach must be a concrete sequence/strategy. audience must describe target companies and buying signals. Do not invent a product price.";
+        var raw = await provider.CompleteAsync(system, input.Prompt.Trim(), ct);
+        try
+        {
+            var json = raw.Trim();
+            if (json.StartsWith("```", StringComparison.Ordinal))
+            {
+                var first = json.IndexOf('\\n');
+                var last = json.LastIndexOf("```", StringComparison.Ordinal);
+                if (first >= 0 && last > first) json = json[(first + 1)..last].Trim();
+            }
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return Ok(new IndustryPackAiBuildResult(
+                GetString(root, "code"), GetString(root, "name"), GetString(root, "description"), GetString(root, "industry"),
+                GetString(root, "purpose"), GetString(root, "offer"), GetString(root, "audience"), GetString(root, "discoveryProvider", "serpapi"),
+                GetString(root, "keywords"), GetInt(root, "minimumScore", 70), GetBool(root, "enrichmentEnabled", true),
+                GetBool(root, "targetListEnabled", true), GetString(root, "outreach"), GetBool(root, "approvalRequired", true), GetString(root, "scenarios")));
+        }
+        catch (JsonException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { detail = "The AI Builder returned an invalid pack definition. Please try again." });
+        }
+
+        static string GetString(JsonElement root, string name, string fallback = "") => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() ?? fallback : fallback;
+        static int GetInt(JsonElement root, string name, int fallback) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? Math.Clamp(number, 0, 100) : fallback;
+        static bool GetBool(JsonElement root, string name, bool fallback) => root.TryGetProperty(name, out var value) && (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False) ? value.GetBoolean() : fallback;
+    }
     [HttpPost("{id:guid}/provision")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Provision(Guid id, [FromBody] IndustryPackProvisionRequest? input, CancellationToken ct)
@@ -220,3 +257,5 @@ public sealed class IndustryPacksController(
 }
 
 public sealed record IndustryPackProvisionRequest(string? ScenarioCode, Guid? IcpProfileId);
+public sealed record IndustryPackAiBuildRequest(string Prompt);
+public sealed record IndustryPackAiBuildResult(string Code, string Name, string Description, string Industry, string Purpose, string Offer, string Audience, string DiscoveryProvider, string Keywords, int MinimumScore, bool EnrichmentEnabled, bool TargetListEnabled, string Outreach, bool ApprovalRequired, string Scenarios);
