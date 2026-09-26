@@ -338,16 +338,18 @@ public sealed class AcquisitionController(
             .Select(x => x.Id)
             .ToListAsync(ct);
 
+        var approvalTitles = messageIds
+            .Select(messageId => $"APPROVAL: Send outreach {messageId}")
+            .ToList();
+
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-            if (messageIds.Count > 0)
+            if (approvalTitles.Count > 0)
                 await db.CrmTasks
-                    .Where(x => x.TenantId == tenantId &&
-                                messageIds.Contains(x.LeadId ?? Guid.Empty) &&
-                                x.Title.StartsWith("APPROVAL: Send outreach "))
+                    .Where(x => x.TenantId == tenantId && approvalTitles.Contains(x.Title))
                     .ExecuteDeleteAsync(ct);
 
             if (messageIds.Count > 0)
