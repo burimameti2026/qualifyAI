@@ -202,9 +202,11 @@ public sealed class AcquisitionController(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
         if (campaign is null) return NotFound();
+
         try
         {
             campaign.Status = CampaignStatus.Paused;
+
             if (campaign.AgentId.HasValue)
             {
                 var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
@@ -215,6 +217,15 @@ public sealed class AcquisitionController(
                     agent.UpdatedAtUtc = DateTime.UtcNow;
                 }
             }
+
+            await db.AutonomousAcquisitionAgentRuns
+                .Where(x => x.TenantId == TenantId &&
+                            x.CampaignId == id &&
+                            x.Status == AutonomousAgentRunStatus.Queued)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, AutonomousAgentRunStatus.Paused)
+                    .SetProperty(x => x.CompletedAtUtc, (DateTime?)null), ct);
+
             await db.SaveChangesAsync(ct);
             return Ok(new { campaign.Id, campaign.Status });
         }
@@ -438,6 +449,16 @@ public sealed class AcquisitionController(
                 agent.UpdatedAtUtc = DateTime.UtcNow;
             }
         }
+
+        await db.AutonomousAcquisitionAgentRuns
+            .Where(x => x.TenantId == TenantId &&
+                        x.CampaignId == id &&
+                        (x.Status == AutonomousAgentRunStatus.Queued ||
+                         x.Status == AutonomousAgentRunStatus.WaitingApproval ||
+                         x.Status == AutonomousAgentRunStatus.Paused))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AutonomousAgentRunStatus.Cancelled)
+                .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
 
         await db.SaveChangesAsync(ct);
         return Ok(new { campaign.Id, campaign.Status });
