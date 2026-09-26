@@ -77,7 +77,7 @@ public sealed class IndustryPacksController(
     [HttpPost("{id:guid}/install")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public Task<IActionResult> Install(Guid id, CancellationToken ct)
-        => Provision(id, ct);
+        => Provision(id, null, ct);
 
     [HttpPost("{id:guid}/provision")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
@@ -88,7 +88,7 @@ public sealed class IndustryPacksController(
         if (!await db.IndustryPacks.AnyAsync(x => x.Id == id, ct))
             return NotFound(new { error = "Industry pack was not found." });
 
-        var result = await provisioner.ProvisionAsync(tenantId, id, input?.ScenarioCode, ct);
+        var result = await provisioner.ProvisionAsync(tenantId, id, ct, input?.ScenarioCode);
 
         return Ok(new
         {
