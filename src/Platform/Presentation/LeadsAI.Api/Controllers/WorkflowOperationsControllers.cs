@@ -33,6 +33,148 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant) :
     [RequirePermission(QualifyAiPermissions.AutomationManage)]
     public Task<WorkflowSaveResult> Save(Guid id, WorkflowDesignerInput input, CancellationToken ct)
         => sender.Send(new SaveWorkflowDesignerCommand(tenant.TenantId(), id, input.Nodes, input.Edges), ct);
+
+    [HttpPost]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public async Task<IActionResult> Create([FromBody] CreateWorkflowRequest input, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name))
+            return BadRequest(new { code = "workflow_name_required", detail = "Workflow name is required." });
+
+        var flow = new QualificationFlow
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.TenantId(),
+            Name = input.Name.Trim(),
+            Active = input.Active,
+            Trigger = string.IsNullOrWhiteSpace(input.Trigger) ? "manual" : input.Trigger.Trim().ToLowerInvariant(),
+            AutomationRuleIdsJson = "[]",
+            ContainerIdsJson = "[]"
+        };
+
+        db.Workflows.Add(flow);
+        await db.SaveChangesAsync(ct);
+        return Created($"/api/workflows/{flow.Id}", flow);
+    }
+
+    [HttpGet("{id:guid}/orchestration")]
+    [RequirePermission(QualifyAiPermissions.AutomationRead)]
+    public async Task<IActionResult> Orchestration(Guid id, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var flow = await db.QualificationFlows.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (flow is null) return NotFound();
+
+        return Ok(await BuildOrchestrationResponse(flow, tenantId, ct));
+    }
+
+    [HttpPut("{id:guid}/orchestration")]
+    [RequirePermission(QualifyAiPermissions.AutomationManage)]
+    public async Task<IActionResult> BindOrchestration(Guid id, [FromBody] WorkflowOrchestrationRequest input, CancellationToken ct)
+    {
+        var tenantId = tenant.TenantId();
+        var flow = await db.QualificationFlows
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (flow is null) return NotFound();
+
+        if (input.CampaignId.HasValue &&
+            !await db.Campaigns.AnyAsync(x => x.TenantId == tenantId && x.Id == input.CampaignId.Value, ct))
+            return BadRequest(new { code = "campaign_not_found", detail = "The selected campaign does not belong to this tenant." });
+
+        if (input.PipelineId.HasValue &&
+            !await db.Pipelines.AnyAsync(x => x.TenantId == tenantId && x.Id == input.PipelineId.Value, ct))
+            return BadRequest(new { code = "pipeline_not_found", detail = "The selected pipeline does not belong to this tenant." });
+
+        var automationIds = input.AutomationRuleIds.Distinct().Where(x => x != Guid.Empty).ToArray();
+        var validAutomationIds = await db.AutomationRules
+            .Where(x => x.TenantId == tenantId && automationIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+        if (validAutomationIds.Count != automationIds.Length)
+            return BadRequest(new { code = "automation_not_found", detail = "One or more selected automations do not belong to this tenant." });
+
+        var containerIds = input.ContainerIds.Distinct().Where(x => x != Guid.Empty).ToArray();
+        var containers = await db.CampaignContainers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.CampaignId })
+            .ToListAsync(ct);
+        if (containers.Count != containerIds.Length)
+            return BadRequest(new { code = "container_not_found", detail = "One or more selected campaign containers do not belong to this tenant." });
+
+        if (containerIds.Length > 0 && !input.CampaignId.HasValue)
+            return BadRequest(new { code = "campaign_required_for_containers", detail = "A campaign is required when workflow containers are selected." });
+
+        if (input.CampaignId.HasValue && containers.Any(x => x.CampaignId != input.CampaignId.Value))
+            return BadRequest(new { code = "container_campaign_mismatch", detail = "All selected containers must belong to the selected campaign." });
+
+        flow.CampaignId = input.CampaignId;
+        flow.PipelineId = input.PipelineId;
+        flow.AutomationRuleIdsJson = System.Text.Json.JsonSerializer.Serialize(validAutomationIds);
+        flow.ContainerIdsJson = System.Text.Json.JsonSerializer.Serialize(containerIds);
+        flow.Trigger = string.IsNullOrWhiteSpace(input.Trigger) ? "manual" : input.Trigger.Trim().ToLowerInvariant();
+        flow.Active = input.Active;
+        flow.UpdatedAtUtc = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+        return Ok(await BuildOrchestrationResponse(flow, tenantId, ct));
+    }
+
+    private async Task<object> BuildOrchestrationResponse(QualificationFlow flow, Guid tenantId, CancellationToken ct)
+    {
+        var automationIds = ReadIds(flow.AutomationRuleIdsJson);
+        var containerIds = ReadIds(flow.ContainerIdsJson);
+
+        var campaign = flow.CampaignId.HasValue
+            ? await db.Campaigns.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Id == flow.CampaignId.Value)
+                .Select(x => new { x.Id, x.Name, x.Status, x.PackageCode, x.PackageVersion })
+                .SingleOrDefaultAsync(ct)
+            : null;
+
+        var pipeline = flow.PipelineId.HasValue
+            ? await db.Pipelines.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Id == flow.PipelineId.Value)
+                .Select(x => new { x.Id, x.Name, x.IsDefault })
+                .SingleOrDefaultAsync(ct)
+            : null;
+
+        var automations = await db.AutomationRules.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && automationIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Name, x.Trigger, x.Active })
+            .ToListAsync(ct);
+
+        var containers = await db.CampaignContainers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.CampaignId, x.Name, x.Status, x.AgentId, x.PackageCode, x.PackageVersion })
+            .ToListAsync(ct);
+
+        return new
+        {
+            flow.Id,
+            flow.TenantId,
+            flow.Name,
+            flow.Active,
+            flow.Trigger,
+            campaign,
+            pipeline,
+            automations,
+            containers
+        };
+    }
+
+    private static Guid[] ReadIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Array.Empty<Guid>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Guid[]>(json) ?? Array.Empty<Guid>();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Array.Empty<Guid>();
+        }
+    }
 }
 
 [ApiController]
@@ -172,3 +314,5 @@ public sealed class MeetingsController(ISender sender, ITenantContext tenant, Ap
 }
 
 public sealed record WorkflowDesignerInput(List<WorkflowNode> Nodes, List<WorkflowEdge> Edges);
+public sealed record CreateWorkflowRequest(string Name, bool Active = true, string? Trigger = null);
+public sealed record WorkflowOrchestrationRequest(Guid? CampaignId, Guid? PipelineId, IReadOnlyList<Guid> AutomationRuleIds, IReadOnlyList<Guid> ContainerIds, string? Trigger = null, bool Active = true);
