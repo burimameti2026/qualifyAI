@@ -309,22 +309,22 @@ public sealed class IdentityBootstrapHostedService(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        if (tenantCreated || licenseCreated)
+        // Always replay the current FusionFleet tenant/license snapshot.
+        // The Platform entitlement projection may have been created after Identity,
+        // or may have missed an earlier outbox delivery. Event ids are deterministic
+        // so replay is idempotent for consumers while still changing when the
+        // license version changes.
         {
             var snapshotAtUtc = DateTime.UtcNow;
-            if (tenantCreated)
-            {
-                outbox.Add(new TenantCreatedIntegrationEvent(
-                    Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
-            }
+            outbox.Add(new TenantCreatedIntegrationEvent(
+                StableEventId("fusionfleet:tenant-created:" + tenant.Id),
+                snapshotAtUtc, tenant.Id, tenant.Slug, tenant.Name, tenant.ContactEmail));
 
-            if (licenseCreated)
-            {
-                outbox.Add(new TenantLicenseChangedIntegrationEvent(
-                    Guid.NewGuid(), snapshotAtUtc, tenant.Id, tenant.Slug, license.Id, license.Plan,
-                    license.Status.ToString().ToLowerInvariant(), license.MaxUsers, license.StartsAtUtc,
-                    license.ExpiresAtUtc, license.Version, license.Modules.Select(x => x.Code).ToArray()));
-            }
+            outbox.Add(new TenantLicenseChangedIntegrationEvent(
+                StableEventId($"fusionfleet:license:{license.Id}:version:{license.Version}"),
+                snapshotAtUtc, tenant.Id, tenant.Slug, license.Id, license.Plan,
+                license.Status.ToString().ToLowerInvariant(), license.MaxUsers, license.StartsAtUtc,
+                license.ExpiresAtUtc, license.Version, license.Modules.Select(x => x.Code).ToArray()));
 
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -335,6 +335,12 @@ public sealed class IdentityBootstrapHostedService(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static Guid StableEventId(string value)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
+        return new Guid(bytes.AsSpan(0, 16));
+    }
 
     private static Guid? ParseOptionalTenantId(string? value)
     {
