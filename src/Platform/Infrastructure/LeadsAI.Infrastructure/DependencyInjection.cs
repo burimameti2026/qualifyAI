@@ -81,6 +81,7 @@ public static class DependencyInjection
         services.AddScoped<LocalAiProvider>();
         services.AddHttpClient<OpenAiProvider>();
         services.AddScoped<IAiProvider>(sp => sp.GetRequiredService<OpenAiProvider>());
+        services.AddScoped<IAiAgent, AiAgent>();
         services.AddScoped<IAiTool, CreateLeadTool>();
         services.AddScoped<IAiTool, CreateTicketTool>();
         services.AddScoped<IAiTool, SearchKnowledgeTool>();
