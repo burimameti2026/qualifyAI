@@ -6,6 +6,14 @@ public class QualificationFlow : TenantEntity
 {
     public string Name { get; set; } = "Default Qualification";
     public bool Active { get; set; } = true;
+
+    // Central orchestration bindings. The workflow is the integration point;
+    // containers keep their own execution steps and remain independently runnable.
+    public Guid? CampaignId { get; set; }
+    public Guid? PipelineId { get; set; }
+    public string AutomationRuleIdsJson { get; set; } = "[]";
+    public string ContainerIdsJson { get; set; } = "[]";
+    public string Trigger { get; set; } = "manual";
 }
 
 public class WorkflowNode : TenantEntity
