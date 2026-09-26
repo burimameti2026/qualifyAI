@@ -196,6 +196,38 @@ public sealed class AcquisitionController(
         return Ok(new { campaign, steps, icp, targetList, prospects, latestRun, tasks });
     }
 
+    [HttpPut("campaigns/{id:guid}/plan")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> SaveCampaignPlan(Guid id, CampaignPlanRequest input, CancellationToken ct)
+    {
+        var campaign = await db.Campaigns
+            .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+
+        if (campaign is null)
+            return NotFound();
+
+        if (string.IsNullOrWhiteSpace(input.PlanJson))
+            return BadRequest(new { detail = "Campaign plan cannot be empty." });
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(input.PlanJson);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return BadRequest(new { detail = "Campaign plan must be a JSON object." });
+
+            campaign.PlanJson = document.RootElement.GetRawText();
+            campaign.PlanStatus = "ready";
+            campaign.UpdatedAtUtc = DateTime.UtcNow;
+
+            await db.SaveChangesAsync(ct);
+            return Ok(new { id = campaign.Id, planStatus = campaign.PlanStatus, planJson = campaign.PlanJson });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return BadRequest(new { detail = "Campaign plan contains invalid JSON." });
+        }
+    }
+
     [HttpPost("campaigns/{id:guid}/pause")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Pause(Guid id, CancellationToken ct)
