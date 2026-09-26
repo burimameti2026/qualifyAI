@@ -103,6 +103,47 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
     }
 }
 
+public sealed class StartCampaignTool(AppDbContext db) : IAiTool
+{
+    public string Name => "StartCampaign";
+
+    public async Task<AiToolResult> ExecuteAsync(AiToolContext context, string inputJson, CancellationToken ct = default)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(inputJson) ? "{}" : inputJson);
+        var root = doc.RootElement;
+        var campaignText = root.TryGetProperty("campaignId", out var c) ? c.GetString() : null;
+        if (!Guid.TryParse(campaignText, out var campaignId))
+            return new(false, "{}", "campaignId is required.");
+
+        var campaign = await db.Campaigns.SingleOrDefaultAsync(
+            x => x.TenantId == context.TenantId && x.Id == campaignId, ct);
+        if (campaign is null) return new(false, "{}", "campaignId does not belong to this tenant.");
+        if (campaign.Status is CampaignStatus.Completed or CampaignStatus.Stopped)
+            return new(false, "{}", "Completed or stopped campaigns cannot be restarted.");
+
+        campaign.Start();
+        if (campaign.AgentId.HasValue)
+        {
+            var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
+                x => x.TenantId == context.TenantId && x.Id == campaign.AgentId.Value, ct);
+            if (agent is not null)
+            {
+                agent.Status = AutonomousAgentStatus.Active;
+                agent.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return new(true, JsonSerializer.Serialize(new
+        {
+            campaign.Id,
+            campaign.Status,
+            campaign.AgentId,
+            message = "Campaign started and its autonomous acquisition agent activated."
+        }));
+    }
+}
+
 public sealed class CreateCampaignTool(AppDbContext db) : IAiTool
 {
     public string Name => "CreateCampaign";
