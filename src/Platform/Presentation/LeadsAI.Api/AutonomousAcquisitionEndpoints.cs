@@ -4,6 +4,7 @@ using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
+using LeadsAI.BuildingBlocks.Security.Authorization;
 
 namespace LeadsAI.Api;
 
@@ -11,7 +12,9 @@ public static class AutonomousAcquisitionEndpoints
 {
     public static IEndpointRouteBuilder MapAutonomousAcquisition(this IEndpointRouteBuilder endpoints)
     {
-        var g = endpoints.MapGroup("/api/autonomous-acquisition");
+        var g = endpoints.MapGroup("/api/autonomous-acquisition")
+            .RequireAuthorization()
+            .RequireModule(QualifyAiModules.Crm);
 
         g.AddEndpointFilter(async (ctx, next) =>
         {
