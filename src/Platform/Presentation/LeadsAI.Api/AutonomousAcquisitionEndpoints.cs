@@ -5,6 +5,7 @@ using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
 using LeadsAI.BuildingBlocks.Security.Authorization;
+using LeadsAI.BuildingBlocks.Security.Access;
 
 namespace LeadsAI.Api;
 
