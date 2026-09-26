@@ -166,6 +166,7 @@ public sealed class IndustryPacksController(
         return Ok(new
         {
             provisioned = true,
+            alreadyProvisioned = result.AlreadyProvisioned,
             result.IndustryPackId,
             result.IndustryCode,
             result.TargetListId,
