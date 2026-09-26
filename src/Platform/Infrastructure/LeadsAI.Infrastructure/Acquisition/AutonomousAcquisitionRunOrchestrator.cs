@@ -84,6 +84,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         try
         {
             var template = templates.Apply(agent);
+            template = ApplyCampaignPlan(campaign, agent, template);
             await planner.EnsurePlanAsync(agent, template, ct);
             var tasks = await EnsureRunTasksAsync(run, agent, template, ct);
             var now = DateTime.UtcNow;
@@ -155,6 +156,146 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
+    }
+
+
+    private static AutonomousAcquisitionTemplate ApplyCampaignPlan(
+        Campaign campaign,
+        AutonomousAcquisitionAgent agent,
+        AutonomousAcquisitionTemplate fallback)
+    {
+        if (string.IsNullOrWhiteSpace(campaign.PlanJson))
+            return fallback;
+
+        try
+        {
+            using var document = JsonDocument.Parse(campaign.PlanJson);
+            var root = document.RootElement;
+
+            var industry = ReadString(root, "industry");
+            var region = ReadString(root, "region");
+
+            if (!string.IsNullOrWhiteSpace(industry))
+                agent.Industry = industry;
+            if (!string.IsNullOrWhiteSpace(region))
+                agent.Region = region;
+
+            var keywords = fallback.Keywords;
+            var signals = fallback.Signals;
+            var minimumScore = fallback.MinimumScore;
+
+            if (TryStageConfig(root, "Discovery", out var discovery))
+            {
+                var configuredKeywords = ReadStringArray(discovery, "keywords");
+                if (configuredKeywords.Length > 0)
+                    keywords = configuredKeywords;
+
+                var discoveryRegion = ReadString(discovery, "region");
+                if (!string.IsNullOrWhiteSpace(discoveryRegion))
+                    agent.Region = discoveryRegion;
+
+                var maxResults = ReadInt(discovery, "maxResults");
+                if (maxResults > 0)
+                    agent.DailyDiscoveryLimit = Math.Clamp(maxResults, 1, 100);
+            }
+
+            if (TryStageConfig(root, "Qualification", out var qualification))
+            {
+                var configuredMinimum = ReadInt(qualification, "minimumScore");
+                if (configuredMinimum > 0)
+                    minimumScore = configuredMinimum;
+
+                var configuredSignals = ReadStringArray(qualification, "intentSignals");
+                if (configuredSignals.Length > 0)
+                    signals = configuredSignals;
+            }
+
+            agent.MinimumScore = Math.Clamp(minimumScore, 0, 100);
+
+            var messages = fallback.OutreachTemplates;
+            if (TryStageConfig(root, "Outreach", out var outreach) &&
+                outreach.TryGetProperty("steps", out var steps) &&
+                steps.ValueKind == JsonValueKind.Array)
+            {
+                var configuredMessages = steps.EnumerateArray()
+                    .Select((step, index) => new AutonomousAcquisitionMessageTemplate(
+                        ReadInt(step, "step") > 0 ? ReadInt(step, "step") : index + 1,
+                        ReadString(step, "name") is { Length: > 0 } name ? name : $"Step {index + 1}",
+                        ReadString(step, "subject"),
+                        ReadString(step, "body"),
+                        ReadInt(step, "delayHours"),
+                        ReadBool(step, "requiresApproval")))
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Subject) || !string.IsNullOrWhiteSpace(x.Body))
+                    .ToArray();
+
+                if (configuredMessages.Length > 0)
+                    messages = configuredMessages;
+            }
+
+            return new AutonomousAcquisitionTemplate(
+                fallback.Code,
+                fallback.Name,
+                string.IsNullOrWhiteSpace(industry) ? fallback.Industry : industry,
+                string.IsNullOrWhiteSpace(region) ? fallback.Region : region,
+                keywords,
+                signals,
+                agent.MinimumScore,
+                fallback.Description,
+                fallback.ProspectType,
+                fallback.TargetDefinition,
+                messages.ToArray());
+        }
+        catch (JsonException)
+        {
+            return fallback;
+        }
+    }
+
+    private static bool TryStageConfig(JsonElement root, string type, out JsonElement config)
+    {
+        config = default;
+
+        if (!root.TryGetProperty("stages", out var stages) || stages.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var stage in stages.EnumerateArray())
+        {
+            if (!stage.TryGetProperty("type", out var stageType) ||
+                !string.Equals(stageType.GetString(), type, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (stage.TryGetProperty("config", out config) && config.ValueKind == JsonValueKind.Object)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string ReadString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
+    private static int ReadInt(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.TryGetInt32(out var number)
+            ? number
+            : 0;
+
+    private static bool ReadBool(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) &&
+        (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False) &&
+        value.GetBoolean();
+
+    private static string[] ReadStringArray(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return value.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString() ?? string.Empty)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray();
     }
 
     private static string ReadNextStep(string json)
