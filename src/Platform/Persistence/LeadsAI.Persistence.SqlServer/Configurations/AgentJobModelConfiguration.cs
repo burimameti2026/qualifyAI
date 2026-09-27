@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 
 namespace LeadsAI.Persistence.SqlServer.Configurations;
 
