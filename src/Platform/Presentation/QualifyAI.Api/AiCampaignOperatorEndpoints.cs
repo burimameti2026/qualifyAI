@@ -220,7 +220,7 @@ public static class AiCampaignOperatorEndpoints
                     new CampaignRecipient
                     {
                         TenantId = tenantId, CampaignId = campaignId, ProspectId = id,
-                        CurrentStep = 1, Status = "active",
+                        CurrentStep = 0, Status = "active",
                         NextRunAtUtc = DateTime.UtcNow
                     }));
 
