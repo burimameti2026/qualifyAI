@@ -1,3 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using LeadsAI.Application;
+using LeadsAI.Domain;
+using LeadsAI.Persistence.SqlServer;
+
+namespace LeadsAI.Infrastructure.Acquisition;
+
 public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionSchedulerWorker> log) : BackgroundService
 {
     private const string TimeZoneSetting = "acquisition.schedule.timeZoneId";
