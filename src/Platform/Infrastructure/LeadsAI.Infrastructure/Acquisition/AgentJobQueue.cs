@@ -25,7 +25,7 @@ public sealed class AgentJobQueue(AppDbContext db) : IAgentJobQueue
                 SELECT TOP (1) *
                 FROM [AgentJobs] WITH (UPDLOCK, READPAST, ROWLOCK)
                 WHERE [TenantId] = {tenantId}
-                  AND [Status] = {'Queued'}
+                  AND [Status] = {"Queued"}
                   AND [ScheduledAtUtc] <= {DateTime.UtcNow}
                 ORDER BY [Priority] DESC, [ScheduledAtUtc], [CreatedAtUtc]
                 """)
