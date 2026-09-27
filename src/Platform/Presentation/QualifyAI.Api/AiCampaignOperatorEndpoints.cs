@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
-using QualifyAI.Infrastructure.Acquisition;
-using QualifyAI.Persistence.SqlServer;
+using LeadsAI.Domain;
+using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Persistence.SqlServer;
 
-namespace QualifyAI.Api;
+namespace LeadsAI.Api;
 
 public static class AiCampaignOperatorEndpoints
 {
@@ -203,10 +203,11 @@ public static class AiCampaignOperatorEndpoints
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
                 if (campaign is null) return Results.NotFound(new { error = "campaign_not_found" });
 
+                if (!campaign.AgentId.HasValue)
+                    return Results.Conflict(new { error = "campaign_agent_not_ready" });
+
                 var agent = await db.AutonomousAcquisitionAgents
-                    .Where(x => x.TenantId == tenantId && x.Status != AutonomousAgentStatus.Stopped)
-                    .OrderByDescending(x => x.UpdatedAtUtc)
-                    .FirstOrDefaultAsync(ct);
+                    .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value && x.Status != AutonomousAgentStatus.Stopped, ct);
 
                 if (agent is null)
                     return Results.Conflict(new { error = "agent_not_ready" });
@@ -233,8 +234,9 @@ public static class AiCampaignOperatorEndpoints
 
                 var run = new AutonomousAcquisitionAgentRun
                 {
-                    TenantId = tenantId, AgentId = agent.Id, IsManual = false,
+                    TenantId = tenantId, AgentId = agent.Id, CampaignId = campaignId, IsManual = false,
                     Status = AutonomousAgentRunStatus.Queued,
+                    ScheduledAtUtc = DateTime.UtcNow,
                     Query = $"campaign:{campaignId}"
                 };
                 db.AutonomousAcquisitionAgentRuns.Add(run);
