@@ -418,7 +418,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
         if (campaign.Status == CampaignStatus.Paused || agent.Status == AutonomousAgentStatus.Paused)
         {
-            job.Status = AutonomousAgentRunStatus.Paused;
+            job.Status =AgentJobStatus.Waiting;
             job.CompletedAtUtc = null;
             await db.SaveChangesAsync(ct);
             return false;
@@ -426,7 +426,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
 
         if (campaign.Status is CampaignStatus.Stopped or CampaignStatus.Completed || agent.Status is AutonomousAgentStatus.Stopped)
         {
-            job.Status = AutonomousAgentRunStatus.Cancelled;
+            job.Status = AgentJobStatus.Cancelled;
             job.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return false;

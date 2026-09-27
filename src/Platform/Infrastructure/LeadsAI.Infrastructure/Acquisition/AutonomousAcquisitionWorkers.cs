@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using LeadsAI.Application;
 using LeadsAI.Domain;
 using LeadsAI.Persistence.SqlServer;
+using LeadsAI.Domain.Core;
 
 namespace LeadsAI.Infrastructure.Acquisition;
 

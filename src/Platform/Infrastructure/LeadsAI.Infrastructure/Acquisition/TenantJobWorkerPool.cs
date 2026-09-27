@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using LeadsAI.Persistence.SqlServer;
+using Microsoft.Extensions.Configuration;
 
 namespace LeadsAI.Infrastructure.Acquisition;
 

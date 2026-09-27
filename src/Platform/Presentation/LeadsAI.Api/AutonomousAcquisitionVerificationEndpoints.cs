@@ -7,7 +7,7 @@ public static class AutonomousAcquisitionVerificationEndpoints
 {
  public static IEndpointRouteBuilder MapAutonomousAcquisitionVerification(this IEndpointRouteBuilder app)
  {
-  app.MapGet("/api/autonomous-acquisition/verification",async(AppDbContext db,IAutonomousAcquisitionRunOrchestrator orchestrator,IAutonomousAcquisitionTemplateRegistry templates,CancellationToken ct)=>
+  app.MapGet("/api/autonomous-acquisition/verification",async(AppDbContext db,IAutonomousAcquisitionJobOrchestrator orchestrator,IAutonomousAcquisitionTemplateRegistry templates,CancellationToken ct)=>
   {
    var canConnect=await db.Database.CanConnectAsync(ct);
    var agents=await db.AutonomousAcquisitionAgents.CountAsync(ct);

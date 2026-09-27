@@ -38,7 +38,7 @@ public sealed class AgentJobFactory(AppDbContext db) : IAgentJobFactory
             .Where(x => x.TenantId == tenantId &&
                         x.CampaignId == campaignId &&
                         x.ContainerId == containerId &&
-                        x.Status is AgentJobStatus.Queued or AgentJobStatus.Running or AgentJobStatus.Waiting)
+                        (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Running || x.Status == AgentJobStatus.Waiting))
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
 
