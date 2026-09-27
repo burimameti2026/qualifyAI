@@ -41,8 +41,9 @@ IF COL_LENGTH('dbo.AutonomousAcquisitionTasks', 'RunId') IS NULL
     ALTER TABLE [AutonomousAcquisitionTasks] ADD [RunId] uniqueidentifier NULL;
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AutonomousAcquisitionTasks_TenantId_AgentId_RunId_Sequence' AND object_id = OBJECT_ID('dbo.AutonomousAcquisitionTasks'))
-    CREATE INDEX [IX_AutonomousAcquisitionTasks_TenantId_AgentId_RunId_Sequence]
-    ON [AutonomousAcquisitionTasks] ([TenantId], [AgentId], [RunId], [Sequence]);
+    CREATE UNIQUE INDEX [IX_AutonomousAcquisitionTasks_TenantId_AgentId_RunId_Sequence]
+    ON [AutonomousAcquisitionTasks] ([TenantId], [AgentId], [RunId], [Sequence])
+    WHERE [RunId] IS NOT NULL;
 """);
     }
 
