@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../QualifyAI.Automation.Persistence.SqlServer/QualifyAI.Automation.Persistence.SqlServer.csproj" />
+    <ProjectReference Include="../QualifyAI.Automation.Domain/QualifyAI.Automation.Domain.csproj" />
+    <ProjectReference Include="../QualifyAI.Automation.Application/QualifyAI.Automation.Application.csproj" />
+    <ProjectReference Include="../../../../Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../../Application/QualifyAI.Contracts/QualifyAI.Contracts.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MassTransit" />
+    <PackageReference Include="MassTransit.RabbitMQ" />
+  </ItemGroup>
+</Project>

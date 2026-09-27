@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../QualifyAI.Knowledge.Persistence.SqlServer/QualifyAI.Knowledge.Persistence.SqlServer.csproj" />
+    <ProjectReference Include="../QualifyAI.Knowledge.Domain/QualifyAI.Knowledge.Domain.csproj" />
+    <ProjectReference Include="../QualifyAI.Knowledge.Application/QualifyAI.Knowledge.Application.csproj" />
+    <ProjectReference Include="../../../../Shared/QualifyAI.BuildingBlocks.Messaging/QualifyAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../../../Application/QualifyAI.Contracts/QualifyAI.Contracts.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MassTransit" />
+    <PackageReference Include="MassTransit.RabbitMQ" />
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+</Project>

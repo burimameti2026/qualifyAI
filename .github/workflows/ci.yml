@@ -1,14 +1,13 @@
-name: LeadsAI CI
+name: QualifyAI CI
 
 on:
-  workflow_dispatch:
   push:
-    branches: [feature/fixes, feature/golden-pipeline, dev, master, renova]
+    branches: [feature/fixes, feature/golden-pipeline, dev, master]
   pull_request:
     branches: [dev, master]
 
 concurrency:
-  group: leadsai-ci-${{ github.ref }}
+  group: qualifyai-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,11 +24,21 @@ jobs:
         shell: pwsh
         run: ./scripts/check-architecture.ps1
       - name: Restore
-        run: dotnet restore LeadsAI.sln --disable-parallel
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' project; do
+            dotnet restore "$project" --disable-parallel
+          done < <(find src tests -type f -name '*.csproj' -print0 | sort -z)
       - name: Build
-        run: dotnet build LeadsAI.sln --configuration Release --no-restore --warnaserror
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' project; do
+            dotnet build "$project" --configuration Release --no-restore --warnaserror
+          done < <(find src -type f -name '*.csproj' -print0 | sort -z)
       - name: Billing hardening tests
-        run: dotnet test tests/LeadsAI.BillingHardening.Tests/LeadsAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
+        run: dotnet test tests/QualifyAI.BillingHardening.Tests/QualifyAI.BillingHardening.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=billing-hardening.trx"
   admin-ui:
     name: Admin UI build
     runs-on: ubuntu-latest
@@ -39,13 +48,13 @@ jobs:
       - id: admin-ui
         shell: bash
         run: |
-          if [ -f "admin/leadsai-admin/package-lock.json" ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "admin/qualifyai-admin/package-lock.json" ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-node@v4
         if: steps.admin-ui.outputs.exists == 'true'
-        with: { node-version: 22, cache: npm, cache-dependency-path: admin/leadsai-admin/package-lock.json }
+        with: { node-version: 22, cache: npm, cache-dependency-path: admin/qualifyai-admin/package-lock.json }
       - if: steps.admin-ui.outputs.exists == 'true'
-        working-directory: admin/leadsai-admin
+        working-directory: admin/qualifyai-admin
         run: npm ci --no-audit --no-fund
       - if: steps.admin-ui.outputs.exists == 'true'
-        working-directory: admin/leadsai-admin
+        working-directory: admin/qualifyai-admin
         run: npm run build
