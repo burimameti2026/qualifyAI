@@ -941,6 +941,27 @@ public sealed class AcquisitionController(
     public async Task<IActionResult> Delivered(Guid id, DeliveryConfirmation input, CancellationToken ct) =>
         await executor.ConfirmDeliveryAsync(TenantId, id, input.ProviderMessageId, ct) ? Ok() : NotFound();
 
+    [HttpPost("messages/{id:guid}/reject-approval")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> RejectApproval(Guid id, CancellationToken ct)
+    {
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+
+        var task = await db.CrmTasks.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId &&
+                 x.Title == $"APPROVAL: Send outreach {id}" &&
+                 !x.Completed, ct);
+        if (task is null)
+            return BadRequest(new { detail = "Request approval before rejecting this message." });
+
+        task.Completed = true;
+        message.Status = OutreachStatus.Suppressed;
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message.Id, rejected = true, status = message.Status });
+    }
+
     [HttpPost("replies")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Reply(ReplyInput input, CancellationToken ct)
