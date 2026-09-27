@@ -394,6 +394,24 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct)
             ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
 
+        var targetListId = await GetRunTargetListIdAsync(run, campaign, ct);
+        if (targetListId.HasValue)
+        {
+            var existingProspects = await (
+                from member in db.TargetListMembers.AsNoTracking()
+                join prospect in db.Prospects.AsNoTracking() on member.ProspectId equals prospect.Id
+                where member.TenantId == run.TenantId &&
+                      member.TargetListId == targetListId.Value &&
+                      prospect.TenantId == run.TenantId
+                select prospect.Id)
+                .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
+                .ToListAsync(ct);
+
+            run.DiscoveredCount = existingProspects.Count;
+            CompleteTask(task, new { discovered = run.DiscoveredCount, source = "prospect-group", targetListId });
+            return;
+        }
+
         var icpId = await db.TargetLists
             .Where(x => x.TenantId == run.TenantId && x.Id == campaign.TargetListId)
             .Select(x => x.IcpProfileId)
@@ -492,12 +510,31 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         CancellationToken ct)
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Qualify);
-        var since = run.StartedAtUtc ?? DateTime.UtcNow;
-        var prospects = await db.Prospects
-            .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since && x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}")
-            .OrderByDescending(x => x.CreatedAtUtc)
-            .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
-            .ToListAsync(ct);
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct);
+        var targetListId = await GetRunTargetListIdAsync(run, campaign, ct);
+        List<Prospect> prospects;
+        if (targetListId.HasValue)
+        {
+            prospects = await (
+                from member in db.TargetListMembers
+                join prospect in db.Prospects on member.ProspectId equals prospect.Id
+                where member.TenantId == agent.TenantId &&
+                      member.TargetListId == targetListId.Value &&
+                      prospect.TenantId == agent.TenantId
+                orderby prospect.UpdatedAtUtc descending
+                select prospect)
+                .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
+                .ToListAsync(ct);
+        }
+        else
+        {
+            var since = run.StartedAtUtc ?? DateTime.UtcNow;
+            prospects = await db.Prospects
+                .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since && x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}")
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
+                .ToListAsync(ct);
+        }
 
         foreach (var prospect in prospects)
         {
@@ -517,12 +554,21 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         CancellationToken ct)
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Enrich);
-        var since = run.StartedAtUtc ?? DateTime.UtcNow;
-        var count = await db.Prospects.CountAsync(x =>
-            x.TenantId == agent.TenantId &&
-            x.CreatedAtUtc >= since &&
-            x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}" &&
-            x.Status == ProspectStatus.Qualified, ct);
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct);
+        var targetListId = await GetRunTargetListIdAsync(run, campaign, ct);
+        var count = targetListId.HasValue
+            ? await (from member in db.TargetListMembers
+                     join prospect in db.Prospects on member.ProspectId equals prospect.Id
+                     where member.TenantId == agent.TenantId &&
+                           member.TargetListId == targetListId.Value &&
+                           prospect.TenantId == agent.TenantId &&
+                           prospect.Status == ProspectStatus.Qualified
+                     select prospect.Id).CountAsync(ct)
+            : await db.Prospects.CountAsync(x =>
+                x.TenantId == agent.TenantId &&
+                x.CreatedAtUtc >= (run.StartedAtUtc ?? DateTime.UtcNow) &&
+                x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}" &&
+                x.Status == ProspectStatus.Qualified, ct);
 
         CompleteTask(task, new
         {
@@ -626,8 +672,9 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             .Where(x => x.TenantId == agent.TenantId && x.CampaignId == campaign.Id)
             .ToListAsync(ct);
 
+        var outreachTargetListId = await GetRunTargetListIdAsync(run, campaign, ct) ?? campaign.TargetListId;
         var members = await db.TargetListMembers
-            .Where(x => x.TenantId == agent.TenantId && x.TargetListId == campaign.TargetListId)
+            .Where(x => x.TenantId == agent.TenantId && x.TargetListId == outreachTargetListId)
             .Select(x => x.ProspectId)
             .ToListAsync(ct);
 
@@ -743,6 +790,36 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         return await db.OutreachMessages.AnyAsync(x =>
             x.TenantId == run.TenantId && x.CampaignId == campaign.Id && x.Status == OutreachStatus.Queued &&
             db.CrmTasks.Any(t => t.TenantId == run.TenantId && t.Title == $"APPROVAL: Send outreach {x.Id}" && !t.Completed), ct);
+    }
+
+    private async Task<Guid?> GetRunTargetListIdAsync(
+        AutonomousAcquisitionAgentRun run,
+        Campaign campaign,
+        CancellationToken ct)
+    {
+        if (run.ContainerId.HasValue)
+        {
+            var configuration = await db.CampaignContainers.AsNoTracking()
+                .Where(x => x.TenantId == run.TenantId && x.Id == run.ContainerId.Value)
+                .Select(x => x.ConfigurationJson)
+                .SingleOrDefaultAsync(ct);
+
+            if (!string.IsNullOrWhiteSpace(configuration))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(configuration);
+                    if (document.RootElement.TryGetProperty("targetListId", out var value) &&
+                        value.ValueKind == JsonValueKind.String &&
+                        Guid.TryParse(value.GetString(), out var containerTargetId) &&
+                        await db.TargetLists.AnyAsync(x => x.TenantId == run.TenantId && x.Id == containerTargetId, ct))
+                        return containerTargetId;
+                }
+                catch (JsonException) { }
+            }
+        }
+
+        return campaign.TargetListId == Guid.Empty ? null : campaign.TargetListId;
     }
 
     private static bool IsCompleted(IReadOnlyList<AutonomousAcquisitionTask> tasks, string type) =>
