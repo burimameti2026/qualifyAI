@@ -2,9 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using QualifyAI.Persistence.SqlServer;
+using LeadsAI.Persistence.SqlServer;
 
-namespace QualifyAI.Infrastructure.Acquisition;
+namespace LeadsAI.Infrastructure.Acquisition;
 
 /// <summary>
 /// Runs an isolated worker pool per active tenant. Each tenant gets its own
@@ -112,5 +112,5 @@ public sealed class TenantJobWorkerPool(
 
 public interface IAgentJobExecutor
 {
-    Task ExecuteAsync(LeadsAI.Domain.AgentJob job, CancellationToken ct);
+    Task ExecuteAsync(LeadsAI.Domain.Core.AgentJob job, CancellationToken ct);
 }
