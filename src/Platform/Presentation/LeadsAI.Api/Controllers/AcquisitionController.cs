@@ -667,7 +667,7 @@ public sealed class AcquisitionController(
 
     [HttpGet("campaigns/{campaignId:guid}/containers/{containerId:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public async Task<IActionResult> ContainerActivity(Guid campaignId, Guid containerId, [FromQuery] Guid? taskId, CancellationToken ct)
+    public async Task<IActionResult> ContainerActivity(Guid campaignId, Guid containerId, [FromQuery] Guid? taskId, [FromQuery] string? stepType, CancellationToken ct)
     {
         var tenantId = TenantId;
         var valid = await db.CampaignContainers.AnyAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
@@ -716,7 +716,8 @@ public sealed class AcquisitionController(
                     data = System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone()
                 };
             }
-        }).Where(x => !taskId.HasValue || x.stepId == taskId.Value).ToList();
+        }).Where(x => (!taskId.HasValue || x.stepId == taskId.Value) &&
+              (string.IsNullOrWhiteSpace(stepType) || string.Equals(x.stepType, stepType, StringComparison.OrdinalIgnoreCase))).ToList();
 
         return Ok(items);
     }
