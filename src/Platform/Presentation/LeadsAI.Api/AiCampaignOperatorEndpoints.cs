@@ -210,6 +210,16 @@ public static class AiCampaignOperatorEndpoints
                     icpId = icp.Id,
                     agentId = agent.Id,
                     pack = pack is null ? null : new { pack.Id, pack.Code, pack.Name, installed = packInstalled },
+                    plan = new
+                    {
+                        industry = parsed.Industry,
+                        countries = parsed.Countries,
+                        region = parsed.Region,
+                        prospectLimit = parsed.ProspectLimit,
+                        minimumScore = parsed.MinimumScore,
+                        decisionMakers = parsed.DecisionMakers,
+                        goal = input.Goal ?? "book-demo"
+                    },
                     checks,
                     actions,
                     canStart = checks.All(x => x.status is "ok" or "fixed")
