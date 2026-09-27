@@ -286,10 +286,11 @@ public static class AiCampaignOperatorEndpoints
             x => x.Code == industry.ToLowerInvariant(), ct);
         if (exact is not null) return exact;
 
-        return await db.IndustryPacks
-            .OrderBy(x => x.Code == "logistics" ? 0 : 1)
-            .FirstOrDefaultAsync(x => industry.Contains(x.Code, StringComparison.OrdinalIgnoreCase) ||
-                                      x.Name.Contains(industry, StringComparison.OrdinalIgnoreCase), ct);
+        var packs = await db.IndustryPacks.AsNoTracking().ToListAsync(ct);
+        return packs
+            .OrderBy(x => x.Code.Equals("logistics", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .FirstOrDefault(x => industry.Contains(x.Code, StringComparison.OrdinalIgnoreCase) ||
+                                 x.Name.Contains(industry, StringComparison.OrdinalIgnoreCase));
     }
 
     private static AutonomousAcquisitionTemplate ResolveTemplate(
