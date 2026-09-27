@@ -76,6 +76,7 @@ app.MapBillingVerification();
 app.MapBillingHardening();
 app.MapBillingHardeningVerification();
 app.MapAutonomousAcquisition();
+app.MapAiCampaignOperator();
 app.MapAcquisitionTenantSettings();
 app.MapAutonomousAcquisitionVerification();
 app.MapAutonomousAcquisitionE2e();
