@@ -167,11 +167,32 @@ public static class AiCampaignOperatorEndpoints
                 campaign.PackageVersion = "1.0";
                 campaign.Objective = input.Brief.Trim();
                 campaign.PlanStatus = "ready";
-                campaign.PlanJson = JsonSerializer.Serialize(new { source = "ai-campaign-operator", brief = input.Brief, industry = parsed.Industry, countries = parsed.Countries, template = template.Code });
+                campaign.PlanJson = JsonSerializer.Serialize(new
+                {
+                    source = "ai-campaign-operator",
+                    version = 1,
+                    brief = input.Brief.Trim(),
+                    industry = parsed.Industry,
+                    countries = parsed.Countries,
+                    region = parsed.Region,
+                    template = template.Code,
+                    stages = new object[]
+                    {
+                        new { type = "Discovery", config = new { keywords = template.Keywords, region = parsed.Region, maxResults = parsed.ProspectLimit } },
+                        new { type = "Qualification", config = new { minimumScore = parsed.MinimumScore, intentSignals = template.Signals, decisionMakers = parsed.DecisionMakers } },
+                        new { type = "Enrichment", config = new { decisionMakers = parsed.DecisionMakers, evidenceOnly = true } },
+                        new { type = "BuildTargetList", config = new { maxResults = parsed.ProspectLimit } },
+                        new { type = "Outreach", config = new { goal = input.Goal ?? "book-demo", steps = new object[]
+                            {
+                                new { step = 1, name = "Initial outreach", subject = "Quick question about {{company}}", body = "Hi {{contact}},\n\nI noticed {{company}}. Would it be useful to compare how similar teams handle this today?", delayHours = 0, requiresApproval = true },
+                                new { step = 2, name = "Follow-up", subject = "Re: quick question about {{company}}", body = "Just following up in case this is relevant to your team.", delayHours = 48, requiresApproval = true }
+                            } } }
+                    }
+                });
 
                 await db.SaveChangesAsync(ct);
 
-                var checks = new[];
+                var checks = new[]
                 {
                     new { name = "pack", status = packInstalled ? "ok" : "missing" },
                     new { name = "icp", status = "ok" },
@@ -214,24 +235,8 @@ public static class AiCampaignOperatorEndpoints
 
                 campaign.Start();
 
-                var prospectIds = await db.TargetListMembers
-                    .Where(x => x.TenantId == tenantId && x.TargetListId == campaign.TargetListId)
-                    .Select(x => x.ProspectId)
-                    .ToListAsync(ct);
-
-                var existing = await db.CampaignRecipients
-                    .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
-                    .Select(x => x.ProspectId)
-                    .ToListAsync(ct);
-
-                db.CampaignRecipients.AddRange(prospectIds.Except(existing).Select(id =>
-                    new CampaignRecipient
-                    {
-                        TenantId = tenantId, CampaignId = campaignId, ProspectId = id,
-                        CurrentStep = 0, Status = "active",
-                        NextRunAtUtc = DateTime.UtcNow
-                    }));
-
+                // Enrollment belongs to the acquisition orchestrator after qualification.
+                // Pre-enrolling here would make outreach preparation skip the prospects.
                 var run = new AutonomousAcquisitionAgentRun
                 {
                     TenantId = tenantId, AgentId = agent.Id, CampaignId = campaignId, IsManual = false,
@@ -318,27 +323,46 @@ public static class AiCampaignOperatorEndpoints
     private static ParsedBrief ParseBrief(string brief)
     {
         var text = brief.ToLowerInvariant();
-        var industry = text.Contains("logistic") || text.Contains("3pl") || text.Contains("freight")
-            ? "logistics"
-            : text.Contains("ecommerce") || text.Contains("e-commerce")
-                ? "ecommerce"
-                : text.Contains("agency")
-                    ? "agency"
-                    : text.Contains("saas") || text.Contains("software")
-                        ? "saas"
-                        : "general";
+        var industry = text.Contains("logistic") || text.Contains("3pl") || text.Contains("freight") ? "logistics"
+            : text.Contains("ecommerce") || text.Contains("e-commerce") ? "ecommerce"
+            : text.Contains("agency") ? "agency"
+            : text.Contains("saas") || text.Contains("software") ? "saas" : "general";
 
-        var countries = new List<string>();
-        foreach (var country in new[] { "germany", "deutschland", "france", "italy", "spain", "netherlands", "belgium", "uk", "united kingdom", "austria", "switzerland", "poland" })
-            if (text.Contains(country))
-                countries.Add(country == "deutschland" ? "Germany" : country);
-
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["north macedonia"]="North Macedonia", ["macedonia"]="North Macedonia", ["kosovo"]="Kosovo",
+            ["albania"]="Albania", ["serbia"]="Serbia", ["montenegro"]="Montenegro", ["croatia"]="Croatia",
+            ["slovenia"]="Slovenia", ["bosnia"]="Bosnia and Herzegovina", ["bosnia and herzegovina"]="Bosnia and Herzegovina",
+            ["germany"]="Germany", ["france"]="France", ["italy"]="Italy", ["spain"]="Spain",
+            ["netherlands"]="Netherlands", ["belgium"]="Belgium", ["austria"]="Austria", ["switzerland"]="Switzerland",
+            ["poland"]="Poland", ["uk"]="United Kingdom", ["united kingdom"]="United Kingdom"
+        };
+        var countries = text.Contains("balkan")
+            ? new List<string>{"North Macedonia","Kosovo","Albania","Serbia","Montenegro","Croatia","Slovenia","Bosnia and Herzegovina"}
+            : map.Where(x => text.Contains(x.Key, StringComparison.OrdinalIgnoreCase)).Select(x => x.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (countries.Count == 0) countries.Add("Europe");
 
-        return new ParsedBrief(industry, countries.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        var region = text.Contains("balkan") ? "Balkans" : countries.Count == 1 ? countries[0] : "Europe";
+        var prospectLimit = Math.Clamp(ExtractNumber(text, new[]{"prospects","companies","leads","contacts"}, 50), 1, 1000);
+        var minimumScore = Math.Clamp(ExtractNumber(text, new[]{"minimum score","min score","score"}, 70), 0, 100);
+        var decisionMakers = text.Contains("decision maker") || text.Contains("decision-maker") || text.Contains("buyer") || text.Contains("ceo") || text.Contains("founder");
+        return new ParsedBrief(industry, countries.ToArray(), region, prospectLimit, minimumScore, decisionMakers);
     }
 
-    private sealed record ParsedBrief(string Industry, string[] Countries);
+    private static int ExtractNumber(string text, string[] markers, int fallback)
+    {
+        foreach (var marker in markers)
+        {
+            var index = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) continue;
+            var tail = text[index..];
+            var digits = new string(tail.SkipWhile(x => !char.IsDigit(x)).TakeWhile(char.IsDigit).ToArray());
+            if (int.TryParse(digits, out var value)) return value;
+        }
+        return fallback;
+    }
+
+    private sealed record ParsedBrief(string Industry, string[] Countries, string Region, int ProspectLimit, int MinimumScore, bool DecisionMakers);
 }
 
 public sealed record AiCampaignBrief(
