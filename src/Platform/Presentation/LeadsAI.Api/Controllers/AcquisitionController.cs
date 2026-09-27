@@ -574,6 +574,9 @@ public sealed class AcquisitionController(
         if (campaign.Status is CampaignStatus.Completed or CampaignStatus.Stopped)
             return Conflict(new { code = "campaign_not_restartable", detail = $"Campaign is {campaign.Status} and cannot start a container." });
 
+        if (campaign.Status != CampaignStatus.Running)
+            campaign.Start();
+
         var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
             x => x.TenantId == TenantId && x.Id == container.AgentId, ct);
         if (agent is null) return NotFound();
