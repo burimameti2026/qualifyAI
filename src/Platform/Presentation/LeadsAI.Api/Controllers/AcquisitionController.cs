@@ -460,14 +460,20 @@ public sealed class AcquisitionController(
                 x.LastStoppedAtUtc,
                 x.CreatedAtUtc,
                 x.UpdatedAtUtc,
-                runs = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
-                activeRuns = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
+                Runs = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
+                ActiveRuns = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
                     (r.Status == AutonomousAgentRunStatus.Queued || r.Status == AutonomousAgentRunStatus.Running ||
                      r.Status == AutonomousAgentRunStatus.WaitingApproval || r.Status == AutonomousAgentRunStatus.Paused))
             })
             .ToListAsync(ct);
 
-        return Ok(rows);
+        return Ok(rows.Select(x => new
+        {
+            x.Id, x.CampaignId, x.AgentId, x.Name, x.PackageCode, x.PackageVersion, x.Status,
+            x.ConfigurationJson, x.LastStartedAtUtc, x.LastStoppedAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc,
+            targetListId = ReadTargetListId(x.ConfigurationJson),
+            x.Runs, x.ActiveRuns
+        }));
     }
 
     [HttpPost("campaigns/{id:guid}/containers")]
@@ -510,7 +516,7 @@ public sealed class AcquisitionController(
             Name = string.IsNullOrWhiteSpace(input.Name) ? $"{campaign.Name} Container" : input.Name.Trim(),
             PackageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? campaign.PackageCode : input.PackageCode.Trim(),
             PackageVersion = string.IsNullOrWhiteSpace(input.PackageVersion) ? campaign.PackageVersion : input.PackageVersion.Trim(),
-            ConfigurationJson = string.IsNullOrWhiteSpace(input.ConfigurationJson) ? "{}" : input.ConfigurationJson,
+            ConfigurationJson = BuildContainerConfiguration(input.ConfigurationJson, campaign.TargetListId),
             Status = CampaignContainerStatus.Pending
         };
 
@@ -528,6 +534,32 @@ public sealed class AcquisitionController(
             container.PackageVersion,
             container.Status
         });
+    }
+
+    [HttpPut("campaigns/{campaignId:guid}/containers/{containerId:guid}/target-list")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> SetContainerTargetList(Guid campaignId, Guid containerId, ContainerTargetListRequest input, CancellationToken ct)
+    {
+        var container = await db.CampaignContainers.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
+        if (container is null) return NotFound();
+
+        if (input.TargetListId.HasValue && input.TargetListId.Value != Guid.Empty &&
+            !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == input.TargetListId.Value, ct))
+            return NotFound(new { code = "target_list_not_found", detail = "The selected prospect group does not exist in this workspace." });
+
+        container.ConfigurationJson = BuildContainerConfiguration(container.ConfigurationJson, input.TargetListId);
+        container.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var targetList = input.TargetListId.HasValue
+            ? await db.TargetLists.AsNoTracking()
+                .Where(x => x.TenantId == TenantId && x.Id == input.TargetListId.Value)
+                .Select(x => new { x.Id, x.Name, x.Description, x.IcpProfileId, x.Dynamic })
+                .SingleOrDefaultAsync(ct)
+            : null;
+
+        return Ok(new { container.Id, container.CampaignId, targetList, targetListId = input.TargetListId });
     }
 
     [HttpPost("campaigns/{campaignId:guid}/containers/{containerId:guid}/start")]
@@ -888,6 +920,41 @@ public sealed class AcquisitionController(
         return run;
     }
 
+    private static Guid? ReadTargetListId(string? configurationJson)
+    {
+        if (string.IsNullOrWhiteSpace(configurationJson)) return null;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(configurationJson);
+            if (document.RootElement.TryGetProperty("targetListId", out var value) &&
+                value.ValueKind == System.Text.Json.JsonValueKind.String &&
+                Guid.TryParse(value.GetString(), out var id))
+                return id;
+        }
+        catch (System.Text.Json.JsonException) { }
+        return null;
+    }
+
+    private static string BuildContainerConfiguration(string? configurationJson, Guid? targetListId)
+    {
+        var data = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(configurationJson))
+        {
+            try
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(configurationJson);
+                if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    foreach (var property in document.RootElement.EnumerateObject())
+                        data[property.Name] = property.Value.Clone();
+            }
+            catch (System.Text.Json.JsonException) { }
+        }
+
+        if (targetListId.HasValue) data["targetListId"] = targetListId.Value;
+        else data.Remove("targetListId");
+        return System.Text.Json.JsonSerializer.Serialize(data);
+    }
+
     private static int ReadMinimumScore(string? criteriaJson)
     {
         if (string.IsNullOrWhiteSpace(criteriaJson)) return 70;
@@ -946,6 +1013,7 @@ public sealed record IcpSaveRequest(
     int MinimumScore = 70);
 
 public sealed record CampaignContainerCreateRequest(string? Name, string? PackageCode, string? PackageVersion, string? ConfigurationJson);
+public sealed record ContainerTargetListRequest(Guid? TargetListId);
 public sealed record CampaignPlanRequest(string PlanJson);
 public sealed record CampaignMessagesRequest(IReadOnlyList<CampaignMessageStepRequest> Steps);
 public sealed record CampaignMessageStepRequest(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
