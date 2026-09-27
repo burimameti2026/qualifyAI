@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Domain.Core.Catalog;
 using LeadsAI.Domain.Core.Portal;
 using LeadsAI.Domain.Core.Promotions;
