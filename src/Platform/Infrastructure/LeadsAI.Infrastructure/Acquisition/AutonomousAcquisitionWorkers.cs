@@ -1,84 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using LeadsAI.Application;
-using LeadsAI.Domain;
-using LeadsAI.Persistence.SqlServer;
-
-namespace LeadsAI.Infrastructure.Acquisition;
-
-public sealed class AutonomousAcquisitionQueuedRunWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionQueuedRunWorker> log) : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
-            try
-            {
-                await using var rootScope = scopes.CreateAsyncScope();
-                var services = rootScope.ServiceProvider;
-                var runtime = services.GetRequiredService<TenantWorkerRuntime>();
-                var tenants = await runtime.ActiveCampaignTenantsAsync(stoppingToken);
-
-                foreach (var tenant in tenants)
-                {
-                    if (stoppingToken.IsCancellationRequested) break;
-                    await ProcessTenantDatabaseAsync(services, tenant.Id, tenant.Slug, stoppingToken);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception ex) { log.LogError(ex, "Autonomous acquisition queue worker iteration failed"); }
-        }
-    }
-
-    private async Task ProcessTenantDatabaseAsync(IServiceProvider rootServices, Guid tenantId, string tenantSlug, CancellationToken ct)
-    {
-        await using var scope = rootServices.CreateAsyncScope();
-        var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
-        tenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
-
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var ids = await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == tenantId &&
-                        x.Status == AutonomousAgentRunStatus.Queued &&
-                        db.Campaigns.Any(campaign =>
-                            campaign.TenantId == tenantId &&
-                            campaign.Id == x.CampaignId &&
-                            campaign.Status == CampaignStatus.Running &&
-                            campaign.AgentId == x.AgentId) &&
-                        db.AutonomousAcquisitionAgents.Any(agent =>
-                            agent.TenantId == tenantId &&
-                            agent.Id == x.AgentId &&
-                            agent.Status == AutonomousAgentStatus.Active))
-            .OrderBy(x => x.ScheduledAtUtc)
-            .Take(10)
-            .Select(x => x.Id)
-            .ToListAsync(ct);
-
-        await Parallel.ForEachAsync(
-            ids,
-            new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct },
-            async (id, token) =>
-            {
-                await using var runScope = rootServices.CreateAsyncScope();
-                var runTenantContext = runScope.ServiceProvider.GetRequiredService<ITenantContext>();
-                runTenantContext.Set(new CurrentTenant(tenantId, tenantSlug));
-
-                try
-                {
-                    var orchestrator = runScope.ServiceProvider.GetRequiredService<IAutonomousAcquisitionRunOrchestrator>();
-                    await orchestrator.ExecuteAsync(id, token);
-                }
-                catch (Exception ex)
-                {
-                    log.LogError(ex, "Autonomous acquisition run {RunId} failed", id);
-                }
-            });
-    }
-}
-
 public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory scopes, ILogger<AutonomousAcquisitionSchedulerWorker> log) : BackgroundService
 {
     private const string TimeZoneSetting = "acquisition.schedule.timeZoneId";
@@ -136,11 +55,11 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
             .FirstOrDefaultAsync(ct);
 
         var timeZone = ResolveTimeZone(timeZoneId);
-        var pendingAgentIds = await db.AutonomousAcquisitionAgentRuns
+        var pendingAgentIds = await db.AgentJobs
             .Where(x => x.TenantId == tenantId &&
-                        (x.Status == AutonomousAgentRunStatus.Queued ||
-                         x.Status == AutonomousAgentRunStatus.Running ||
-                         x.Status == AutonomousAgentRunStatus.WaitingApproval))
+                        (x.Status == AgentJobStatus.Queued ||
+                         x.Status == AgentJobStatus.Running ||
+                         x.Status == AgentJobStatus.Waiting))
             .Select(x => x.AgentId)
             .Distinct()
             .ToListAsync(ct);
@@ -150,6 +69,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
         var localToday = DateOnly.FromDateTime(localNow);
         var changed = false;
+        var jobFactory = services.GetRequiredService<IAgentJobFactory>();
 
         foreach (var agent in agents)
         {
@@ -166,15 +86,15 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
 
             if (!due || already) continue;
 
-            db.AutonomousAcquisitionAgentRuns.Add(new AutonomousAcquisitionAgentRun
-            {
-                TenantId = tenantId,
-                AgentId = agent.Id,
-                CampaignId = campaign.Id,
-                IsManual = false,
-                Status = AutonomousAgentRunStatus.Queued,
-                ScheduledAtUtc = nowUtc
-            });
+            await jobFactory.QueueCampaignAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                null,
+                "campaign.execute",
+                $"campaign:{campaign.Id}",
+                false,
+                ct);
 
             pending.Add(agent.Id);
             agent.LastRunAtUtc = nowUtc;
