@@ -352,7 +352,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             if (waiting)
                 await LogActivityAsync(run, task, "warning", "step.waiting", $"{task.Name} is waiting for approval.", new { status = "waiting-approval" }, ct);
             else
-                await LogActivityAsync(run, task, "info", "step.completed", BuildTaskSummary(task), new { result = task.ResultJson }, ct);
+                await LogActivityAsync(run, task, "info", "step.completed", BuildTaskSummary(task), null, ct);
 
             return waiting;
         }
