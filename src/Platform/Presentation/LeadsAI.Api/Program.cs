@@ -35,9 +35,6 @@ builder.Services.AddScoped<KnowledgeGapService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspaceService>();
 builder.Services.AddScoped<WorkspacePackageInstaller>();
-builder.Services.AddScoped<CampaignExecutionService>();
-builder.Services.AddHostedService<CampaignExecutionWorker>();
-builder.Services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
 
 builder.Services.AddScoped<RealisticScenarioService>();
 builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>();
