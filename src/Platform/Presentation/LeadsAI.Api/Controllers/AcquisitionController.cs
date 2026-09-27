@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Acquisition;
 
 namespace LeadsAI.Api.Controllers;
@@ -18,7 +19,8 @@ public sealed class AcquisitionController(
     ITenantContext tenant,
     CampaignExecutionService executor,
     ProspectReplyProcessingService replyProcessor,
-    ProspectDiscoveryService discovery) : ControllerBase
+    ProspectDiscoveryService discovery,
+    IAgentJobFactory jobFactory) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -777,18 +779,16 @@ public sealed class AcquisitionController(
         agent.Status = AutonomousAgentStatus.Active;
         agent.UpdatedAtUtc = DateTime.UtcNow;
 
-        var run = new AutonomousAcquisitionAgentRun
-        {
-            Id = Guid.NewGuid(),
-            TenantId = TenantId,
-            AgentId = agent.Id,
-            CampaignId = campaignId,
-            ContainerId = container.Id,
-            IsManual = true,
-            Status = AutonomousAgentRunStatus.Queued,
-            ScheduledAtUtc = DateTime.UtcNow
-        };
-        db.AutonomousAcquisitionAgentRuns.Add(run);
+        var job = await jobFactory.QueueCampaignAsync(
+            TenantId,
+            campaignId,
+            agent.Id,
+            container.Id,
+            "container.execute",
+            $"campaign:{campaignId}:container:{container.Id}",
+            true,
+            ct);
+
         db.AuditLogs.Add(new AuditLog
         {
             TenantId = TenantId,
@@ -798,14 +798,14 @@ public sealed class AcquisitionController(
             DataJson = System.Text.Json.JsonSerializer.Serialize(new
             {
                 level = "info",
-                runId = run.Id,
+                jobId = job.Id,
                 message = $"Container '{container.Name}' started.",
-                data = new { status = "queued" }
+                data = new { status = job.Status.ToString() }
             })
         });
         await db.SaveChangesAsync(ct);
 
-        return Ok(new { container.Id, container.Status, runId = run.Id });
+        return Ok(new { container.Id, container.Status, jobId = job.Id, jobStatus = job.Status.ToString() });
     }
 
     [HttpPost("campaigns/{campaignId:guid}/containers/{containerId:guid}/stop")]
@@ -989,8 +989,20 @@ public sealed class AcquisitionController(
                     throw new KeyNotFoundException($"Campaign '{id}' was not found.");
 
                 campaign.Start();
-                var run = await QueueCampaignRunAsync(campaign, isManual: true, ct);
-                runId = run?.Id;
+                var agentId = campaign.AgentId;
+                if (!agentId.HasValue)
+                    throw new InvalidOperationException("Campaign agent is not configured.");
+
+                var job = await jobFactory.QueueCampaignAsync(
+                    TenantId,
+                    campaign.Id,
+                    agentId.Value,
+                    null,
+                    "campaign.execute",
+                    $"campaign:{campaign.Id}",
+                    true,
+                    ct);
+                runId = job.Id;
 
                 await db.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
@@ -1004,7 +1016,7 @@ public sealed class AcquisitionController(
             id,
             status = CampaignStatus.Running,
             execution = "campaign-runtime",
-            runId
+            jobId = runId
         });
     }
 
@@ -1168,68 +1180,6 @@ public sealed class AcquisitionController(
         }
     }
 
-    private async Task<AutonomousAcquisitionAgentRun?> QueueCampaignRunAsync(
-        Campaign campaign,
-        bool isManual,
-        CancellationToken ct)
-    {
-        if (!campaign.AgentId.HasValue)
-            return null;
-
-        var agent = await db.AutonomousAcquisitionAgents
-            .FirstOrDefaultAsync(
-                x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value,
-                ct);
-
-        if (agent is null)
-            return null;
-
-        agent.Status = AutonomousAgentStatus.Active;
-        agent.UpdatedAtUtc = DateTime.UtcNow;
-
-        var existing = await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == TenantId &&
-                        x.CampaignId == campaign.Id &&
-                        x.AgentId == agent.Id &&
-                        (x.Status == AutonomousAgentRunStatus.Queued ||
-                         x.Status == AutonomousAgentRunStatus.Running ||
-                         x.Status == AutonomousAgentRunStatus.WaitingApproval))
-            .OrderByDescending(x => x.ScheduledAtUtc)
-            .FirstOrDefaultAsync(ct);
-
-        if (existing is not null)
-            return existing;
-
-        var paused = await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == TenantId &&
-                        x.CampaignId == campaign.Id &&
-                        x.AgentId == agent.Id &&
-                        x.Status == AutonomousAgentRunStatus.Paused)
-            .OrderByDescending(x => x.ScheduledAtUtc)
-            .FirstOrDefaultAsync(ct);
-
-        if (paused is not null)
-        {
-            paused.Status = AutonomousAgentRunStatus.Queued;
-            paused.ScheduledAtUtc = DateTime.UtcNow;
-            paused.CompletedAtUtc = null;
-            paused.Error = null;
-            return paused;
-        }
-
-        var run = new AutonomousAcquisitionAgentRun
-        {
-            TenantId = TenantId,
-            AgentId = agent.Id,
-            CampaignId = campaign.Id,
-            IsManual = isManual,
-            Status = AutonomousAgentRunStatus.Queued,
-            ScheduledAtUtc = DateTime.UtcNow
-        };
-
-        db.AutonomousAcquisitionAgentRuns.Add(run);
-        return run;
-    }
 
     private static Guid? ReadTargetListId(string? configurationJson)
     {
