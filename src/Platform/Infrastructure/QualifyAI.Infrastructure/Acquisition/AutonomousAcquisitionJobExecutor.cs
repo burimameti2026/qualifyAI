@@ -1,9 +1,10 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
-using QualifyAI.Persistence.SqlServer;
+using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
+using LeadsAI.Persistence.SqlServer;
 
-namespace QualifyAI.Infrastructure.Acquisition;
+namespace LeadsAI.Infrastructure.Acquisition;
 
 /// <summary>
 /// Transitional executor: Job is now the queue/ownership boundary while the
