@@ -600,6 +600,20 @@ public sealed class AcquisitionController(
             ScheduledAtUtc = DateTime.UtcNow
         };
         db.AutonomousAcquisitionAgentRuns.Add(run);
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = TenantId,
+            Action = "container.started",
+            EntityType = "CampaignContainerActivity",
+            EntityId = container.Id.ToString(),
+            DataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                level = "info",
+                runId = run.Id,
+                message = $"Container '{container.Name}' started.",
+                data = new { status = "queued" }
+            })
+        });
         await db.SaveChangesAsync(ct);
 
         return Ok(new { container.Id, container.Status, runId = run.Id });
@@ -633,8 +647,92 @@ public sealed class AcquisitionController(
                 .SetProperty(x => x.Status, AutonomousAgentRunStatus.Cancelled)
                 .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
 
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = TenantId,
+            Action = "container.stopped",
+            EntityType = "CampaignContainerActivity",
+            EntityId = container.Id.ToString(),
+            DataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                level = "info",
+                message = $"Container '{container.Name}' stopped.",
+                data = new { status = "stopped" }
+            })
+        });
+
         await db.SaveChangesAsync(ct);
         return Ok(new { container.Id, container.Status });
+    }
+
+    [HttpGet("campaigns/{campaignId:guid}/containers/{containerId:guid}/activity")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> ContainerActivity(
+        Guid campaignId,
+        Guid containerId,
+        [FromQuery] Guid? taskId,
+        [FromQuery] string? stepType,
+        CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var valid = await db.CampaignContainers.AnyAsync(
+            x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
+        if (!valid) return NotFound();
+
+        var rows = await db.AuditLogs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId &&
+                        x.EntityType == "CampaignContainerActivity" &&
+                        x.EntityId == containerId.ToString())
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Take(500)
+            .ToListAsync(ct);
+
+        var items = rows.Select(x =>
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(x.DataJson ?? "{}");
+                var root = doc.RootElement;
+                Guid? rowTaskId = null;
+                if (root.TryGetProperty("taskId", out var taskValue) &&
+                    Guid.TryParse(taskValue.GetString(), out var parsedTaskId))
+                    rowTaskId = parsedTaskId;
+
+                return new
+                {
+                    id = x.Id,
+                    atUtc = x.CreatedAtUtc,
+                    level = root.TryGetProperty("level", out var level) ? level.GetString() ?? "info" : "info",
+                    eventType = x.Action,
+                    stepId = rowTaskId,
+                    stepType = root.TryGetProperty("stepType", out var stepTypeValue) ? stepTypeValue.GetString() ?? "" : "",
+                    stepName = root.TryGetProperty("stepName", out var stepNameValue) ? stepNameValue.GetString() ?? "" : "",
+                    message = root.TryGetProperty("message", out var message) ? message.GetString() ?? x.Action : x.Action,
+                    data = root.TryGetProperty("data", out var data) ? data.Clone() : System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone()
+                };
+            }
+            catch
+            {
+                return new
+                {
+                    id = x.Id,
+                    atUtc = x.CreatedAtUtc,
+                    level = "info",
+                    eventType = x.Action,
+                    stepId = (Guid?)null,
+                    stepType = "",
+                    stepName = "",
+                    message = x.Action,
+                    data = System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone()
+                };
+            }
+        }).Where(x =>
+            (!taskId.HasValue || x.stepId == taskId.Value) &&
+            (string.IsNullOrWhiteSpace(stepType) ||
+             string.Equals(x.stepType, stepType, StringComparison.OrdinalIgnoreCase)))
+          .ToList();
+
+        return Ok(items);
     }
 
     [HttpGet("campaigns/{id:guid}/activity")]
