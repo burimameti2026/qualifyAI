@@ -7,8 +7,7 @@ using LeadsAI.Persistence.SqlServer;
 namespace LeadsAI.Infrastructure.Acquisition;
 
 /// <summary>
-/// Creates a first-class AgentJob for a campaign while preserving the legacy
-/// AgentRun as the current execution adapter until the migration is complete.
+/// Creates the first-class tenant-scoped AgentJob used as the campaign execution unit.
 /// </summary>
 public interface IAgentJobFactory
 {
