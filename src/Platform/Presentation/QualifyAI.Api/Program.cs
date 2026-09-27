@@ -46,8 +46,6 @@ builder.Services.Configure<RevenueAutomationOptions>(builder.Configuration.GetSe
 builder.Services.AddHostedService<RevenueAutomationWorker>();
 
 builder.Services.AddHostedService<AcquisitionCampaignWorker>();
-builder.Services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
-builder.Services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
 
 builder.Services.Configure<AutomationSchedulerOptions>(builder.Configuration.GetSection("AutomationScheduler"));
 builder.Services.AddHostedService<AutomationSchedulerWorker>();
