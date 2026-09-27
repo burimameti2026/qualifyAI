@@ -135,9 +135,27 @@ public sealed class AcquisitionController(
         return Ok(rows);
     }
 
-    [HttpGet("discovery/providers")]
+    [HttpGet("discovery/providers")];
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
+
+    [HttpPost("icp/{id:guid}/discover")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> Discover(Guid id, [FromBody] DiscoveryRequest? input, CancellationToken ct)
+    {
+        try
+        {
+            var request = input ?? new DiscoveryRequest();
+            var result = await discovery.DiscoverAsync(TenantId, id, new DiscoveryRunOptions(
+                request.Source, request.Region, request.MaximumResults, request.MinimumScore,
+                request.TargetListName, request.CreateTargetList), ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(new { code = "discovery_not_ready", detail = exception.Message });
+        }
+    }
 
     [HttpPost("discovery/providers/{name}/verify")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
@@ -1121,6 +1139,14 @@ public sealed class AcquisitionController(
 
 
 }
+
+public sealed record DiscoveryRequest(
+    string? Source = null,
+    string? Region = null,
+    int MaximumResults = 50,
+    int MinimumScore = 70,
+    string? TargetListName = null,
+    bool CreateTargetList = true);
 
 public sealed record IcpSaveRequest(
     Guid? Id,
