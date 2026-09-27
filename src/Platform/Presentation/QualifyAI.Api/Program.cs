@@ -98,6 +98,7 @@ app.MapBillingVerification();
 app.MapBillingHardening();
 app.MapBillingHardeningVerification();
 app.MapAutonomousAcquisition();
+app.MapAiCampaignOperator();
 app.MapAutonomousAcquisitionVerification();
 app.MapAutonomousAcquisitionE2e();
 app.MapHub<ConversationHub>("/hubs/conversations");
