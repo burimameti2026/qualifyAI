@@ -62,36 +62,36 @@ public static class AutomationAnalyticsEndpoints
             return run is null ? Results.NotFound() : Results.Ok(run);
         });
 
-        analytics.MapGet("/overview", async (AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
-        {
-            var tenantId = tenant.Id;
-            var prospects = db.Prospects.Where(x => x.TenantId == tenantId);
-            var campaigns = db.Campaigns.Where(x => x.TenantId == tenantId);
-            var outreach = db.OutreachMessages.Where(x => x.TenantId == tenantId);
-            var opportunities = db.Opportunitys.Where(x => x.TenantId == tenantId);
-            var runs = db.AutomationRuns.Where(x => x.TenantId == tenantId);
-            var revenue = await opportunities.Where(x => x.Status == OpportunityStatus.Won).SumAsync(x => (decimal?)x.Amount, ct) ?? 0m;
-            var pipeline = await opportunities.Where(x => x.Status == OpportunityStatus.Open).SumAsync(x => (decimal?)x.Amount, ct) ?? 0m;
-            var sent = await outreach.CountAsync(x => x.Status == OutreachStatus.Sent || x.Status == OutreachStatus.Delivered || x.Status == OutreachStatus.Replied, ct);
-            var replied = await outreach.CountAsync(x => x.Status == OutreachStatus.Replied, ct);
-            return Results.Ok(new
-            {
-                generatedAtUtc = DateTime.UtcNow,
-                prospects = await prospects.CountAsync(ct),
-                qualifiedProspects = await prospects.CountAsync(x => x.Status == ProspectStatus.Qualified, ct),
-                targetListMembers = await db.TargetListMembers.CountAsync(x => x.TenantId == tenantId, ct),
-                campaigns = await campaigns.CountAsync(ct),
-                activeCampaigns = await campaigns.CountAsync(x => x.Status == CampaignStatus.Running, ct),
-                outreachSent = sent,
-                replies = replied,
-                replyRate = sent == 0 ? 0m : Math.Round((decimal)replied / sent * 100m, 2),
-                openPipeline = pipeline,
-                wonRevenue = revenue,
-                automationRuns = await runs.CountAsync(ct),
-                automationCompleted = await runs.CountAsync(x => x.Status == "completed", ct),
-                automationFailed = await runs.CountAsync(x => x.Status == "failed", ct)
-            });
-        });
+        //analytics.MapGet("/overview", async (AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
+        //{
+        //    var tenantId = tenant.Id;
+        //    var prospects = db.Prospects.Where(x => x.TenantId == tenantId);
+        //    var campaigns = db.Campaigns.Where(x => x.TenantId == tenantId);
+        //    var outreach = db.OutreachMessages.Where(x => x.TenantId == tenantId);
+        //    var opportunities = db.Opportunitys.Where(x => x.TenantId == tenantId);
+        //    var runs = db.AutomationRuns.Where(x => x.TenantId == tenantId);
+        //    var revenue = await opportunities.Where(x => x.Status == OpportunityStatus.Won).SumAsync(x => (decimal?)x.Amount, ct) ?? 0m;
+        //    var pipeline = await opportunities.Where(x => x.Status == OpportunityStatus.Open).SumAsync(x => (decimal?)x.Amount, ct) ?? 0m;
+        //    var sent = await outreach.CountAsync(x => x.Status == OutreachStatus.Sent || x.Status == OutreachStatus.Delivered || x.Status == OutreachStatus.Replied, ct);
+        //    var replied = await outreach.CountAsync(x => x.Status == OutreachStatus.Replied, ct);
+        //    return Results.Ok(new
+        //    {
+        //        generatedAtUtc = DateTime.UtcNow,
+        //        prospects = await prospects.CountAsync(ct),
+        //        qualifiedProspects = await prospects.CountAsync(x => x.Status == ProspectStatus.Qualified, ct),
+        //        targetListMembers = await db.TargetListMembers.CountAsync(x => x.TenantId == tenantId, ct),
+        //        campaigns = await campaigns.CountAsync(ct),
+        //        activeCampaigns = await campaigns.CountAsync(x => x.Status == CampaignStatus.Running, ct),
+        //        outreachSent = sent,
+        //        replies = replied,
+        //        replyRate = sent == 0 ? 0m : Math.Round((decimal)replied / sent * 100m, 2),
+        //        openPipeline = pipeline,
+        //        wonRevenue = revenue,
+        //        automationRuns = await runs.CountAsync(ct),
+        //        automationCompleted = await runs.CountAsync(x => x.Status == "completed", ct),
+        //        automationFailed = await runs.CountAsync(x => x.Status == "failed", ct)
+        //    });
+        //});
 
         analytics.MapGet("/metrics", async (DateTime? fromUtc, DateTime? toUtc, AppDbContext db, ICurrentTenant tenant, CancellationToken ct) =>
         {
