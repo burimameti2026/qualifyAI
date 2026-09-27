@@ -350,7 +350,7 @@ public sealed class AcquisitionController(
         campaign.Start();
         var prospectIds = await db.TargetListMembers.Where(x => x.TenantId==TenantId&&x.TargetListId==campaign.TargetListId).Select(x => x.ProspectId).ToListAsync(ct);
         var existing = await db.CampaignRecipients.Where(x => x.TenantId==TenantId&&x.CampaignId==id).Select(x => x.ProspectId).ToListAsync(ct);
-        db.CampaignRecipients.AddRange(prospectIds.Except(existing).Select(x => new CampaignRecipient { TenantId=TenantId, CampaignId=id, ProspectId=x, NextRunAtUtc=campaign.StartsAtUtc??DateTime.UtcNow }));
+        db.CampaignRecipients.AddRange(prospectIds.Except(existing).Select(x => new CampaignRecipient { TenantId=TenantId, CampaignId=id, ProspectId=x, CurrentStep=0, NextRunAtUtc=campaign.StartsAtUtc??DateTime.UtcNow }));
         await db.SaveChangesAsync(ct);
         var queued = await executor.QueueDueMessagesAsync(TenantId, ct);
         return Ok(new { campaign.Id, campaign.Status, recipients = prospectIds.Count, queued });
