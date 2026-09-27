@@ -819,7 +819,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             }
         }
 
-        return campaign.TargetListId == Guid.Empty ? null : campaign.TargetListId;
+        return null;
     }
 
     private static bool IsCompleted(IReadOnlyList<AutonomousAcquisitionTask> tasks, string type) =>
