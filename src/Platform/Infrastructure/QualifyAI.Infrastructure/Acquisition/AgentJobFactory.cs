@@ -1,9 +1,10 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
-using QualifyAI.Persistence.SqlServer;
+using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
+using LeadsAI.Persistence.SqlServer;
 
-namespace QualifyAI.Infrastructure.Acquisition;
+namespace LeadsAI.Infrastructure.Acquisition;
 
 /// <summary>
 /// Creates a first-class AgentJob for a campaign while preserving the legacy
