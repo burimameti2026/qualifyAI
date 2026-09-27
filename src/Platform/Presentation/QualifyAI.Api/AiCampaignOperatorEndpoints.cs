@@ -207,7 +207,9 @@ public static class AiCampaignOperatorEndpoints
                     return Results.Conflict(new { error = "campaign_agent_not_ready" });
 
                 var agent = await db.AutonomousAcquisitionAgents
-                    .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value && x.Status != AutonomousAgentStatus.Stopped, ct);
+                    .Where(x => x.TenantId == tenantId && x.Status != AutonomousAgentStatus.Stopped)
+                    .OrderByDescending(x => x.UpdatedAtUtc)
+                    .FirstOrDefaultAsync(ct);
 
                 if (agent is null)
                     return Results.Conflict(new { error = "agent_not_ready" });
@@ -234,7 +236,7 @@ public static class AiCampaignOperatorEndpoints
 
                 var run = new AutonomousAcquisitionAgentRun
                 {
-                    TenantId = tenantId, AgentId = agent.Id, CampaignId = campaignId, IsManual = false,
+                    TenantId = tenantId, AgentId = agent.Id, IsManual = false,
                     Status = AutonomousAgentRunStatus.Queued,
                     ScheduledAtUtc = DateTime.UtcNow,
                     Query = $"campaign:{campaignId}"
