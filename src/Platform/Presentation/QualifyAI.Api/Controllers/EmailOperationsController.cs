@@ -289,6 +289,22 @@ public sealed class EmailOperationsController(
         return result.Success ? Ok(result) : Conflict(new { detail = result.Error });
     }
 
+    [HttpPost("messages/{id:guid}/reject-approval"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
+    public async Task<IActionResult> RejectApproval(Guid id, CancellationToken ct)
+    {
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+
+        var task = await db.CrmTasks.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Title == $"APPROVAL: Send outreach {id}", ct);
+        if (task is null) return BadRequest(new { detail = "Request approval before rejecting this message." });
+
+        task.Completed = true;
+        message.Status = OutreachStatus.Suppressed;
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message.Id, rejected = true, status = message.Status });
+    }
+
     [HttpPost("messages/{id:guid}/retry"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
     public async Task<IActionResult> RetrySend(Guid id, CancellationToken ct)
     {
