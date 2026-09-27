@@ -36,6 +36,8 @@ builder.Services.AddScoped<LeadsAI.Infrastructure.WorkspacePackages.RealWorkspac
 builder.Services.AddScoped<WorkspacePackageInstaller>();
 builder.Services.AddScoped<CampaignExecutionService>();
 builder.Services.AddHostedService<CampaignExecutionWorker>();
+builder.Services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
+builder.Services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
 
 builder.Services.AddScoped<RealisticScenarioService>();
 builder.Services.AddHttpClient<IIntegrationProvider, GenericWebhookIntegration>();
