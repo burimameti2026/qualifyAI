@@ -147,6 +147,17 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             run.Status = AutonomousAgentRunStatus.Failed;
             run.Error = ex.Message;
             run.CompletedAtUtc = DateTime.UtcNow;
+            if (run.ContainerId.HasValue)
+            {
+                db.AuditLogs.Add(new AuditLog
+                {
+                    TenantId = run.TenantId,
+                    Action = "container.failed",
+                    EntityType = "CampaignContainerActivity",
+                    EntityId = run.ContainerId.Value.ToString(),
+                    DataJson = JsonSerializer.Serialize(new { level = "error", runId = run.Id, message = $"Container run failed: {ex.Message}", error = ex.Message })
+                });
+            }
 
             // A failed run is an execution failure, not a permanent agent lifecycle failure.
             // Keep the agent active while its campaign is still running so the next scheduled/manual run can recover.
@@ -318,15 +329,74 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
         DateTime now,
         CancellationToken ct)
-        => task.Type switch
+    {
+        await LogActivityAsync(run, task, "info", "step.started", $"Started {task.Name}.", new { sequence = task.Sequence }, ct);
+        try
         {
-            AutonomousAgentTaskTypes.Discover => await ExecuteDiscoveryAndContinueAsync(task, run, agent, template, tasks, now, ct),
-            AutonomousAgentTaskTypes.Qualify => await ExecuteQualificationAndContinueAsync(task, run, agent, tasks, ct),
-            AutonomousAgentTaskTypes.Enrich => await ExecuteEnrichmentAndContinueAsync(task, run, agent, tasks, ct),
-            AutonomousAgentTaskTypes.BuildTargetList => await ExecuteTargetListAndContinueAsync(task, run, agent, tasks, ct),
-            AutonomousAgentTaskTypes.Outreach => await PrepareOutreachAsync(run, agent, template, tasks, ct),
-            _ => throw new InvalidOperationException($"No executor is registered for acquisition task '{task.Type}'.")
-        };
+            var waiting = task.Type switch
+            {
+                AutonomousAgentTaskTypes.Discover => await ExecuteDiscoveryAndContinueAsync(task, run, agent, template, tasks, now, ct),
+                AutonomousAgentTaskTypes.Qualify => await ExecuteQualificationAndContinueAsync(task, run, agent, tasks, ct),
+                AutonomousAgentTaskTypes.Enrich => await ExecuteEnrichmentAndContinueAsync(task, run, agent, tasks, ct),
+                AutonomousAgentTaskTypes.BuildTargetList => await ExecuteTargetListAndContinueAsync(task, run, agent, tasks, ct),
+                AutonomousAgentTaskTypes.Outreach => await PrepareOutreachAsync(run, agent, template, tasks, ct),
+                _ => throw new InvalidOperationException($"No executor is registered for acquisition task '{task.Type}'.")
+            };
+            if (waiting)
+                await LogActivityAsync(run, task, "warning", "step.waiting", $"{task.Name} is waiting for approval.", new { status = "waiting-approval" }, ct);
+            else
+                await LogActivityAsync(run, task, "info", "step.completed", BuildTaskSummary(task), null, ct);
+            return waiting;
+        }
+        catch (Exception ex)
+        {
+            await LogActivityAsync(run, task, "error", "step.failed", $"{task.Name} failed: {ex.Message}", new { error = ex.Message }, CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task LogActivityAsync(
+        AutonomousAcquisitionAgentRun run,
+        AutonomousAcquisitionTask task,
+        string level,
+        string eventType,
+        string message,
+        object? data,
+        CancellationToken ct)
+    {
+        if (!run.ContainerId.HasValue) return;
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = run.TenantId,
+            Action = eventType,
+            EntityType = "CampaignContainerActivity",
+            EntityId = run.ContainerId.Value.ToString(),
+            DataJson = JsonSerializer.Serialize(new { level, runId = run.Id, taskId = task.Id, stepType = task.Type, stepName = task.Name, message, data })
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static string BuildTaskSummary(AutonomousAcquisitionTask task)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(task.ResultJson) ? "{}" : task.ResultJson);
+            var root = doc.RootElement;
+            return task.Type switch
+            {
+                AutonomousAgentTaskTypes.Discover => $"Discovery completed: found {ReadJsonInt(root, "discovered")} prospects.",
+                AutonomousAgentTaskTypes.Qualify => $"Qualification completed: processed {ReadJsonInt(root, "processed")} prospects, {ReadJsonInt(root, "qualified")} qualified.",
+                AutonomousAgentTaskTypes.Enrich => $"Enrichment completed: {ReadJsonInt(root, "enriched")} qualified prospects have evidence.",
+                AutonomousAgentTaskTypes.BuildTargetList => $"Target list completed: added {ReadJsonInt(root, "added")} prospects.",
+                AutonomousAgentTaskTypes.Outreach => $"Outreach preparation completed: prepared {ReadJsonInt(root, "prepared")} messages; approval required.",
+                _ => $"{task.Name} completed."
+            };
+        }
+        catch { return $"{task.Name} completed."; }
+    }
+
+    private static int ReadJsonInt(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var value) && value.TryGetInt32(out var number) ? number : 0;
 
     private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
     {
