@@ -46,17 +46,6 @@ public sealed class AgentJobFactory(AppDbContext db) : IAgentJobFactory
         if (existing is not null)
             return existing;
 
-        var legacyRun = new AutonomousAcquisitionAgentRun
-        {
-            TenantId = tenantId,
-            AgentId = agentId,
-            IsManual = isManual,
-            Status = AutonomousAgentRunStatus.Queued,
-            Query = query
-        };
-
-        db.AutonomousAcquisitionAgentRuns.Add(legacyRun);
-
         var job = new AgentJob
         {
             TenantId = tenantId,
@@ -64,9 +53,11 @@ public sealed class AgentJobFactory(AppDbContext db) : IAgentJobFactory
             ContainerId = containerId,
             AgentId = agentId,
             Type = type,
+            IsManual = isManual,
+            Query = query,
             Sequence = 1,
             Status = AgentJobStatus.Queued,
-            PayloadJson = JsonSerializer.Serialize(new { runId = legacyRun.Id, query }),
+            PayloadJson = JsonSerializer.Serialize(new { query }),
             ScheduledAtUtc = DateTime.UtcNow
         };
 
