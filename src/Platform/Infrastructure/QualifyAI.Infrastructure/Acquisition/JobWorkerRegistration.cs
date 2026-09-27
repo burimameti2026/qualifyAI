@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace QualifyAI.Infrastructure.Acquisition;
+namespace LeadsAI.Infrastructure.Acquisition;
 
 public static class JobWorkerRegistration
 {
