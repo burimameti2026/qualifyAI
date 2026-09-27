@@ -612,12 +612,23 @@ public sealed class AcquisitionController(
                     .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
                 if (campaign is null)
                     throw new KeyNotFoundException($"Campaign '{id}' was not found.");
-
                 campaign.Resume();
-                var run = await QueueCampaignRunAsync(campaign, isManual: true, ct);
-                runId = run?.Id;
+                var agentId = campaign.AgentId;
+                if (!agentId.HasValue)
+                    throw new InvalidOperationException("Campaign agent is not configured.");
 
-                await db.SaveChangesAsync(ct);
+                var job = await jobFactory.QueueCampaignAsync(
+                    TenantId,
+                    campaign.Id,
+                    agentId.Value,
+                    null,
+                    "campaign.execute",
+                    $"campaign:{campaign.Id}",
+                    true,
+                    ct);
+                runId = job.Id;
+
+await db.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
             });
 
