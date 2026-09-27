@@ -1,40 +1,28 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Infrastructure.Acquisition;
 
-/// <summary>
-/// Transitional executor: Job is now the queue/ownership boundary while the
-/// existing acquisition business implementation is reused behind it.
-/// The old AgentRun is only a compatibility payload and is not claimed by workers.
-/// </summary>
 public sealed class AutonomousAcquisitionJobExecutor(
     AppDbContext db,
-    IAutonomousAcquisitionRunOrchestrator legacyOrchestrator) : IAgentJobExecutor
+    IAutonomousAcquisitionJobOrchestrator orchestrator) : IAgentJobExecutor
 {
     public async Task ExecuteAsync(AgentJob job, CancellationToken ct)
     {
         try
         {
-            var payload = JsonSerializer.Deserialize<JobCompatibilityPayload>(job.PayloadJson)
-                ?? new JobCompatibilityPayload();
+            await orchestrator.ExecuteAsync(job, ct);
 
-            if (payload.RunId is Guid runId)
+            if (job.Status == AgentJobStatus.Running)
             {
-                await legacyOrchestrator.ExecuteAsync(runId, ct);
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    $"No execution adapter is registered for Job type '{job.Type}'.");
+                job.Status = AgentJobStatus.Completed;
+                job.CompletedAtUtc = DateTime.UtcNow;
             }
 
-            job.Status = AgentJobStatus.Completed;
-            job.CompletedAtUtc = DateTime.UtcNow;
             job.Error = null;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
             job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
         }
@@ -47,7 +35,6 @@ public sealed class AutonomousAcquisitionJobExecutor(
             job.Status = job.AttemptCount < job.MaxAttempts
                 ? AgentJobStatus.Queued
                 : AgentJobStatus.Failed;
-
             job.Error = ex.Message;
             job.LeaseUntilUtc = null;
             job.WorkerId = null;
@@ -56,6 +43,4 @@ public sealed class AutonomousAcquisitionJobExecutor(
             throw;
         }
     }
-
-    private sealed record JobCompatibilityPayload(Guid? RunId);
 }
