@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
 
@@ -228,7 +229,7 @@ public static class AiCampaignOperatorEndpoints
 
         g.MapPost("/tenants/{tenantId:guid}/campaigns/{campaignId:guid}/start",
             async (Guid tenantId, Guid campaignId, AppDbContext db,
-                IAutonomousAcquisitionRunOrchestrator orchestrator, CancellationToken ct) =>
+                IAgentJobFactory jobFactory, CancellationToken ct) =>
             {
                 var campaign = await db.Campaigns.FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
@@ -245,21 +246,28 @@ public static class AiCampaignOperatorEndpoints
 
                 campaign.Start();
 
-                // Enrollment belongs to the acquisition orchestrator after qualification.
-                // Pre-enrolling here would make outreach preparation skip the prospects.
-                var run = new AutonomousAcquisitionAgentRun
-                {
-                    TenantId = tenantId, AgentId = agent.Id, CampaignId = campaignId, IsManual = false,
-                    Status = AutonomousAgentRunStatus.Queued,
-                    ScheduledAtUtc = DateTime.UtcNow,
-                    Query = $"campaign:{campaignId}"
-                };
-                db.AutonomousAcquisitionAgentRuns.Add(run);
+                var job = await jobFactory.QueueCampaignAsync(
+                    tenantId,
+                    campaignId,
+                    agent.Id,
+                    null,
+                    "campaign.execute",
+                    $"campaign:{campaignId}",
+                    false,
+                    ct);
+
                 await db.SaveChangesAsync(ct);
 
                 return Results.Accepted(
                     $"/api/ai-campaign-operator/tenants/{tenantId}/campaigns/{campaignId}/status",
-                    new { campaignId, status = campaign.Status, agentId = agent.Id, runId = run.Id });
+                    new
+                    {
+                        campaignId,
+                        status = campaign.Status,
+                        agentId = agent.Id,
+                        jobId = job.Id,
+                        jobStatus = job.Status.ToString()
+                    });
             });
 
         g.MapGet("/tenants/{tenantId:guid}/campaigns/{campaignId:guid}/status",
@@ -281,25 +289,43 @@ public static class AiCampaignOperatorEndpoints
                 var replied = await db.ProspectReplies.CountAsync(
                     x => x.TenantId == tenantId && x.CampaignId == campaignId, ct);
 
-                var run = await db.AutonomousAcquisitionAgentRuns.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId && x.Query == $"campaign:{campaignId}")
-                    .OrderByDescending(x => x.ScheduledAtUtc)
+                var job = await db.AgentJobs.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
+                    .OrderByDescending(x => x.CreatedAtUtc)
                     .FirstOrDefaultAsync(ct);
 
-                var agent = run is null ? null : await db.AutonomousAcquisitionAgents.AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == run.AgentId, ct);
+                var agent = campaign.AgentId.HasValue
+                    ? await db.AutonomousAcquisitionAgents.AsNoTracking()
+                        .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct)
+                    : null;
 
                 return Results.Ok(new
                 {
                     campaign = new { campaign.Id, campaign.Name, campaign.Status, campaign.StartsAtUtc },
                     agent = agent is null ? null : new { agent.Id, agent.Name, agent.Status, agent.TemplateCode, agent.LastRunAtUtc },
-                    run,
-                    metrics = new { recipients, active, awaitingDelivery, completed, failed, sent, replied },
-                    aiStatus = run?.Status switch
+                    job = job is null ? null : new
                     {
-                        AutonomousAgentRunStatus.Completed => "completed",
-                        AutonomousAgentRunStatus.Running => "running",
-                        AutonomousAgentRunStatus.Failed => "attention",
+                        job.Id,
+                        job.Type,
+                        job.Status,
+                        job.AttemptCount,
+                        job.MaxAttempts,
+                        job.Priority,
+                        job.WorkerId,
+                        job.ScheduledAtUtc,
+                        job.ClaimedAtUtc,
+                        job.StartedAtUtc,
+                        job.CompletedAtUtc,
+                        job.Error
+                    },
+                    metrics = new { recipients, active, awaitingDelivery, completed, failed, sent, replied },
+                    aiStatus = job?.Status switch
+                    {
+                        AgentJobStatus.Completed => "completed",
+                        AgentJobStatus.Running => "running",
+                        AgentJobStatus.Failed => "attention",
+                        AgentJobStatus.Waiting => "waiting",
+                        AgentJobStatus.Queued => "queued",
                         _ => campaign.Status == CampaignStatus.Running ? "queued" : "ready"
                     }
                 });
