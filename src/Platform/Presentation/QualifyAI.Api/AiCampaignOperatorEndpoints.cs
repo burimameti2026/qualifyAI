@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using QualifyAI.Domain;
-using QualifyAI.Infrastructure.Acquisition;
-using QualifyAI.Persistence.SqlServer;
+using LeadsAI.Domain;
+using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Persistence.SqlServer;
 
-namespace QualifyAI.Api;
+namespace LeadsAI.Api;
 
 public static class AiCampaignOperatorEndpoints
 {
@@ -162,6 +162,13 @@ public static class AiCampaignOperatorEndpoints
                     packInstalled = true;
                 }
 
+                campaign.AgentId = agent.Id;
+                campaign.PackageCode = pack?.Code ?? template.Code;
+                campaign.PackageVersion = "1.0";
+                campaign.Objective = input.Brief.Trim();
+                campaign.PlanStatus = "ready";
+                campaign.PlanJson = JsonSerializer.Serialize(new { source = "ai-campaign-operator", brief = input.Brief, industry = parsed.Industry, countries = parsed.Countries, template = template.Code });
+
                 await db.SaveChangesAsync(ct);
 
                 var checks = new[]
@@ -196,6 +203,9 @@ public static class AiCampaignOperatorEndpoints
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
                 if (campaign is null) return Results.NotFound(new { error = "campaign_not_found" });
 
+                if (!campaign.AgentId.HasValue)
+                    return Results.Conflict(new { error = "campaign_agent_not_ready" });
+
                 var agent = await db.AutonomousAcquisitionAgents
                     .Where(x => x.TenantId == tenantId && x.Status != AutonomousAgentStatus.Stopped)
                     .OrderByDescending(x => x.UpdatedAtUtc)
@@ -220,7 +230,7 @@ public static class AiCampaignOperatorEndpoints
                     new CampaignRecipient
                     {
                         TenantId = tenantId, CampaignId = campaignId, ProspectId = id,
-                        CurrentStep = 1, Status = "active",
+                        CurrentStep = 0, Status = "active",
                         NextRunAtUtc = DateTime.UtcNow
                     }));
 
@@ -228,6 +238,7 @@ public static class AiCampaignOperatorEndpoints
                 {
                     TenantId = tenantId, AgentId = agent.Id, IsManual = false,
                     Status = AutonomousAgentRunStatus.Queued,
+                    ScheduledAtUtc = DateTime.UtcNow,
                     Query = $"campaign:{campaignId}"
                 };
                 db.AutonomousAcquisitionAgentRuns.Add(run);
@@ -245,6 +256,10 @@ public static class AiCampaignOperatorEndpoints
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
                 if (campaign is null) return Results.NotFound();
 
+                var active = await db.CampaignRecipients.CountAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Status == "active", ct);
+                var awaitingDelivery = await db.CampaignRecipients.CountAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Status == "awaiting-delivery", ct);
+                var completed = await db.CampaignRecipients.CountAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Status == "completed", ct);
+                var failed = await db.CampaignRecipients.CountAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Status == "failed", ct);
                 var recipients = await db.CampaignRecipients.CountAsync(
                     x => x.TenantId == tenantId && x.CampaignId == campaignId, ct);
                 var sent = await db.OutreachMessages.CountAsync(
@@ -266,7 +281,7 @@ public static class AiCampaignOperatorEndpoints
                     campaign = new { campaign.Id, campaign.Name, campaign.Status, campaign.StartsAtUtc },
                     agent = agent is null ? null : new { agent.Id, agent.Name, agent.Status, agent.TemplateCode, agent.LastRunAtUtc },
                     run,
-                    metrics = new { recipients, sent, replied },
+                    metrics = new { recipients, active, awaitingDelivery, completed, failed, sent, replied },
                     aiStatus = run?.Status switch
                     {
                         AutonomousAgentRunStatus.Completed => "completed",
