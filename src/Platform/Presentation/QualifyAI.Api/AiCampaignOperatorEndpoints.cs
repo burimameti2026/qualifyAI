@@ -164,7 +164,7 @@ public static class AiCampaignOperatorEndpoints
 
                 campaign.AgentId = agent.Id;
                 campaign.PackageCode = pack?.Code ?? template.Code;
-                campaign.PackageVersion = pack?.Version ?? "1.0";
+                campaign.PackageVersion = "1.0";
                 campaign.Objective = input.Brief.Trim();
                 campaign.PlanStatus = "ready";
                 campaign.PlanJson = JsonSerializer.Serialize(new { source = "ai-campaign-operator", brief = input.Brief, industry = parsed.Industry, countries = parsed.Countries, template = template.Code });
