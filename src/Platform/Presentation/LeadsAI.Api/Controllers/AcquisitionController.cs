@@ -600,6 +600,20 @@ public sealed class AcquisitionController(
             ScheduledAtUtc = DateTime.UtcNow
         };
         db.AutonomousAcquisitionAgentRuns.Add(run);
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = TenantId,
+            Action = "container.started",
+            EntityType = "CampaignContainerActivity",
+            EntityId = container.Id.ToString(),
+            DataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                level = "info",
+                runId = run.Id,
+                message = $"Container '{container.Name}' started.",
+                data = new { status = "queued" }
+            })
+        });
         await db.SaveChangesAsync(ct);
 
         return Ok(new { container.Id, container.Status, runId = run.Id });
@@ -632,6 +646,20 @@ public sealed class AcquisitionController(
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Status, AutonomousAgentRunStatus.Cancelled)
                 .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = TenantId,
+            Action = "container.stopped",
+            EntityType = "CampaignContainerActivity",
+            EntityId = container.Id.ToString(),
+            DataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                level = "info",
+                message = $"Container '{container.Name}' stopped.",
+                data = new { status = "stopped" }
+            })
+        });
 
         await db.SaveChangesAsync(ct);
         return Ok(new { container.Id, container.Status });
