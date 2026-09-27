@@ -171,7 +171,7 @@ public static class AiCampaignOperatorEndpoints
 
                 await db.SaveChangesAsync(ct);
 
-                var checks = new [];
+                var checks = new[]
                 {
                     new { name = "pack", status = packInstalled ? "ok" : "missing" },
                     new { name = "icp", status = "ok" },
