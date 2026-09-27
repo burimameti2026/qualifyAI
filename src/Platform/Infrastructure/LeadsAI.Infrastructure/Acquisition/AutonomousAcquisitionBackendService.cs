@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Email;
 using LeadsAI.Persistence.SqlServer;
 
