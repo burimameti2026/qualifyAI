@@ -72,7 +72,6 @@ public static class DependencyInjection
         services.AddHostedService<ModuleProvisioningRetryWorker>();
         services.AddHostedService<LicenseExpirationWorker>();
         services.AddHostedService<TenantLifecycleReconciliationWorker>();
-        services.AddHostedService<AutonomousAcquisitionQueuedRunWorker>();
         services.AddHostedService<AutonomousAcquisitionSchedulerWorker>();
         services.AddHostedService<OutreachDeliveryWorker>();
         services.AddHostedService<CampaignExecutionWorker>();
@@ -101,7 +100,11 @@ public static class DependencyInjection
         services.AddSingleton<IAutonomousAcquisitionTemplateRegistry, AutonomousAcquisitionTemplateRegistry>();
         services.AddScoped<IAutonomousAcquisitionBackendService, AutonomousAcquisitionBackendService>();
         services.AddScoped<IAutonomousAcquisitionWorkflowPlanner, AutonomousAcquisitionWorkflowPlanner>();
-        services.AddScoped<IAutonomousAcquisitionRunOrchestrator, AutonomousAcquisitionRunOrchestrator>();
+        services.AddScoped<IAutonomousAcquisitionJobOrchestrator, AutonomousAcquisitionJobOrchestrator>();
+        services.AddScoped<IAgentJobQueue, AgentJobQueue>();
+        services.AddScoped<IAgentJobFactory, AgentJobFactory>();
+        services.AddScoped<IAgentJobExecutor, AutonomousAcquisitionJobExecutor>();
+        services.AddHostedService<TenantJobWorkerPool>();
         services.AddHttpClient<SerpApiProspectDiscoveryProvider>(c =>
         {
             c.BaseAddress = new Uri("https://serpapi.com/");
