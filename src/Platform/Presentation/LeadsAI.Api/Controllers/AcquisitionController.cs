@@ -220,6 +220,177 @@ public sealed class AcquisitionController(
         return Ok(campaigns);
     }
 
+    [HttpGet("campaign-history")]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> CampaignHistory(
+        [FromQuery] string? campaignName,
+        [FromQuery] string? containerName,
+        [FromQuery] string? agentName,
+        [FromQuery] string? packCode,
+        [FromQuery] string? status,
+        [FromQuery] string? stepType,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] int take = 500,
+        CancellationToken ct = default)
+    {
+        var tenantId = TenantId;
+        take = Math.Clamp(take, 1, 2000);
+
+        var campaigns = await db.Campaigns.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new
+            {
+                x.Id,
+                x.Name,
+                x.PackageCode,
+                x.AgentId
+            })
+            .ToListAsync(ct);
+
+        var containers = await db.CampaignContainers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new
+            {
+                x.Id,
+                x.CampaignId,
+                x.AgentId,
+                x.Name,
+                x.PackageCode,
+                x.PackageVersion,
+                x.Status
+            })
+            .ToListAsync(ct);
+
+        var agents = await db.AutonomousAcquisitionAgents.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new { x.Id, x.Name })
+            .ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+
+        var campaignMap = campaigns.ToDictionary(x => x.Id);
+        var containerMap = containers.ToDictionary(x => x.Id);
+
+        var allowedContainerIds = containers
+            .Where(x =>
+                (string.IsNullOrWhiteSpace(campaignName) ||
+                 (campaignMap.TryGetValue(x.CampaignId, out var campaign) &&
+                  campaign.Name.Contains(campaignName.Trim()))) &&
+                (string.IsNullOrWhiteSpace(containerName) ||
+                 x.Name.Contains(containerName.Trim())) &&
+                (string.IsNullOrWhiteSpace(packCode) ||
+                 x.PackageCode.Contains(packCode.Trim())) &&
+                (string.IsNullOrWhiteSpace(agentName) ||
+                 (agents.TryGetValue(x.AgentId, out var name) &&
+                  name.Contains(agentName.Trim()))))
+            .Select(x => x.Id)
+            .ToHashSet();
+
+        var logs = await db.AuditLogs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId &&
+                        x.EntityType == "CampaignContainerActivity")
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Take(Math.Min(take * 5, 10000))
+            .ToListAsync(ct);
+
+        var items = new List<object>(Math.Min(logs.Count, take));
+
+        foreach (var log in logs)
+        {
+            if (!Guid.TryParse(log.EntityId, out var containerId) ||
+                !allowedContainerIds.Contains(containerId) ||
+                !containerMap.TryGetValue(containerId, out var container) ||
+                !campaignMap.TryGetValue(container.CampaignId, out var campaign))
+                continue;
+
+            if (fromUtc.HasValue && log.CreatedAtUtc < fromUtc.Value) continue;
+            if (toUtc.HasValue && log.CreatedAtUtc > toUtc.Value) continue;
+
+            string level = "info";
+            string eventStepType = "";
+            string stepName = "";
+            string message = log.Action;
+            string? runId = null;
+            string? taskId = null;
+            object data = new { };
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(log.DataJson ?? "{}");
+                var root = doc.RootElement;
+                if (root.TryGetProperty("level", out var p)) level = p.GetString() ?? level;
+                if (root.TryGetProperty("stepType", out p)) eventStepType = p.GetString() ?? "";
+                if (root.TryGetProperty("stepName", out p)) stepName = p.GetString() ?? "";
+                if (root.TryGetProperty("message", out p)) message = p.GetString() ?? message;
+                if (root.TryGetProperty("runId", out p)) runId = p.ToString();
+                if (root.TryGetProperty("taskId", out p)) taskId = p.ToString();
+                if (root.TryGetProperty("data", out p)) data = p.Clone();
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Keep the persisted audit event visible even when an older payload is malformed.
+            }
+
+            if (!string.IsNullOrWhiteSpace(stepType) &&
+                !string.Equals(eventStepType, stepType.Trim(), StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var eventStatus = level.Equals("error", StringComparison.OrdinalIgnoreCase) ||
+                              level.Equals("failed", StringComparison.OrdinalIgnoreCase) ||
+                              log.Action.Contains("failed", StringComparison.OrdinalIgnoreCase)
+                ? "Failed"
+                : log.Action.Contains("waiting", StringComparison.OrdinalIgnoreCase)
+                    ? "Waiting"
+                    : log.Action.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
+                      log.Action.Contains("stopped", StringComparison.OrdinalIgnoreCase)
+                        ? "Completed"
+                        : log.Action.Contains("started", StringComparison.OrdinalIgnoreCase)
+                            ? "Running"
+                            : level;
+
+            if (!string.IsNullOrWhiteSpace(status) &&
+                !string.Equals(eventStatus, status.Trim(), StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            items.Add(new
+            {
+                id = log.Id,
+                atUtc = log.CreatedAtUtc,
+                campaignId = campaign.Id,
+                campaignName = campaign.Name,
+                containerId = container.Id,
+                containerName = container.Name,
+                agentId = container.AgentId,
+                agentName = agents.TryGetValue(container.AgentId, out var agent) ? agent : "Unknown",
+                packCode = container.PackageCode,
+                packVersion = container.PackageVersion,
+                runId,
+                taskId,
+                stepType = eventStepType,
+                stepName,
+                eventType = log.Action,
+                level,
+                status = eventStatus,
+                message,
+                data
+            });
+
+            if (items.Count >= take) break;
+        }
+
+        return Ok(new
+        {
+            items,
+            total = items.Count,
+            filters = new
+            {
+                campaigns = campaigns.Select(x => new { x.Id, x.Name }).OrderBy(x => x.Name),
+                containers = containers.Select(x => new { x.Id, x.Name, x.CampaignId }).OrderBy(x => x.Name),
+                agents = agents.Select(x => new { id = x.Key, name = x.Value }).OrderBy(x => x.name),
+                packs = containers.Select(x => x.PackageCode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().OrderBy(x => x)
+            }
+        });
+    }
+
     [HttpGet("campaigns/{id:guid}")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignDetail(Guid id, CancellationToken ct)
