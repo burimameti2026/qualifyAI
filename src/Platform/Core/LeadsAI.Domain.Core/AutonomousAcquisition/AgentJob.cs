@@ -24,6 +24,13 @@ public sealed class AgentJob
     public Guid AgentId { get; set; }
 
     public string Type { get; set; } = string.Empty;
+    public bool IsManual { get; set; }
+    public string? Query { get; set; }
+    public int DiscoveredCount { get; set; }
+    public int QualifiedCount { get; set; }
+    public int HighScoreCount { get; set; }
+    public int EmailsQueuedCount { get; set; }
+    public int EmailsSentCount { get; set; }
     public int Sequence { get; set; }
     public AgentJobStatus Status { get; set; } = AgentJobStatus.Queued;
 
