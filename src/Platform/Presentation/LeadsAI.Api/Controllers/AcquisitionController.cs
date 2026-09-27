@@ -135,7 +135,7 @@ public sealed class AcquisitionController(
         return Ok(rows);
     }
 
-    [HttpGet("discovery/providers")];
+    [HttpGet("discovery/providers")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
 
