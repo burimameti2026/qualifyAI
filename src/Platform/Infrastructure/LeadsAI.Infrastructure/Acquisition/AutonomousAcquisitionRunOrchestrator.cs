@@ -2,91 +2,81 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Application;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 
 
 namespace LeadsAI.Infrastructure.Acquisition;
 
-public interface IAutonomousAcquisitionRunOrchestrator
+public interface IAutonomousAcquisitionJobOrchestrator
 {
-    Task ExecuteAsync(Guid runId, CancellationToken ct = default);
+    Task ExecuteAsync(AgentJob job, CancellationToken ct = default);
 }
 
-public sealed class AutonomousAcquisitionRunOrchestrator(
+public sealed class AutonomousAcquisitionJobOrchestrator(
     AppDbContext db,
     IAutonomousAcquisitionTemplateRegistry templates,
     IEnumerable<IProspectDiscoveryProvider> providers,
     IAutonomousAcquisitionBackendService backend,
     ITenantContext tenantContext,
-    IAutonomousAcquisitionWorkflowPlanner planner) : IAutonomousAcquisitionRunOrchestrator
+    IAutonomousAcquisitionWorkflowPlanner planner) : IAutonomousAcquisitionJobOrchestrator
 {
-    public async Task ExecuteAsync(Guid runId, CancellationToken ct = default)
+    public async Task ExecuteAsync(AgentJob job, CancellationToken ct = default)
     {
-        var run = await db.AutonomousAcquisitionAgentRuns.SingleOrDefaultAsync(x => x.Id == runId, ct)
-            ?? throw new InvalidOperationException("Agent run was not found.");
+        job = await db.AgentJobs.SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.Id, ct)
+            ?? throw new InvalidOperationException("Agent job was not found.");
 
-        if (run.Status is not (AutonomousAgentRunStatus.Queued or AutonomousAgentRunStatus.WaitingApproval))
+        if (job.Status is not (AgentJobStatus.Queued or AgentJobStatus.Running or AgentJobStatus.Waiting))
             return;
 
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct)
-            ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
+            .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct)
+            ?? throw new InvalidOperationException("Campaign was not found for the acquisition job.");
 
         if (campaign.Status is not CampaignStatus.Running)
         {
-            run.Status = campaign.Status == CampaignStatus.Paused
-                ? AutonomousAgentRunStatus.Paused
-                : AutonomousAgentRunStatus.Cancelled;
+            job.Status = campaign.Status == CampaignStatus.Paused
+                ? AgentJobStatus.Waiting
+                : AgentJobStatus.Cancelled;
             await db.SaveChangesAsync(ct);
             return;
         }
 
         var agent = await db.AutonomousAcquisitionAgents
-            .SingleOrDefaultAsync(x => x.Id == run.AgentId && x.TenantId == run.TenantId, ct)
+            .SingleOrDefaultAsync(x => x.Id == job.AgentId && x.TenantId == job.TenantId, ct)
             ?? throw new InvalidOperationException("Agent was not found.");
 
         if (agent.Status is AutonomousAgentStatus.Paused)
         {
-            run.Status = AutonomousAgentRunStatus.Paused;
+            job.Status = AgentJobStatus.Waiting;
             await db.SaveChangesAsync(ct);
             return;
         }
 
         if (agent.Status is AutonomousAgentStatus.Stopped)
         {
-            run.Status = AutonomousAgentRunStatus.Cancelled;
-            run.CompletedAtUtc = DateTime.UtcNow;
+            job.Status = AgentJobStatus.Cancelled;
+            job.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return;
         }
 
         if (agent.Status is not AutonomousAgentStatus.Active)
-            throw new InvalidOperationException("Only active agents are allowed to run.");
+            throw new InvalidOperationException("Only active agents are allowed to job.");
 
-        if (tenantContext.Current?.Id != run.TenantId)
-            throw new InvalidOperationException("Autonomous acquisition run must execute inside its tenant context.");
+        if (tenantContext.Current?.Id != job.TenantId)
+            throw new InvalidOperationException("Autonomous acquisition job must execute inside its tenant context.");
 
-        var claimed = await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == run.TenantId &&
-                        x.Id == run.Id &&
-                        (x.Status == AutonomousAgentRunStatus.Queued ||
-                         x.Status == AutonomousAgentRunStatus.WaitingApproval))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, AutonomousAgentRunStatus.Running)
-                .SetProperty(x => x.StartedAtUtc, x => x.StartedAtUtc ?? DateTime.UtcNow)
-                .SetProperty(x => x.Error, (string?)null), ct);
-
-        if (claimed == 0)
-            return;
-
-        run.Status = AutonomousAgentRunStatus.Running;
-        run.StartedAtUtc ??= DateTime.UtcNow;
+        job.Status = AgentJobStatus.Running;
+        job.StartedAtUtc ??= DateTime.UtcNow;
+        job.Error = null;
+        job.UpdatedAtUtc = DateTime.UtcNow;
 
         try
         {
             var template = templates.Apply(agent);
             template = ApplyCampaignPlan(campaign, agent, template);
             await planner.EnsurePlanAsync(agent, template, ct, campaign.PlanJson);
-            var tasks = await EnsureRunTasksAsync(run, agent, template, campaign.PlanJson, ct);
+            var tasks = await EnsureJobTasksAsync(job, agent, template, campaign.PlanJson, ct);
             var now = DateTime.UtcNow;
 
             var awaitingApproval = false;
@@ -98,10 +88,10 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             var visited = new HashSet<Guid>();
             while (current is not null && visited.Add(current.Id))
             {
-                if (!await CanContinueAsync(run, agent, ct))
+                if (!await CanContinueAsync(job, agent, ct))
                     return;
 
-                awaitingApproval = await ExecuteTaskAsync(current, run, agent, template, tasks, now, ct);
+                awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, ct);
                 if (awaitingApproval)
                     break;
 
@@ -116,23 +106,24 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
             if (awaitingApproval)
             {
-                run.Status = AutonomousAgentRunStatus.WaitingApproval;
-                run.CompletedAtUtc = null;
+                job.Status = AgentJobStatus.Waiting;
+                job.CompletedAtUtc = null;
             }
             else
             {
-                run.Status = AutonomousAgentRunStatus.Completed;
-                run.CompletedAtUtc = DateTime.UtcNow;
+                job.Status = AgentJobStatus.Completed;
+                job.CompletedAtUtc = DateTime.UtcNow;
             }
 
+            job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
         }
         catch (Exception ex)
         {
             var runningTask = await db.AutonomousAcquisitionTasks
-                .FirstOrDefaultAsync(x => x.TenantId == run.TenantId &&
-                                           x.AgentId == run.AgentId &&
-                                           x.RunId == run.Id &&
+                .FirstOrDefaultAsync(x => x.TenantId == job.TenantId &&
+                                           x.AgentId == job.AgentId &&
+                                           x.RunId == job.Id &&
                                            x.Status == AutonomousAgentTaskStatus.Running,
                     CancellationToken.None);
 
@@ -144,23 +135,24 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 runningTask.UpdatedAtUtc = DateTime.UtcNow;
             }
 
-            run.Status = AutonomousAgentRunStatus.Failed;
-            run.Error = ex.Message;
-            run.CompletedAtUtc = DateTime.UtcNow;
-            if (run.ContainerId.HasValue)
+            job.Status = AgentJobStatus.Failed;
+            job.Error = ex.Message;
+            job.CompletedAtUtc = DateTime.UtcNow;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
             {
                 db.AuditLogs.Add(new AuditLog
                 {
-                    TenantId = run.TenantId,
+                    TenantId = job.TenantId,
                     Action = "container.failed",
                     EntityType = "CampaignContainerActivity",
-                    EntityId = run.ContainerId.Value.ToString(),
-                    DataJson = JsonSerializer.Serialize(new { level = "error", runId = run.Id, message = $"Container run failed: {ex.Message}", error = ex.Message })
+                    EntityId = job.ContainerId.Value.ToString(),
+                    DataJson = JsonSerializer.Serialize(new { level = "error", jobId = job.Id, message = $"Container job failed: {ex.Message}", error = ex.Message })
                 });
             }
 
-            // A failed run is an execution failure, not a permanent agent lifecycle failure.
-            // Keep the agent active while its campaign is still running so the next scheduled/manual run can recover.
             if (agent.Status == AutonomousAgentStatus.Active)
                 agent.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -168,7 +160,6 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             throw;
         }
     }
-
 
     private static AutonomousAcquisitionTemplate ApplyCampaignPlan(
         Campaign campaign,
@@ -323,40 +314,40 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
 
     private async Task<bool> ExecuteTaskAsync(
         AutonomousAcquisitionTask task,
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         AutonomousAcquisitionTemplate template,
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
         DateTime now,
         CancellationToken ct)
     {
-        await LogActivityAsync(run, task, "info", "step.started", $"Started {task.Name}.", new { sequence = task.Sequence }, ct);
+        await LogActivityAsync(job, task, "info", "step.started", $"Started {task.Name}.", new { sequence = task.Sequence }, ct);
         try
         {
             var waiting = task.Type switch
             {
-                AutonomousAgentTaskTypes.Discover => await ExecuteDiscoveryAndContinueAsync(task, run, agent, template, tasks, now, ct),
-                AutonomousAgentTaskTypes.Qualify => await ExecuteQualificationAndContinueAsync(task, run, agent, tasks, ct),
-                AutonomousAgentTaskTypes.Enrich => await ExecuteEnrichmentAndContinueAsync(task, run, agent, tasks, ct),
-                AutonomousAgentTaskTypes.BuildTargetList => await ExecuteTargetListAndContinueAsync(task, run, agent, tasks, ct),
-                AutonomousAgentTaskTypes.Outreach => await PrepareOutreachAsync(run, agent, template, tasks, ct),
+                AutonomousAgentTaskTypes.Discover => await ExecuteDiscoveryAndContinueAsync(task, job, agent, template, tasks, now, ct),
+                AutonomousAgentTaskTypes.Qualify => await ExecuteQualificationAndContinueAsync(task, job, agent, tasks, ct),
+                AutonomousAgentTaskTypes.Enrich => await ExecuteEnrichmentAndContinueAsync(task, job, agent, tasks, ct),
+                AutonomousAgentTaskTypes.BuildTargetList => await ExecuteTargetListAndContinueAsync(task, job, agent, tasks, ct),
+                AutonomousAgentTaskTypes.Outreach => await PrepareOutreachAsync(job, agent, template, tasks, ct),
                 _ => throw new InvalidOperationException($"No executor is registered for acquisition task '{task.Type}'.")
             };
             if (waiting)
-                await LogActivityAsync(run, task, "warning", "step.waiting", $"{task.Name} is waiting for approval.", new { status = "waiting-approval" }, ct);
+                await LogActivityAsync(job, task, "warning", "step.waiting", $"{task.Name} is waiting for approval.", new { status = "waiting-approval" }, ct);
             else
-                await LogActivityAsync(run, task, "info", "step.completed", BuildTaskSummary(task), null, ct);
+                await LogActivityAsync(job, task, "info", "step.completed", BuildTaskSummary(task), null, ct);
             return waiting;
         }
         catch (Exception ex)
         {
-            await LogActivityAsync(run, task, "error", "step.failed", $"{task.Name} failed: {ex.Message}", new { error = ex.Message }, CancellationToken.None);
+            await LogActivityAsync(job, task, "error", "step.failed", $"{task.Name} failed: {ex.Message}", new { error = ex.Message }, CancellationToken.None);
             throw;
         }
     }
 
     private async Task LogActivityAsync(
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionTask task,
         string level,
         string eventType,
@@ -364,14 +355,14 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         object? data,
         CancellationToken ct)
     {
-        if (!run.ContainerId.HasValue) return;
+        if (!job.ContainerId.HasValue) return;
         db.AuditLogs.Add(new AuditLog
         {
-            TenantId = run.TenantId,
+            TenantId = job.TenantId,
             Action = eventType,
             EntityType = "CampaignContainerActivity",
-            EntityId = run.ContainerId.Value.ToString(),
-            DataJson = JsonSerializer.Serialize(new { level, runId = run.Id, taskId = task.Id, stepType = task.Type, stepName = task.Name, message, data })
+            EntityId = job.ContainerId.Value.ToString(),
+            DataJson = JsonSerializer.Serialize(new { level, jobId = job.Id, taskId = task.Id, stepType = task.Type, stepName = task.Name, message, data })
         });
         await db.SaveChangesAsync(ct);
     }
@@ -398,45 +389,45 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     private static int ReadJsonInt(JsonElement root, string property) =>
         root.TryGetProperty(property, out var value) && value.TryGetInt32(out var number) ? number : 0;
 
-    private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
+    private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AgentJob job, AutonomousAcquisitionAgent agent, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
     {
-        await ExecuteDiscoveryAsync(run, agent, templateAgentTemplate, tasks, now, ct);
+        await ExecuteDiscoveryAsync(job, agent, templateAgentTemplate, tasks, now, ct);
         return false;
     }
 
-    private async Task<bool> ExecuteQualificationAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
+    private async Task<bool> ExecuteQualificationAndContinueAsync(AutonomousAcquisitionTask task, AgentJob job, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
     {
-        await ExecuteQualificationAsync(run, agent, tasks, ct);
+        await ExecuteQualificationAsync(job, agent, tasks, ct);
         return false;
     }
 
-    private async Task<bool> ExecuteEnrichmentAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
+    private async Task<bool> ExecuteEnrichmentAndContinueAsync(AutonomousAcquisitionTask task, AgentJob job, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
     {
-        await ExecuteEnrichmentAsync(run, agent, tasks, ct);
+        await ExecuteEnrichmentAsync(job, agent, tasks, ct);
         return false;
     }
 
-    private async Task<bool> ExecuteTargetListAndContinueAsync(AutonomousAcquisitionTask task, AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
+    private async Task<bool> ExecuteTargetListAndContinueAsync(AutonomousAcquisitionTask task, AgentJob job, AutonomousAcquisitionAgent agent, IReadOnlyList<AutonomousAcquisitionTask> tasks, CancellationToken ct)
     {
-        await ExecuteTargetListAsync(run, agent, tasks, ct);
+        await ExecuteTargetListAsync(job, agent, tasks, ct);
         return false;
     }
 
-    private async Task<bool> CanContinueAsync(AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, CancellationToken ct)
+    private async Task<bool> CanContinueAsync(AgentJob job, AutonomousAcquisitionAgent agent, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct);
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
         if (campaign.Status == CampaignStatus.Paused || agent.Status == AutonomousAgentStatus.Paused)
         {
-            run.Status = AutonomousAgentRunStatus.Paused;
-            run.CompletedAtUtc = null;
+            job.Status = AutonomousAgentRunStatus.Paused;
+            job.CompletedAtUtc = null;
             await db.SaveChangesAsync(ct);
             return false;
         }
 
         if (campaign.Status is CampaignStatus.Stopped or CampaignStatus.Completed || agent.Status is AutonomousAgentStatus.Stopped)
         {
-            run.Status = AutonomousAgentRunStatus.Cancelled;
-            run.CompletedAtUtc = DateTime.UtcNow;
+            job.Status = AutonomousAgentRunStatus.Cancelled;
+            job.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return false;
         }
@@ -445,7 +436,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     }
 
     private async Task ExecuteDiscoveryAsync(
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         AutonomousAcquisitionTemplate template,
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
@@ -458,37 +449,37 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             ? string.Empty
             : countries[(int)(DateTime.UtcNow.Ticks % countries.Count)];
 
-        run.Query = await backend.SelectNextQueryAsync(agent, template, ct);
+        job.Query = await backend.SelectNextQueryAsync(agent, template, ct);
 
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct)
-            ?? throw new InvalidOperationException("Campaign container was not found for the acquisition run.");
+            .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct)
+            ?? throw new InvalidOperationException("Campaign container was not found for the acquisition job.");
 
-        var targetListId = await GetRunTargetListIdAsync(run, campaign, ct);
+        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
         if (targetListId.HasValue)
         {
             var existingProspects = await (
                 from member in db.TargetListMembers.AsNoTracking()
                 join prospect in db.Prospects.AsNoTracking() on member.ProspectId equals prospect.Id
-                where member.TenantId == run.TenantId &&
+                where member.TenantId == job.TenantId &&
                       member.TargetListId == targetListId.Value &&
-                      prospect.TenantId == run.TenantId
+                      prospect.TenantId == job.TenantId
                 select prospect.Id)
                 .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
                 .ToListAsync(ct);
 
-            run.DiscoveredCount = existingProspects.Count;
-            CompleteTask(task, new { discovered = run.DiscoveredCount, source = "prospect-group", targetListId });
+            job.DiscoveredCount = existingProspects.Count;
+            CompleteTask(task, new { discovered = job.DiscoveredCount, source = "prospect-group", targetListId });
             return;
         }
 
         var icpId = await db.TargetLists
-            .Where(x => x.TenantId == run.TenantId && x.Id == campaign.TargetListId)
+            .Where(x => x.TenantId == job.TenantId && x.Id == campaign.TargetListId)
             .Select(x => x.IcpProfileId)
             .FirstOrDefaultAsync(ct);
 
         var icp = icpId.HasValue
-            ? await db.IcpProfiles.SingleOrDefaultAsync(x => x.TenantId == run.TenantId && x.Id == icpId.Value && x.Active, ct)
+            ? await db.IcpProfiles.SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == icpId.Value && x.Active, ct)
             : null;
 
         icp ??= new IcpProfile
@@ -516,7 +507,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 TenantId: agent.TenantId),
             ct);
 
-        run.DiscoveredCount = candidates.Count;
+        job.DiscoveredCount = candidates.Count;
 
         var existing = await db.Prospects.Where(x => x.TenantId == agent.TenantId)
             .Select(x => x.Domain)
@@ -542,7 +533,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                 Country = string.IsNullOrWhiteSpace(candidate.Country) ? country : candidate.Country,
                 Source = provider.Name,
                 SourceUrl = candidate.SourceUrl,
-                DatasetOrigin = $"autonomous-agent:{run.CampaignId:N}",
+                DatasetOrigin = $"autonomous-agent:{job.CampaignId:N}",
                 VerificationStatus = "public-source",
                 ContactReadiness = "company-only",
                 SizeBand = "unknown",
@@ -570,18 +561,18 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         }
 
         await db.SaveChangesAsync(ct);
-        CompleteTask(task, new { discovered = run.DiscoveredCount, next = AutonomousAgentTaskTypes.Qualify });
+        CompleteTask(task, new { discovered = job.DiscoveredCount, next = AutonomousAgentTaskTypes.Qualify });
     }
 
     private async Task ExecuteQualificationAsync(
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
         CancellationToken ct)
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Qualify);
-        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct);
-        var targetListId = await GetRunTargetListIdAsync(run, campaign, ct);
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
+        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
         List<Prospect> prospects;
         if (targetListId.HasValue)
         {
@@ -598,9 +589,9 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         }
         else
         {
-            var since = run.StartedAtUtc ?? DateTime.UtcNow;
+            var since = job.StartedAtUtc ?? DateTime.UtcNow;
             prospects = await db.Prospects
-                .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since && x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}")
+                .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since && x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}")
                 .OrderByDescending(x => x.CreatedAtUtc)
                 .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
                 .ToListAsync(ct);
@@ -609,23 +600,23 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         foreach (var prospect in prospects)
         {
             var result = await backend.ResearchAsync(agent.TenantId, agent.Id, prospect, agent.MinimumScore, ct);
-            if (result.Qualified) run.QualifiedCount++;
-            if (result.Score >= agent.MinimumScore) run.HighScoreCount++;
+            if (result.Qualified) job.QualifiedCount++;
+            if (result.Score >= agent.MinimumScore) job.HighScoreCount++;
         }
 
-        CompleteTask(task, new { processed = prospects.Count, qualified = run.QualifiedCount, threshold = agent.MinimumScore });
+        CompleteTask(task, new { processed = prospects.Count, qualified = job.QualifiedCount, threshold = agent.MinimumScore });
         await db.SaveChangesAsync(ct);
     }
 
     private async Task ExecuteEnrichmentAsync(
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
         CancellationToken ct)
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Enrich);
-        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == run.TenantId && x.Id == run.CampaignId, ct);
-        var targetListId = await GetRunTargetListIdAsync(run, campaign, ct);
+        var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
+        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
         var count = targetListId.HasValue
             ? await (from member in db.TargetListMembers
                      join prospect in db.Prospects on member.ProspectId equals prospect.Id
@@ -636,8 +627,8 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                      select prospect.Id).CountAsync(ct)
             : await db.Prospects.CountAsync(x =>
                 x.TenantId == agent.TenantId &&
-                x.CreatedAtUtc >= (run.StartedAtUtc ?? DateTime.UtcNow) &&
-                x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}" &&
+                x.CreatedAtUtc >= (job.StartedAtUtc ?? DateTime.UtcNow) &&
+                x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}" &&
                 x.Status == ProspectStatus.Qualified, ct);
 
         CompleteTask(task, new
@@ -649,14 +640,14 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     }
 
     private async Task ExecuteTargetListAsync(
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
         CancellationToken ct)
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.BuildTargetList);
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == run.CampaignId, ct);
+            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == job.CampaignId, ct);
 
         if (campaign is null)
         {
@@ -664,11 +655,11 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             return;
         }
 
-        var since = run.StartedAtUtc ?? DateTime.UtcNow;
+        var since = job.StartedAtUtc ?? DateTime.UtcNow;
         var prospects = await db.Prospects
             .Where(x => x.TenantId == agent.TenantId &&
                         x.CreatedAtUtc >= since &&
-                        x.DatasetOrigin == $"autonomous-agent:{run.CampaignId:N}" &&
+                        x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}" &&
                         x.Status == ProspectStatus.Qualified)
             .ToListAsync(ct);
 
@@ -697,7 +688,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     }
 
     private async Task<bool> PrepareOutreachAsync(
-        AutonomousAcquisitionAgentRun run,
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         AutonomousAcquisitionTemplate template,
         IReadOnlyList<AutonomousAcquisitionTask> tasks,
@@ -705,7 +696,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Outreach);
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == run.CampaignId, ct);
+            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == job.CampaignId, ct);
 
         if (campaign is null)
         {
@@ -742,7 +733,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
             .Where(x => x.TenantId == agent.TenantId && x.CampaignId == campaign.Id)
             .ToListAsync(ct);
 
-        var outreachTargetListId = await GetRunTargetListIdAsync(run, campaign, ct) ?? campaign.TargetListId;
+        var outreachTargetListId = await GetJobTargetListIdAsync(job, campaign, ct) ?? campaign.TargetListId;
         var members = await db.TargetListMembers
             .Where(x => x.TenantId == agent.TenantId && x.TargetListId == outreachTargetListId)
             .Select(x => x.ProspectId)
@@ -821,15 +812,15 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         return prepared > 0;
     }
 
-    private async Task<IReadOnlyList<AutonomousAcquisitionTask>> EnsureRunTasksAsync(
-        AutonomousAcquisitionAgentRun run,
+    private async Task<IReadOnlyList<AutonomousAcquisitionTask>> EnsureJobTasksAsync(
+        AgentJob job,
         AutonomousAcquisitionAgent agent,
         AutonomousAcquisitionTemplate template,
         string campaignPlanJson,
         CancellationToken ct)
     {
         var existing = await db.AutonomousAcquisitionTasks
-            .Where(x => x.TenantId == run.TenantId && x.AgentId == agent.Id && x.RunId == run.Id)
+            .Where(x => x.TenantId == job.TenantId && x.AgentId == agent.Id && x.RunId == job.Id)
             .OrderBy(x => x.Sequence)
             .ToListAsync(ct);
         if (existing.Count > 0) return existing;
@@ -837,9 +828,9 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         var definitions = await planner.EnsurePlanAsync(agent, template, ct, campaignPlanJson);
         var instances = definitions.Select(d => new AutonomousAcquisitionTask
         {
-            TenantId = run.TenantId,
+            TenantId = job.TenantId,
             AgentId = agent.Id,
-            RunId = run.Id,
+            RunId = job.Id,
             Sequence = d.Sequence,
             Type = d.Type,
             Name = d.Name,
@@ -853,24 +844,24 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
         return instances;
     }
 
-    private async Task<bool> HasPendingApprovalAsync(AutonomousAcquisitionAgentRun run, AutonomousAcquisitionAgent agent, CancellationToken ct)
+    private async Task<bool> HasPendingApprovalAsync(AgentJob job, AutonomousAcquisitionAgent agent, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == run.CampaignId, ct);
+        var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == job.CampaignId, ct);
         if (campaign is null) return false;
         return await db.OutreachMessages.AnyAsync(x =>
-            x.TenantId == run.TenantId && x.CampaignId == campaign.Id && x.Status == OutreachStatus.Queued &&
-            db.CrmTasks.Any(t => t.TenantId == run.TenantId && t.Title == $"APPROVAL: Send outreach {x.Id}" && !t.Completed), ct);
+            x.TenantId == job.TenantId && x.CampaignId == campaign.Id && x.Status == OutreachStatus.Queued &&
+            db.CrmTasks.Any(t => t.TenantId == job.TenantId && t.Title == $"APPROVAL: Send outreach {x.Id}" && !t.Completed), ct);
     }
 
-    private async Task<Guid?> GetRunTargetListIdAsync(
-        AutonomousAcquisitionAgentRun run,
+    private async Task<Guid?> GetJobTargetListIdAsync(
+        AgentJob job,
         Campaign campaign,
         CancellationToken ct)
     {
-        if (run.ContainerId.HasValue)
+        if (job.ContainerId.HasValue)
         {
             var configuration = await db.CampaignContainers.AsNoTracking()
-                .Where(x => x.TenantId == run.TenantId && x.Id == run.ContainerId.Value)
+                .Where(x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value)
                 .Select(x => x.ConfigurationJson)
                 .SingleOrDefaultAsync(ct);
 
@@ -882,7 +873,7 @@ public sealed class AutonomousAcquisitionRunOrchestrator(
                     if (document.RootElement.TryGetProperty("targetListId", out var value) &&
                         value.ValueKind == JsonValueKind.String &&
                         Guid.TryParse(value.GetString(), out var containerTargetId) &&
-                        await db.TargetLists.AnyAsync(x => x.TenantId == run.TenantId && x.Id == containerTargetId, ct))
+                        await db.TargetLists.AnyAsync(x => x.TenantId == job.TenantId && x.Id == containerTargetId, ct))
                         return containerTargetId;
                 }
                 catch (JsonException) { }
