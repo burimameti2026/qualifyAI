@@ -621,7 +621,7 @@ public sealed class AcquisitionController(
                 await transaction.CommitAsync(ct);
             });
 
-            return Ok(new { id, status = CampaignStatus.Running, runId });
+            return Ok(new { id, status = CampaignStatus.Running, jobId = runId });
         }
         catch (KeyNotFoundException) { return NotFound(); }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
