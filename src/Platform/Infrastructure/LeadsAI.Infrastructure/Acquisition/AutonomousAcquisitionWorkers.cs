@@ -81,6 +81,7 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
         var localToday = DateOnly.FromDateTime(localNow);
         var changed = false;
         var jobFactory = services.GetRequiredService<IAgentJobFactory>();
+        var containers = services.GetRequiredService<ICampaignContainerRuntime>();
 
         foreach (var agent in agents)
         {
@@ -97,11 +98,21 @@ public sealed class AutonomousAcquisitionSchedulerWorker(IServiceScopeFactory sc
 
             if (!due || already) continue;
 
+            var container = await containers.EnsureAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                $"{campaign.Name} Container",
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanJson,
+                ct);
+
             await jobFactory.QueueCampaignAsync(
                 tenantId,
                 campaign.Id,
                 agent.Id,
-                null,
+                container.Id,
                 "campaign.execute",
                 $"campaign:{campaign.Id}",
                 false,
