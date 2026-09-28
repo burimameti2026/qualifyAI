@@ -23,6 +23,7 @@ public interface ICampaignContainerRuntime
     void Queue(CampaignContainer container);
     void Start(CampaignContainer container, DateTime nowUtc);
     void Fail(CampaignContainer container, DateTime nowUtc);
+    void Complete(CampaignContainer container, DateTime nowUtc);
     void Stop(CampaignContainer container, DateTime nowUtc);
 }
 
@@ -92,7 +93,7 @@ public sealed class CampaignContainerRuntime(AppDbContext db) : ICampaignContain
 
     public void Start(CampaignContainer container, DateTime nowUtc)
     {
-        container.Status = CampaignContainerStatus.Running;
+        container.Status = CampaignContainerStatus.Starting;
         container.LastStartedAtUtc ??= nowUtc;
         container.LastStoppedAtUtc = null;
         container.CompletedAtUtc = null;
@@ -104,6 +105,14 @@ public sealed class CampaignContainerRuntime(AppDbContext db) : ICampaignContain
         container.Status = CampaignContainerStatus.Failed;
         container.LastStoppedAtUtc = nowUtc;
         container.CompletedAtUtc = null;
+        container.UpdatedAtUtc = nowUtc;
+    }
+
+    public void Complete(CampaignContainer container, DateTime nowUtc)
+    {
+        container.Status = CampaignContainerStatus.Completed;
+        container.CompletedAtUtc = nowUtc;
+        container.LastStoppedAtUtc = null;
         container.UpdatedAtUtc = nowUtc;
     }
 
