@@ -7,6 +7,7 @@ using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Api.Services;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -19,7 +20,9 @@ public sealed class CampaignsController(
     ITenantContext tenant,
     CampaignExecutionService executor,
     ProspectReplyProcessingService replyProcessor,
-    IAgentJobFactory jobFactory) : ControllerBase
+    IAgentJobFactory jobFactory,
+    AcquisitionCriteriaService criteriaService,
+    CampaignContainerConfigurationService configurationService) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -722,7 +725,7 @@ await db.SaveChangesAsync(ct);
     }
 
 
-    private static Guid? ReadTargetListId(string? configurationJson)
+    private static Guid? configurationService.ReadTargetListId(string? configurationJson)
     {
         if (string.IsNullOrWhiteSpace(configurationJson)) return null;
         try
@@ -737,7 +740,7 @@ await db.SaveChangesAsync(ct);
         return null;
     }
 
-    private static string BuildContainerConfiguration(string? configurationJson, Guid? targetListId)
+    private static string configurationService.Build(string? configurationJson, Guid? targetListId)
     {
         var data = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(configurationJson))
@@ -757,7 +760,7 @@ await db.SaveChangesAsync(ct);
         return System.Text.Json.JsonSerializer.Serialize(data);
     }
 
-    private static int ReadMinimumScore(string? criteriaJson)
+    private static int criteriaService.ReadMinimumScore(string? criteriaJson)
     {
         if (string.IsNullOrWhiteSpace(criteriaJson)) return 70;
         try
@@ -770,7 +773,7 @@ await db.SaveChangesAsync(ct);
         return 70;
     }
 
-    private static string NormalizeCriteria(string? criteriaJson, int minimumScore)
+    private static string criteriaService.NormalizeCriteria(string? criteriaJson, int minimumScore)
     {
         var score = Math.Clamp(minimumScore, 0, 100);
         try
