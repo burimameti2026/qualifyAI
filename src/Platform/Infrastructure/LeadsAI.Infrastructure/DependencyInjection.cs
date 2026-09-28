@@ -100,6 +100,7 @@ public static class DependencyInjection
         services.AddSingleton<IAutonomousAcquisitionTemplateRegistry, AutonomousAcquisitionTemplateRegistry>();
         services.AddScoped<IAutonomousAcquisitionBackendService, AutonomousAcquisitionBackendService>();
         services.AddScoped<IAutonomousAcquisitionWorkflowPlanner, AutonomousAcquisitionWorkflowPlanner>();
+        services.AddScoped<IAgentJobTaskFactory, AgentJobTaskFactory>();
         services.AddScoped<IAutonomousAcquisitionJobOrchestrator, AutonomousAcquisitionJobOrchestrator>();
         services.AddScoped<IAgentJobQueue, AgentJobQueue>();
         services.AddScoped<IAgentJobFactory, AgentJobFactory>();
