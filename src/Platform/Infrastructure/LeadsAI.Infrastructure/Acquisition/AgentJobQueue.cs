@@ -46,6 +46,21 @@ public sealed class AgentJobQueue(AppDbContext db) : IAgentJobQueue
         job.AttemptCount++;
         job.UpdatedAtUtc = now;
 
+        if (job.ContainerId.HasValue)
+        {
+            var container = await db.CampaignContainers
+                .SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+                                           x.Id == job.ContainerId.Value, ct);
+
+            if (container is not null)
+            {
+                container.Status = CampaignContainerStatus.Running;
+                container.LastStartedAtUtc ??= now;
+                container.LastStoppedAtUtc = null;
+                container.UpdatedAtUtc = now;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
