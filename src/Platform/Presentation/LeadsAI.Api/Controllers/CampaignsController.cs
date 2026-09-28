@@ -70,7 +70,7 @@ public sealed class CampaignsController(
         return Ok(campaigns);
     }
 
-    [HttpGet("campaign-history")]
+    [HttpGet("history")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignHistory(
         [FromQuery] string? campaignName,
@@ -241,7 +241,7 @@ public sealed class CampaignsController(
         });
     }
 
-    [HttpGet("campaigns/{id:guid}")]
+    [HttpGet("{id:guid}")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignDetail(Guid id, CancellationToken ct)
     {
@@ -333,7 +333,7 @@ public sealed class CampaignsController(
         return Ok(new { campaign, steps, icp, targetList, prospects, latestRun, tasks });
     }
 
-    [HttpPut("campaigns/{id:guid}/plan")]
+    [HttpPut("{id:guid}/plan")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> SaveCampaignPlan(Guid id, CampaignPlanRequest input, CancellationToken ct)
     {
@@ -365,7 +365,7 @@ public sealed class CampaignsController(
         }
     }
 
-    [HttpPut("campaigns/{id:guid}/messages")]
+    [HttpPut("{id:guid}/messages")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> SaveCampaignMessages(Guid id, CampaignMessagesRequest input, CancellationToken ct)
     {
@@ -408,7 +408,7 @@ public sealed class CampaignsController(
         return Ok(saved);
     }
 
-    [HttpPost("campaigns/{id:guid}/pause")]
+    [HttpPost("{id:guid}/pause")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Pause(Guid id, CancellationToken ct)
     {
@@ -436,7 +436,7 @@ await db.SaveChangesAsync(ct);
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
-    [HttpPost("campaigns/{id:guid}/resume")]
+    [HttpPost("{id:guid}/resume")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Resume(Guid id, CancellationToken ct)
     {
@@ -478,7 +478,7 @@ await db.SaveChangesAsync(ct);
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
 
-    [HttpGet("campaigns/{id:guid}/activity")]
+    [HttpGet("{id:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignActivity(Guid id, CancellationToken ct)
     {
@@ -524,7 +524,7 @@ await db.SaveChangesAsync(ct);
         return Ok(await query.Take(200).ToListAsync(ct));
     }
 
-    [HttpPost("campaigns/{id:guid}/start")]
+    [HttpPost("{id:guid}/start")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Start(Guid id, CancellationToken ct)
     {
@@ -574,7 +574,7 @@ await db.SaveChangesAsync(ct);
         });
     }
 
-    [HttpDelete("campaigns/{id:guid}")]
+    [HttpDelete("{id:guid}")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -657,7 +657,7 @@ await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
-    [HttpPost("campaigns/{id:guid}/stop")]
+    [HttpPost("{id:guid}/stop")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Stop(Guid id, CancellationToken ct)
     {
