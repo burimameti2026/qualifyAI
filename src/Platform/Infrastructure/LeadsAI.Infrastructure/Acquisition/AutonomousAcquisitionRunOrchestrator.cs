@@ -19,6 +19,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     IAutonomousAcquisitionBackendService backend,
     ITenantContext tenantContext,
     IAutonomousAcquisitionWorkflowPlanner planner,
+    IAgentJobTaskFactory taskFactory,
     ICampaignContainerRuntime containers) : IAutonomousAcquisitionJobOrchestrator
 {
     public async Task ExecuteAsync(AgentJob job, CancellationToken ct = default)
@@ -87,7 +88,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             var template = templates.Apply(agent);
             template = ApplyCampaignPlan(campaign, agent, template);
             await planner.EnsurePlanAsync(agent, template, ct, campaign.PlanJson);
-            var tasks = await EnsureJobTasksAsync(job, agent, template, campaign.PlanJson, ct);
+            var tasks = await taskFactory.EnsureAsync(job, agent, template, campaign.PlanJson, ct);
             var now = DateTime.UtcNow;
 
             var awaitingApproval = false;
@@ -821,38 +822,6 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             next = "campaign approval"
         });
         return prepared > 0;
-    }
-
-    private async Task<IReadOnlyList<AutonomousAcquisitionTask>> EnsureJobTasksAsync(
-        AgentJob job,
-        AutonomousAcquisitionAgent agent,
-        AutonomousAcquisitionTemplate template,
-        string campaignPlanJson,
-        CancellationToken ct)
-    {
-        var existing = await db.AutonomousAcquisitionTasks
-            .Where(x => x.TenantId == job.TenantId && x.AgentId == agent.Id && x.RunId == job.Id)
-            .OrderBy(x => x.Sequence)
-            .ToListAsync(ct);
-        if (existing.Count > 0) return existing;
-
-        var definitions = await planner.EnsurePlanAsync(agent, template, ct, campaignPlanJson);
-        var instances = definitions.Select(d => new AutonomousAcquisitionTask
-        {
-            TenantId = job.TenantId,
-            AgentId = agent.Id,
-            RunId = job.Id,
-            Sequence = d.Sequence,
-            Type = d.Type,
-            Name = d.Name,
-            Status = AutonomousAgentTaskStatus.Pending,
-            RequiresApproval = d.RequiresApproval,
-            ConfigurationJson = d.ConfigurationJson,
-            ResultJson = "{}"
-        }).ToList();
-        db.AutonomousAcquisitionTasks.AddRange(instances);
-        await db.SaveChangesAsync(ct);
-        return instances;
     }
 
     private async Task<bool> HasPendingApprovalAsync(AgentJob job, AutonomousAcquisitionAgent agent, CancellationToken ct)
