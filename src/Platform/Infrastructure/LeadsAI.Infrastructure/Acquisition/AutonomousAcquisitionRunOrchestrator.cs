@@ -18,7 +18,8 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     IEnumerable<IProspectDiscoveryProvider> providers,
     IAutonomousAcquisitionBackendService backend,
     ITenantContext tenantContext,
-    IAutonomousAcquisitionWorkflowPlanner planner) : IAutonomousAcquisitionJobOrchestrator
+    IAutonomousAcquisitionWorkflowPlanner planner,
+    ICampaignContainerRuntime containers) : IAutonomousAcquisitionJobOrchestrator
 {
     public async Task ExecuteAsync(AgentJob job, CancellationToken ct = default)
     {
@@ -66,9 +67,19 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         if (tenantContext.Current?.Id != job.TenantId)
             throw new InvalidOperationException("Autonomous acquisition job must execute inside its tenant context.");
 
+        var runtimeNow = DateTime.UtcNow;
         job.Status = AgentJobStatus.Running;
-        job.StartedAtUtc ??= DateTime.UtcNow;
+        job.StartedAtUtc ??= runtimeNow;
         job.Error = null;
+
+        if (job.ContainerId.HasValue)
+        {
+            var container = await db.CampaignContainers
+                .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+
+            if (container is not null)
+                containers.Run(container, runtimeNow);
+        }
         job.UpdatedAtUtc = DateTime.UtcNow;
 
         try
