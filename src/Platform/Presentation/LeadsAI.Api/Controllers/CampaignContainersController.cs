@@ -7,6 +7,7 @@ using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Api.Services;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -18,7 +19,8 @@ public sealed class CampaignContainersController(
     AppDbContext db,
     ITenantContext tenant,
     IAgentJobFactory jobFactory,
-    ICampaignContainerRuntime containers) : ControllerBase
+    ICampaignContainerRuntime containers,
+    CampaignContainerConfigurationService configurationService) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -57,7 +59,7 @@ public sealed class CampaignContainersController(
         {
             x.Id, x.CampaignId, x.AgentId, x.Name, x.PackageCode, x.PackageVersion, x.Status,
             x.ConfigurationJson, x.LastStartedAtUtc, x.LastStoppedAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc,
-            targetListId = ReadTargetListId(x.ConfigurationJson),
+            targetListId = configurationService.ReadTargetListId(x.ConfigurationJson),
             x.Runs, x.ActiveRuns
         }));
     }
@@ -102,7 +104,7 @@ public sealed class CampaignContainersController(
             Name = string.IsNullOrWhiteSpace(input.Name) ? $"{campaign.Name} Container" : input.Name.Trim(),
             PackageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? campaign.PackageCode : input.PackageCode.Trim(),
             PackageVersion = string.IsNullOrWhiteSpace(input.PackageVersion) ? campaign.PackageVersion : input.PackageVersion.Trim(),
-            ConfigurationJson = BuildContainerConfiguration(input.ConfigurationJson, campaign.TargetListId),
+            ConfigurationJson = configurationService.Build(input.ConfigurationJson, campaign.TargetListId),
             Status = CampaignContainerStatus.Pending
         };
 
@@ -134,7 +136,7 @@ public sealed class CampaignContainersController(
             !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == input.TargetListId.Value, ct))
             return NotFound(new { code = "target_list_not_found", detail = "The selected prospect group does not exist in this workspace." });
 
-        container.ConfigurationJson = BuildContainerConfiguration(container.ConfigurationJson, input.TargetListId);
+        container.ConfigurationJson = configurationService.Build(container.ConfigurationJson, input.TargetListId);
         container.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
