@@ -29,13 +29,13 @@ public static class RealWorkspaceEndpoints
             schedule = "daily"
         }));
 
-        g.MapPost("/prepare", async (RealWorkspaceRequest request, ICurrentTenant currentTenant, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct) =>
+        g.MapPost("/prepare", async (RealWorkspaceRequest request, ICurrentTenant currentTenant, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, IAgentJobFactory jobFactory, ICampaignContainerRuntime containers, CancellationToken ct) =>
         {
             var tenantId = ResolveTenant(request, currentTenant);
             if (tenantId is null) return Results.BadRequest(new { error = "The selected workspace does not belong to the current tenant." });
 
             var scopedRequest = request with { TenantId = tenantId.Value };
-            var result = await PrepareAndQueueAsync(scopedRequest, db, templates, ct);
+            var result = await PrepareAndQueueAsync(scopedRequest, db, templates, jobFactory, containers, ct);
             return Results.Accepted($"/api/real-workspace/tenants/{tenantId.Value}", result);
         });
 
@@ -60,41 +60,58 @@ public static class RealWorkspaceEndpoints
         return currentTenant.Id;
     }
 
-    private static async Task<RealWorkspaceResult> PrepareAndQueueAsync(RealWorkspaceRequest request, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct)
+    private static async Task<RealWorkspaceResult> PrepareAndQueueAsync(
+        RealWorkspaceRequest request,
+        AppDbContext db,
+        IAutonomousAcquisitionTemplateRegistry templates,
+        IAgentJobFactory jobFactory,
+        ICampaignContainerRuntime containers,
+        CancellationToken ct)
     {
         var agent = await EnsureAgent(request, db, templates, ct);
         var workspace = await EnsureCampaignWorkspace(request, agent, db, ct);
 
         agent.Status = AutonomousAgentStatus.Active;
         agent.UpdatedAtUtc = DateTime.UtcNow;
+        workspace.Campaign.AgentId = agent.Id;
+        workspace.Campaign.Status = CampaignStatus.Running;
 
-        var existingQueuedOrRunning = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x =>
-            x.TenantId == request.TenantId &&
-            x.AgentId == agent.Id &&
-            (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running), ct);
+        var container = await containers.EnsureAsync(
+            request.TenantId,
+            workspace.Campaign.Id,
+            agent.Id,
+            $"{workspace.Campaign.Name} Container",
+            workspace.Campaign.PackageCode,
+            workspace.Campaign.PackageVersion,
+            workspace.Campaign.PlanJson,
+            ct);
 
-        AutonomousAcquisitionAgentRun? initialRun = null;
-        if (!existingQueuedOrRunning)
-        {
-            initialRun = new AutonomousAcquisitionAgentRun
-            {
-                TenantId = request.TenantId,
-                AgentId = agent.Id,
-                IsManual = true,
-                Status = AutonomousAgentRunStatus.Queued,
-                ScheduledAtUtc = DateTime.UtcNow
-            };
-            db.AutonomousAcquisitionAgentRuns.Add(initialRun);
-        }
+        var existing = await db.AgentJobs.AsNoTracking()
+            .Where(x => x.TenantId == request.TenantId &&
+                        x.CampaignId == workspace.Campaign.Id &&
+                        (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Running || x.Status == AgentJobStatus.Waiting))
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
 
         await db.SaveChangesAsync(ct);
+
+        var job = existing ?? await jobFactory.QueueCampaignAsync(
+            request.TenantId,
+            workspace.Campaign.Id,
+            agent.Id,
+            container.Id,
+            "campaign.execute",
+            $"campaign:{workspace.Campaign.Id}",
+            true,
+            ct);
+
         return new RealWorkspaceResult(
             request.TenantId,
             agent.Id,
             agent.Name,
             agent.Status.ToString(),
-            initialRun?.Id,
-            existingQueuedOrRunning ? "already-queued" : "activation-queued",
+            job.Id,
+            existing is not null ? "already-queued" : "activation-queued",
             workspace.TargetList.Id,
             workspace.Campaign.Id);
     }
