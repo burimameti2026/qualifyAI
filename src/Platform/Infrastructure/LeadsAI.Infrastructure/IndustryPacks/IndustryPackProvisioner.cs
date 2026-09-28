@@ -176,6 +176,38 @@ public sealed class IndustryPackProvisioner(
 
         var agent = await EnsureCampaignAgentAsync(tenantId, pack, definition, campaign, ct);
         campaign.AgentId = agent.Id;
+
+        var container = await db.CampaignContainers
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+                                       x.CampaignId == campaign.Id &&
+                                       x.AgentId == agent.Id, ct);
+
+        if (container is null)
+        {
+            db.CampaignContainers.Add(new CampaignContainer
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                CampaignId = campaign.Id,
+                AgentId = agent.Id,
+                Name = $"{campaign.Name} Container",
+                PackageCode = campaign.PackageCode,
+                PackageVersion = campaign.PackageVersion,
+                Status = CampaignContainerStatus.Queued,
+                ConfigurationJson = campaign.PlanJson
+            });
+        }
+        else
+        {
+            container.Name = $"{campaign.Name} Container";
+            container.PackageCode = campaign.PackageCode;
+            container.PackageVersion = campaign.PackageVersion;
+            container.ConfigurationJson = campaign.PlanJson;
+            if (container.Status is CampaignContainerStatus.Stopped or CampaignContainerStatus.Failed or CampaignContainerStatus.Pending)
+                container.Status = CampaignContainerStatus.Queued;
+            container.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
         var runtimeTemplate = templates.Apply(agent);
         await planner.EnsurePlanAsync(agent, runtimeTemplate, ct, campaign.PlanJson);
 
