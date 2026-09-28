@@ -1,6 +1,6 @@
 namespace LeadsAI.Domain;
 
-public enum CampaignContainerStatus { Stopped, Running, Paused, Failed, Pending }
+public enum CampaignContainerStatus { Stopped, Running, Paused, Failed, Pending, Queued, Starting }
 
 public sealed class CampaignContainer : TenantEntity
 {
@@ -9,7 +9,7 @@ public sealed class CampaignContainer : TenantEntity
     public string Name { get; set; } = string.Empty;
     public string PackageCode { get; set; } = string.Empty;
     public string PackageVersion { get; set; } = string.Empty;
-    public CampaignContainerStatus Status { get; set; } = CampaignContainerStatus.Pending;
+    public CampaignContainerStatus Status { get; set; } = CampaignContainerStatus.Queued;
     public string ConfigurationJson { get; set; } = "{}";
     public DateTime? LastStartedAtUtc { get; set; }
     public DateTime? LastStoppedAtUtc { get; set; }
