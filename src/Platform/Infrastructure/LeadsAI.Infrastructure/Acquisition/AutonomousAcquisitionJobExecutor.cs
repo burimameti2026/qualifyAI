@@ -6,7 +6,8 @@ namespace LeadsAI.Infrastructure.Acquisition;
 
 public sealed class AutonomousAcquisitionJobExecutor(
     AppDbContext db,
-    IAutonomousAcquisitionJobOrchestrator orchestrator) : IAgentJobExecutor
+    IAutonomousAcquisitionJobOrchestrator orchestrator,
+    ICampaignContainerRuntime containers) : IAgentJobExecutor
 {
     public async Task ExecuteAsync(AgentJob job, CancellationToken ct)
     {
@@ -48,11 +49,7 @@ public sealed class AutonomousAcquisitionJobExecutor(
                         CancellationToken.None);
 
                 if (container is not null && job.Status == AgentJobStatus.Failed)
-                {
-                    container.Status = CampaignContainerStatus.Failed;
-                    container.LastStoppedAtUtc = DateTime.UtcNow;
-                    container.UpdatedAtUtc = DateTime.UtcNow;
-                }
+                    containers.Fail(container, DateTime.UtcNow);
             }
 
             await db.SaveChangesAsync(CancellationToken.None);
