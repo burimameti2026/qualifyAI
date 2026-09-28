@@ -135,6 +135,62 @@ public static class AutonomousAcquisitionEndpoints
 
 
 
+        g.MapGet("/tenants/{tenantId}/campaigns/{campaignId}/container", async (
+            Guid tenantId, Guid campaignId, AppDbContext db, CancellationToken ct) =>
+        {
+            var container = await db.CampaignContainers
+                .AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
+                .OrderByDescending(x => x.UpdatedAtUtc)
+                .FirstOrDefaultAsync(ct);
+
+            return container is null ? Results.NotFound() : Results.Ok(container);
+        });
+
+        g.MapGet("/tenants/{tenantId}/containers", async (
+            Guid tenantId, AppDbContext db, CancellationToken ct) =>
+            Results.Ok(await db.CampaignContainers
+                .AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .OrderByDescending(x => x.UpdatedAtUtc)
+                .Take(100)
+                .ToListAsync(ct)));
+
+        g.MapPost("/tenants/{tenantId}/campaigns/{campaignId}/container/stop", async (
+            Guid tenantId, Guid campaignId, AppDbContext db, CancellationToken ct) =>
+        {
+            var container = await db.CampaignContainers
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId, ct);
+
+            if (container is null) return Results.NotFound(new { error = "campaign_container_not_found" });
+
+            container.Status = CampaignContainerStatus.Stopped;
+            container.LastStoppedAtUtc = DateTime.UtcNow;
+            container.UpdatedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(container);
+        });
+
+        g.MapPost("/tenants/{tenantId}/campaigns/{campaignId}/container/queue", async (
+            Guid tenantId, Guid campaignId, AppDbContext db, CancellationToken ct) =>
+        {
+            var container = await db.CampaignContainers
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId, ct);
+
+            if (container is null) return Results.NotFound(new { error = "campaign_container_not_found" });
+
+            if (container.Status is CampaignContainerStatus.Running)
+                return Results.Conflict(new { error = "campaign_container_already_running" });
+
+            container.Status = CampaignContainerStatus.Queued;
+            container.LastStoppedAtUtc = null;
+            container.UpdatedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            return Results.Accepted($"/api/autonomous-acquisition/tenants/{tenantId}/campaigns/{campaignId}/container", container);
+        });
+
         g.MapGet("/tenants/{tenantId}/agents", async (
             Guid tenantId, AppDbContext db, CancellationToken ct) =>
             Results.Ok(await db.AutonomousAcquisitionAgents
