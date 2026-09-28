@@ -792,15 +792,4 @@ await db.SaveChangesAsync(ct);
         return System.Text.Json.JsonSerializer.Serialize(new { minimumScore = score });
     }
 
-    private static string NormalizeDomain(string? value)
-    {
-        var domain = (value??string.Empty).Trim().ToLowerInvariant();
-        domain=domain.Replace("https://", string.Empty).Replace("http://", string.Empty);
-        if(domain.StartsWith("www.")) domain=domain[4..];
-        return domain.Split('/')[0].TrimEnd('.');
-    }
-
-
-
-
 }
