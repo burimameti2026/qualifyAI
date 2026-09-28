@@ -21,9 +21,13 @@ public sealed class AgentJob
     public Guid TenantId { get; set; }
     public Guid CampaignId { get; set; }
     public Guid? ContainerId { get; set; }
+    public int? ContainerVersion { get; set; }
     public Guid AgentId { get; set; }
 
     public string Type { get; set; } = string.Empty;
+    public string TaskType { get; set; } = string.Empty;
+    public Guid? TaskId { get; set; }
+    public string TaskPayloadJson { get; set; } = "{}";
     public bool IsManual { get; set; }
     public string? Query { get; set; }
     public int DiscoveredCount { get; set; }
