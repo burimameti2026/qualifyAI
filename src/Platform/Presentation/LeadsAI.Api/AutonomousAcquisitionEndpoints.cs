@@ -32,33 +32,55 @@ public static class AutonomousAcquisitionEndpoints
             return next(ctx);
         });
 
-        g.MapPost("/campaigns/{campaignId}/run", async (Guid campaignId, AppDbContext db, ITenantContext tenantContext, CancellationToken ct) =>
+        g.MapPost("/campaigns/{campaignId}/run", async (
+            Guid campaignId,
+            AppDbContext db,
+            ITenantContext tenantContext,
+            IAgentJobFactory jobFactory,
+            ICampaignContainerRuntime containers,
+            CancellationToken ct) =>
         {
             var tenantId = tenantContext.Current?.Id ?? Guid.Empty;
             if (tenantId == Guid.Empty) return Results.Forbid();
 
-            var campaign = await db.Campaigns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaignId, ct);
+            var campaign = await db.Campaigns.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == campaignId, ct);
             if (campaign is null) return Results.NotFound();
-            if (!campaign.AgentId.HasValue) return Results.BadRequest(new { error = "Campaign has no autonomous acquisition agent." });
-            if (campaign.Status != CampaignStatus.Running) return Results.BadRequest(new { error = "Campaign must be running before an acquisition run can start." });
+            if (!campaign.AgentId.HasValue)
+                return Results.BadRequest(new { error = "Campaign has no autonomous acquisition agent." });
+            if (campaign.Status != CampaignStatus.Running)
+                return Results.BadRequest(new { error = "Campaign must be running before an acquisition job can start." });
 
-            var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct);
-            if (agent is null) return Results.BadRequest(new { error = "Campaign agent was not found." });
-            if (agent.Status != AutonomousAgentStatus.Active) return Results.BadRequest(new { error = "Autonomous acquisition agent must be active." });
+            var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct);
+            if (agent is null)
+                return Results.BadRequest(new { error = "Campaign agent was not found." });
+            if (agent.Status != AutonomousAgentStatus.Active)
+                return Results.BadRequest(new { error = "Autonomous acquisition agent must be active." });
 
-            var duplicate = await db.AutonomousAcquisitionAgentRuns.AnyAsync(x =>
-                x.TenantId == tenantId && x.AgentId == agent.Id && x.CampaignId == campaign.Id &&
-                (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running || x.Status == AutonomousAgentRunStatus.WaitingApproval), ct);
-            if (duplicate) return Results.Conflict(new { error = "An acquisition run is already queued, running, or waiting for approval." });
+            var container = await containers.EnsureAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                $"{campaign.Name} Container",
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanJson,
+                ct);
 
-            var run = new AutonomousAcquisitionAgentRun
-            {
-                TenantId = tenantId, AgentId = agent.Id, CampaignId = campaign.Id,
-                IsManual = true, Status = AutonomousAgentRunStatus.Queued, ScheduledAtUtc = DateTime.UtcNow
-            };
-            db.AutonomousAcquisitionAgentRuns.Add(run);
-            await db.SaveChangesAsync(ct);
-            return Results.Accepted($"/api/autonomous-acquisition/campaigns/{campaign.Id}/runs/{run.Id}", run);
+            var job = await jobFactory.QueueCampaignAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                container.Id,
+                "campaign.execute",
+                $"campaign:{campaign.Id}",
+                true,
+                ct);
+
+            return Results.Accepted(
+                $"/api/autonomous-acquisition/tenants/{tenantId}/jobs/{job.Id}",
+                new { job, container });
         });
 
         g.MapGet("/tenants/{tenantId}/campaigns", async (
@@ -235,7 +257,14 @@ public static class AutonomousAcquisitionEndpoints
                 .ToListAsync(ct)));
 
         g.MapPost("/tenants/{tenantId}/agents/{id}/runs", async (
-            Guid tenantId, Guid id, RunRequest input, AppDbContext db, ITenantContext tenant, CancellationToken ct) =>
+            Guid tenantId,
+            Guid id,
+            RunRequest input,
+            AppDbContext db,
+            IAgentJobFactory jobFactory,
+            ICampaignContainerRuntime containers,
+            ITenantContext tenant,
+            CancellationToken ct) =>
         {
             if (tenantId != tenant.TenantId())
                 return Results.Forbid();
@@ -243,32 +272,38 @@ public static class AutonomousAcquisitionEndpoints
             var campaign = await db.Campaigns.SingleOrDefaultAsync(
                 x => x.TenantId == tenantId && x.Id == input.CampaignId, ct);
             if (campaign is null) return Results.NotFound(new { detail = "Campaign was not found." });
-            if ((campaign.Status == CampaignStatus.Paused || campaign.Status == CampaignStatus.Stopped || campaign.Status == CampaignStatus.Completed))
+            if (campaign.Status is CampaignStatus.Paused or CampaignStatus.Stopped or CampaignStatus.Completed)
                 return Results.Conflict(new { detail = "The campaign is not runnable in its current status." });
 
             var agent = await db.AutonomousAcquisitionAgents.SingleOrDefaultAsync(
                 x => x.TenantId == tenantId && x.Id == id, ct);
             if (agent is null) return Results.NotFound(new { detail = "Agent was not found." });
-            if ((agent.Status == AutonomousAgentStatus.Stopped))
+            if (agent.Status == AutonomousAgentStatus.Stopped)
                 return Results.Conflict(new { detail = "The autonomous acquisition agent is stopped." });
 
-            var active = await db.AutonomousAcquisitionAgentRuns.AnyAsync(
-                x => x.TenantId == tenantId && x.AgentId == id && x.CampaignId == input.CampaignId &&
-                     (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running || x.Status == AutonomousAgentRunStatus.WaitingApproval), ct);
-            if (active) return Results.Conflict(new { detail = "An acquisition run is already active for this campaign." });
+            var container = await containers.EnsureAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                $"{campaign.Name} Container",
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanJson,
+                ct);
 
-            var run = new AutonomousAcquisitionAgentRun
-            {
-                TenantId = tenantId,
-                AgentId = id,
-                CampaignId = input.CampaignId,
-                IsManual = true,
-                Status = AutonomousAgentRunStatus.Queued,
-                ScheduledAtUtc = DateTime.UtcNow
-            };
-            db.AutonomousAcquisitionAgentRuns.Add(run);
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(run);
+            var job = await jobFactory.QueueCampaignAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                container.Id,
+                "campaign.execute",
+                $"campaign:{campaign.Id}",
+                true,
+                ct);
+
+            return Results.Accepted(
+                $"/api/autonomous-acquisition/tenants/{tenantId}/jobs/{job.Id}",
+                new { job, container });
         })
         .RequireAuthorization("qai:module:" + QualifyAiModules.Crm)
         .AddEndpointFilter(async (ctx, next) =>
@@ -278,15 +313,43 @@ public static class AutonomousAcquisitionEndpoints
             return await next(ctx);
         });
 
-                g.MapGet("/tenants/{tenantId}/agents/{id}/runs", async (
-            Guid tenantId, Guid id, AppDbContext db, CancellationToken ct) =>
-            Results.Ok(await db.AutonomousAcquisitionAgentRuns
+        g.MapGet("/tenants/{tenantId}/agents/{id}/runs", async (
+            Guid tenantId,
+            Guid id,
+            AppDbContext db,
+            CancellationToken ct) =>
+            Results.Ok(await db.AgentJobs
+                .AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.AgentId == id)
                 .OrderByDescending(x => x.ScheduledAtUtc)
                 .Take(100)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.TenantId,
+                    x.AgentId,
+                    x.CampaignId,
+                    x.ContainerId,
+                    x.ContainerVersion,
+                    x.TaskId,
+                    x.TaskType,
+                    x.Status,
+                    x.IsManual,
+                    x.Query,
+                    x.DiscoveredCount,
+                    x.QualifiedCount,
+                    x.HighScoreCount,
+                    x.EmailsQueuedCount,
+                    x.EmailsSentCount,
+                    x.ScheduledAtUtc,
+                    x.StartedAtUtc,
+                    x.CompletedAtUtc,
+                    x.Error,
+                    x.AttemptCount,
+                    x.CreatedAtUtc,
+                    x.UpdatedAtUtc
+                })
                 .ToListAsync(ct)));
-
-
 
 
 
