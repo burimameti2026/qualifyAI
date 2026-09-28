@@ -1,4 +1,3 @@
-using System.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +20,7 @@ public sealed class CampaignsController(
     CampaignExecutionService executor,
     ProspectReplyProcessingService replyProcessor,
     IAgentJobFactory jobFactory,
+    CampaignRuntimeService runtime,
     AcquisitionCriteriaService criteriaService,
     CampaignContainerConfigurationService configurationService) : ControllerBase
 {
@@ -412,26 +412,10 @@ public sealed class CampaignsController(
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Pause(Guid id, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-        if (campaign is null) return NotFound();
-
         try
         {
-            campaign.Status = CampaignStatus.Paused;
-
-            if (campaign.AgentId.HasValue)
-            {
-                var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
-                    x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
-                if (agent is not null)
-                {
-                    agent.Status = AutonomousAgentStatus.Paused;
-                    agent.UpdatedAtUtc = DateTime.UtcNow;
-                }
-            }
-
-await db.SaveChangesAsync(ct);
-            return Ok(new { campaign.Id, campaign.Status });
+            var status = await runtime.PauseAsync(TenantId, id, ct);
+            return status is null ? NotFound() : Ok(new { id, status });
         }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
     }
@@ -440,39 +424,10 @@ await db.SaveChangesAsync(ct);
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Resume(Guid id, CancellationToken ct)
     {
-        Guid? runId = null;
         try
         {
-            var strategy = db.Database.CreateExecutionStrategy();
-            await strategy.ExecuteAsync(async () =>
-            {
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-
-                var campaign = await db.Campaigns
-                    .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-                if (campaign is null)
-                    throw new KeyNotFoundException($"Campaign '{id}' was not found.");
-                campaign.Resume();
-                var agentId = campaign.AgentId;
-                if (!agentId.HasValue)
-                    throw new InvalidOperationException("Campaign agent is not configured.");
-
-                var job = await jobFactory.QueueCampaignAsync(
-                    TenantId,
-                    campaign.Id,
-                    agentId.Value,
-                    null,
-                    "campaign.execute",
-                    $"campaign:{campaign.Id}",
-                    true,
-                    ct);
-                runId = job.Id;
-
-await db.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-            });
-
-            return Ok(new { id, status = CampaignStatus.Running, jobId = runId });
+            var result = await runtime.ResumeAsync(TenantId, id, ct);
+            return result is null ? NotFound() : Ok(new { id, status = result.Status, jobId = result.JobId });
         }
         catch (KeyNotFoundException) { return NotFound(); }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
@@ -528,157 +483,32 @@ await db.SaveChangesAsync(ct);
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Start(Guid id, CancellationToken ct)
     {
-        Guid? runId = null;
-        var strategy = db.Database.CreateExecutionStrategy();
-
         try
         {
-            await strategy.ExecuteAsync(async () =>
-            {
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-
-                var campaign = await db.Campaigns
-                    .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-                if (campaign is null)
-                    throw new KeyNotFoundException($"Campaign '{id}' was not found.");
-
-                campaign.Start();
-                var agentId = campaign.AgentId;
-                if (!agentId.HasValue)
-                    throw new InvalidOperationException("Campaign agent is not configured.");
-
-                var job = await jobFactory.QueueCampaignAsync(
-                    TenantId,
-                    campaign.Id,
-                    agentId.Value,
-                    null,
-                    "campaign.execute",
-                    $"campaign:{campaign.Id}",
-                    true,
-                    ct);
-                runId = job.Id;
-
-                await db.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-            });
+            var result = await runtime.StartAsync(TenantId, id, ct);
+            return result is null
+                ? NotFound()
+                : Ok(new { id, status = result.Status, execution = "campaign-runtime", jobId = result.JobId });
         }
         catch (KeyNotFoundException) { return NotFound(); }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
-
-        return Ok(new
-        {
-            id,
-            status = CampaignStatus.Running,
-            execution = "campaign-runtime",
-            jobId = runId
-        });
     }
 
     [HttpDelete("{id:guid}")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var tenantId = TenantId;
-        var campaign = await db.Campaigns
-            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
-
-        if (campaign is null) return NotFound();
-
-        var targetListId = campaign.TargetListId;
-        var agentId = campaign.AgentId;
-
-        var runIds = await db.AgentJobs
-            .Where(x => x.TenantId == tenantId && x.CampaignId == id)
-            .Select(x => x.Id)
-            .ToListAsync(ct);
-
-        var messageIds = await db.OutreachMessages
-            .Where(x => x.TenantId == tenantId && x.CampaignId == id)
-            .Select(x => x.Id)
-            .ToListAsync(ct);
-
-        var approvalTitles = messageIds
-            .Select(messageId => $"APPROVAL: Send outreach {messageId}")
-            .ToList();
-
-        var strategy = db.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-            if (approvalTitles.Count > 0)
-                await db.CrmTasks
-                    .Where(x => x.TenantId == tenantId && approvalTitles.Contains(x.Title))
-                    .ExecuteDeleteAsync(ct);
-
-            if (messageIds.Count > 0)
-                await db.OutreachMessages
-                    .Where(x => x.TenantId == tenantId && messageIds.Contains(x.Id))
-                    .ExecuteDeleteAsync(ct);
-
-            if (runIds.Count > 0)
-                await db.AutonomousAcquisitionTasks
-                    .Where(x => x.TenantId == tenantId && x.RunId.HasValue && runIds.Contains(x.RunId.Value))
-                    .ExecuteDeleteAsync(ct);
-
-            if (runIds.Count > 0)
-                await db.AgentJobs
-                    .Where(x => x.TenantId == tenantId && runIds.Contains(x.Id))
-                    .ExecuteDeleteAsync(ct);
-
-            await db.CampaignRecipients
-                .Where(x => x.TenantId == tenantId && x.CampaignId == id)
-                .ExecuteDeleteAsync(ct);
-
-            await db.CampaignSteps
-                .Where(x => x.TenantId == tenantId && x.CampaignId == id)
-                .ExecuteDeleteAsync(ct);
-
-            await db.TargetListMembers
-                .Where(x => x.TenantId == tenantId && x.TargetListId == targetListId)
-                .ExecuteDeleteAsync(ct);
-
-            await db.Campaigns
-                .Where(x => x.TenantId == tenantId && x.Id == id)
-                .ExecuteDeleteAsync(ct);
-
-            if (agentId.HasValue)
-                await db.AutonomousAcquisitionAgents
-                    .Where(x => x.TenantId == tenantId && x.Id == agentId.Value)
-                    .ExecuteDeleteAsync(ct);
-
-            await db.TargetLists
-                .Where(x => x.TenantId == tenantId && x.Id == targetListId)
-                .ExecuteDeleteAsync(ct);
-
-            await transaction.CommitAsync(ct);
-        });
-
-        return NoContent();
+        return await runtime.DeleteAsync(TenantId, id, ct)
+            ? NoContent()
+            : NotFound();
     }
 
     [HttpPost("{id:guid}/stop")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> Stop(Guid id, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
-        if (campaign is null) return NotFound();
-
-        campaign.Status = CampaignStatus.Stopped;
-
-        if (campaign.AgentId.HasValue)
-        {
-            var agent = await db.AutonomousAcquisitionAgents
-                .FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == campaign.AgentId.Value, ct);
-            if (agent is not null)
-            {
-                agent.Status = AutonomousAgentStatus.Stopped;
-                agent.UpdatedAtUtc = DateTime.UtcNow;
-            }
-        }
-
-await db.SaveChangesAsync(ct);
-        return Ok(new { campaign.Id, campaign.Status });
+        var status = await runtime.StopAsync(TenantId, id, ct);
+        return status is null ? NotFound() : Ok(new { id, status });
     }
 
     [HttpPost("messages/{id:guid}/delivered")]
