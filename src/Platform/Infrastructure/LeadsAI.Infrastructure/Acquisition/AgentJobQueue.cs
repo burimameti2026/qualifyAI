@@ -10,7 +10,7 @@ public interface IAgentJobQueue
     Task<AgentJob?> GetNextJobAndClaimAsync(Guid tenantId, string workerId, CancellationToken ct);
 }
 
-public sealed class AgentJobQueue(AppDbContext db) : IAgentJobQueue
+public sealed class AgentJobQueue(AppDbContext db, ICampaignContainerRuntime containers) : IAgentJobQueue
 {
     public async Task<AgentJob?> GetNextJobAndClaimAsync(
         Guid tenantId,
@@ -53,12 +53,7 @@ public sealed class AgentJobQueue(AppDbContext db) : IAgentJobQueue
                                            x.Id == job.ContainerId.Value, ct);
 
             if (container is not null)
-            {
-                container.Status = CampaignContainerStatus.Running;
-                container.LastStartedAtUtc ??= now;
-                container.LastStoppedAtUtc = null;
-                container.UpdatedAtUtc = now;
-            }
+                containers.Start(container, now);
         }
 
         await db.SaveChangesAsync(ct);
