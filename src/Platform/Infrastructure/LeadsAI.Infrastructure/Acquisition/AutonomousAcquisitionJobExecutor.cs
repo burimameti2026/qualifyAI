@@ -57,8 +57,13 @@ public sealed class AutonomousAcquisitionJobExecutor(
                                                x.Id == job.ContainerId.Value,
                         CancellationToken.None);
 
-                if (container is not null && job.Status == AgentJobStatus.Failed)
-                    containers.Fail(container, DateTime.UtcNow);
+                if (container is not null)
+                {
+                    if (job.Status == AgentJobStatus.Failed)
+                        containers.Fail(container, DateTime.UtcNow);
+                    else if (job.Status == AgentJobStatus.Queued)
+                        containers.Queue(container);
+                }
             }
 
             await db.SaveChangesAsync(CancellationToken.None);
