@@ -112,7 +112,7 @@ public sealed class CampaignContainersController(
         db.CampaignContainers.Add(container);
         await db.SaveChangesAsync(ct);
 
-        return CreatedAtAction(nameof(Containers), new { id = campaign.Id }, new
+        return CreatedAtAction(nameof(Containers), new { campaignId = campaign.Id }, new
         {
             container.Id,
             container.CampaignId,
