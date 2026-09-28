@@ -32,6 +32,7 @@ builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
 builder.Services.AddScoped<LeadQualificationService>();
 builder.Services.AddScoped<AcquisitionCriteriaService>();
 builder.Services.AddScoped<CampaignContainerConfigurationService>();
+builder.Services.AddScoped<CampaignRuntimeService>();
 builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<SlaService>();
 builder.Services.AddScoped<KnowledgeGapService>();
