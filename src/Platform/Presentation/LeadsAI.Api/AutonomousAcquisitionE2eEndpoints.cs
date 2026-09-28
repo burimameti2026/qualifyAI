@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api;
@@ -10,16 +11,16 @@ public static class AutonomousAcquisitionE2eEndpoints
   app.MapGet("/api/autonomous-acquisition/tenants/{tenantId}/e2e",async(Guid tenantId,AppDbContext db,CancellationToken ct)=>
   {
    var agents=await db.AutonomousAcquisitionAgents.Where(x=>x.TenantId==tenantId).ToListAsync(ct);
-   var runs=await db.AutonomousAcquisitionAgentRuns.Where(x=>x.TenantId==tenantId).OrderByDescending(x=>x.ScheduledAtUtc).Take(100).ToListAsync(ct);
+   var runs=await db.AgentJobs.Where(x=>x.TenantId==tenantId).OrderByDescending(x=>x.ScheduledAtUtc).Take(100).ToListAsync(ct);
    var memory=await db.AutonomousAcquisitionAgentMemories.Where(x=>x.TenantId==tenantId).CountAsync(ct);
    var taskRows=await db.AutonomousAcquisitionTasks.Where(x=>x.TenantId==tenantId && x.RunId != null).ToListAsync(ct);
    var campaigns=await db.Campaigns.Where(x=>x.TenantId==tenantId).ToListAsync(ct);
    var active=agents.Count(x=>x.Status==AutonomousAgentStatus.Active);
-   var completed=runs.Count(x=>x.Status==AutonomousAgentRunStatus.Completed);
-   var failed=runs.Count(x=>x.Status==AutonomousAgentRunStatus.Failed);
-   var queued=runs.Count(x=>x.Status==AutonomousAgentRunStatus.Queued);
-   var waitingApproval=runs.Count(x=>x.Status==AutonomousAgentRunStatus.WaitingApproval);
-   var paused=runs.Count(x=>x.Status==AutonomousAgentRunStatus.Paused);
+   var completed=runs.Count(x=>x.Status==AgentJobStatus.Completed);
+   var failed=runs.Count(x=>x.Status==AgentJobStatus.Failed);
+   var queued=runs.Count(x=>x.Status==AgentJobStatus.Queued);
+   var waitingApproval=runs.Count(x=>x.Status==AgentJobStatus.Waiting);
+   var paused=0;
    var discovered=runs.Sum(x=>x.DiscoveredCount);
    var qualified=runs.Sum(x=>x.QualifiedCount);
    var highScore=runs.Sum(x=>x.HighScoreCount);
