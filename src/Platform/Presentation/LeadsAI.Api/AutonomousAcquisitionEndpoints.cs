@@ -137,7 +137,8 @@ public static class AutonomousAcquisitionEndpoints
                 container,
                 runtime = new
                 {
-                    status = container?.Status.ToString() ?? latestRun?.Status.ToString() ?? "Unknown",
+                    status = latestRun?.Status.ToString() ?? container?.Status.ToString() ?? "Unknown",
+                    containerStatus = container?.Status.ToString() ?? "Unknown",
                     containerVersion = container?.Version,
                     containerVersionLabel = container?.VersionLabel,
                     jobId = latestRun?.Id,
