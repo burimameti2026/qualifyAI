@@ -21,6 +21,15 @@ public sealed class AutonomousAcquisitionJobExecutor(
                 job.CompletedAtUtc = DateTime.UtcNow;
             }
 
+            if (job.ContainerId.HasValue && job.Status == AgentJobStatus.Completed)
+            {
+                var container = await db.CampaignContainers
+                    .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+
+                if (container is not null)
+                    containers.Complete(container, DateTime.UtcNow);
+            }
+
             job.Error = null;
             job.LeaseUntilUtc = null;
             job.WorkerId = null;
