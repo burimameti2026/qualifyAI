@@ -213,11 +213,11 @@ public sealed class AcquisitionController(
                 failed = db.CampaignRecipients.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status=="failed"),
                 queued = db.OutreachMessages.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==OutreachStatus.Queued),
                 sent = db.OutreachMessages.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==OutreachStatus.Sent||x.Status==OutreachStatus.Delivered||x.Status==OutreachStatus.Replied)),
-                runs = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id),
-                runSuccess = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AutonomousAgentRunStatus.Completed),
-                runFailed = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AutonomousAgentRunStatus.Failed),
-                runPending = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==AutonomousAgentRunStatus.Queued||x.Status==AutonomousAgentRunStatus.WaitingApproval)),
-                runRunning = db.AutonomousAcquisitionAgentRuns.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AutonomousAgentRunStatus.Running)
+                runs = db.AgentJobs.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id),
+                runSuccess = db.AgentJobs.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AgentJobStatus.Completed),
+                runFailed = db.AgentJobs.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AgentJobStatus.Failed),
+                runPending = db.AgentJobs.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&(x.Status==AgentJobStatus.Queued||x.Status==AgentJobStatus.Waiting)),
+                runRunning = db.AgentJobs.Count(x => x.TenantId==tenantId&&x.CampaignId==campaign.Id&&x.Status==AgentJobStatus.Running)
             }).ToListAsync(ct);
         return Ok(campaigns);
     }
@@ -443,7 +443,7 @@ public sealed class AcquisitionController(
                 prospect.UpdatedAtUtc
             }).Take(500).ToListAsync(ct);
 
-        var latestRun = await db.AutonomousAcquisitionAgentRuns.AsNoTracking()
+        var latestRun = await db.AgentJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.CampaignId == id)
             .OrderByDescending(x => x.ScheduledAtUtc)
             .Select(x => new
@@ -582,15 +582,7 @@ public sealed class AcquisitionController(
                 }
             }
 
-            await db.AutonomousAcquisitionAgentRuns
-                .Where(x => x.TenantId == TenantId &&
-                            x.CampaignId == id &&
-                            x.Status == AutonomousAgentRunStatus.Queued)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.Status, AutonomousAgentRunStatus.Paused)
-                    .SetProperty(x => x.CompletedAtUtc, (DateTime?)null), ct);
-
-            await db.SaveChangesAsync(ct);
+await db.SaveChangesAsync(ct);
             return Ok(new { campaign.Id, campaign.Status });
         }
         catch (InvalidOperationException ex) { return Conflict(new { detail = ex.Message }); }
@@ -662,10 +654,10 @@ await db.SaveChangesAsync(ct);
                 x.LastStoppedAtUtc,
                 x.CreatedAtUtc,
                 x.UpdatedAtUtc,
-                Runs = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
-                ActiveRuns = db.AutonomousAcquisitionAgentRuns.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
-                    (r.Status == AutonomousAgentRunStatus.Queued || r.Status == AutonomousAgentRunStatus.Running ||
-                     r.Status == AutonomousAgentRunStatus.WaitingApproval || r.Status == AutonomousAgentRunStatus.Paused))
+                Runs = db.AgentJobs.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
+                ActiveRuns = db.AgentJobs.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
+                    (r.Status == AgentJobStatus.Queued || r.Status == AgentJobStatus.Running ||
+                     r.Status == AgentJobStatus.Waiting || r.Status == AutonomousAgentRunStatus.Paused))
             })
             .ToListAsync(ct);
 
@@ -839,15 +831,7 @@ await db.SaveChangesAsync(ct);
             agent.UpdatedAtUtc = DateTime.UtcNow;
         }
 
-        await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == TenantId && x.ContainerId == container.Id &&
-                (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running ||
-                 x.Status == AutonomousAgentRunStatus.WaitingApproval || x.Status == AutonomousAgentRunStatus.Paused))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, AutonomousAgentRunStatus.Cancelled)
-                .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
-
-        db.AuditLogs.Add(new AuditLog
+db.AuditLogs.Add(new AuditLog
         {
             TenantId = TenantId,
             Action = "container.stopped",
@@ -1044,7 +1028,7 @@ await db.SaveChangesAsync(ct);
         var targetListId = campaign.TargetListId;
         var agentId = campaign.AgentId;
 
-        var runIds = await db.AutonomousAcquisitionAgentRuns
+        var runIds = await db.AgentJobs
             .Where(x => x.TenantId == tenantId && x.CampaignId == id)
             .Select(x => x.Id)
             .ToListAsync(ct);
@@ -1079,7 +1063,7 @@ await db.SaveChangesAsync(ct);
                     .ExecuteDeleteAsync(ct);
 
             if (runIds.Count > 0)
-                await db.AutonomousAcquisitionAgentRuns
+                await db.AgentJobs
                     .Where(x => x.TenantId == tenantId && runIds.Contains(x.Id))
                     .ExecuteDeleteAsync(ct);
 
@@ -1134,17 +1118,7 @@ await db.SaveChangesAsync(ct);
             }
         }
 
-        await db.AutonomousAcquisitionAgentRuns
-            .Where(x => x.TenantId == TenantId &&
-                        x.CampaignId == id &&
-                        (x.Status == AutonomousAgentRunStatus.Queued ||
-                         x.Status == AutonomousAgentRunStatus.WaitingApproval ||
-                         x.Status == AutonomousAgentRunStatus.Paused))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, AutonomousAgentRunStatus.Cancelled)
-                .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
-
-        await db.SaveChangesAsync(ct);
+await db.SaveChangesAsync(ct);
         return Ok(new { campaign.Id, campaign.Status });
     }
 
