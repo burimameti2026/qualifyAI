@@ -23,6 +23,50 @@ public sealed class CampaignsController(
 {
     private Guid TenantId => tenant.TenantId();
 
+    [HttpGet]
+    [RequirePermission(QualifyAiPermissions.CrmRead)]
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var campaigns = await db.Campaigns.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Select(campaign => new
+            {
+                campaign.Id,
+                campaign.TargetListId,
+                campaign.Name,
+                campaign.Goal,
+                campaign.Objective,
+                campaign.Status,
+                campaign.SenderName,
+                campaign.SenderEmail,
+                campaign.StartsAtUtc,
+                campaign.CreatedAtUtc,
+                campaign.UpdatedAtUtc,
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanStatus,
+                campaign.PlanJson,
+                campaign.AgentId,
+                recipients = db.CampaignRecipients.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id),
+                active = db.CampaignRecipients.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == "active"),
+                awaitingDelivery = db.CampaignRecipients.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == "awaiting-delivery"),
+                replied = db.CampaignRecipients.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == "replied"),
+                completed = db.CampaignRecipients.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == "completed"),
+                failed = db.CampaignRecipients.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == "failed"),
+                queued = db.OutreachMessages.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == OutreachStatus.Queued),
+                sent = db.OutreachMessages.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && (x.Status == OutreachStatus.Sent || x.Status == OutreachStatus.Delivered || x.Status == OutreachStatus.Replied)),
+                jobs = db.AgentJobs.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id),
+                completedJobs = db.AgentJobs.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == AgentJobStatus.Completed),
+                failedJobs = db.AgentJobs.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == AgentJobStatus.Failed),
+                queuedJobs = db.AgentJobs.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Waiting)),
+                runningJobs = db.AgentJobs.Count(x => x.TenantId == tenantId && x.CampaignId == campaign.Id && x.Status == AgentJobStatus.Running)
+            })
+            .ToListAsync(ct);
+        return Ok(campaigns);
+    }
+
     [HttpGet("campaign-history")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignHistory(
@@ -757,32 +801,3 @@ await db.SaveChangesAsync(ct);
 
 
 }
-}
-public sealed record DiscoveryRequest(
-    string? Source = null,
-    string? Region = null,
-    int MaximumResults = 50,
-    int MinimumScore = 70,
-    string? TargetListName = null,
-    bool CreateTargetList = true);
-
-public sealed record IcpSaveRequest(
-    Guid? Id,
-    string Name,
-    string? Industry,
-    string? CountriesCsv,
-    int? MinimumEmployees,
-    int? MaximumEmployees,
-    string? IntentKeywordsCsv,
-    string? CriteriaJson,
-    bool Active = true,
-    int MinimumScore = 70);
-
-public sealed record CampaignContainerCreateRequest(string? Name, string? PackageCode, string? PackageVersion, string? ConfigurationJson);
-public sealed record ContainerTargetListRequest(Guid? TargetListId);
-public sealed record CampaignPlanRequest(string PlanJson);
-public sealed record CampaignMessagesRequest(IReadOnlyList<CampaignMessageStepRequest> Steps);
-public sealed record CampaignMessageStepRequest(int StepNumber, int DelayHours, string Channel, string SubjectTemplate, string BodyTemplate);
-public sealed record DeliveryConfirmation(string ProviderMessageId);
-public sealed record ReplyInput(Guid TenantId, Guid CampaignId, Guid ProspectId, Guid? OutreachMessageId, string Body, string Classification, int SentimentScore, bool RequiresHuman);
-public sealed record CampaignActivityItem(Guid Id, DateTime AtUtc, string Type, string Status, string Title, string Detail);
