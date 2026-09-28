@@ -7,6 +7,7 @@ using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Api.Services;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -20,7 +21,8 @@ public sealed class AcquisitionController(
     CampaignExecutionService executor,
     ProspectReplyProcessingService replyProcessor,
     ProspectDiscoveryService discovery,
-    IAgentJobFactory jobFactory) : ControllerBase
+    IAgentJobFactory jobFactory,
+    AcquisitionCriteriaService criteriaService) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
@@ -62,7 +64,7 @@ public sealed class AcquisitionController(
             x.CriteriaJson,
             x.Active,
             x.LastDiscoveryAtUtc,
-            minimumScore = ReadMinimumScore(x.CriteriaJson)
+            minimumScore = criteriaService.ReadMinimumScore(x.CriteriaJson)
         }));
     }
 
@@ -87,7 +89,7 @@ public sealed class AcquisitionController(
         profile.IntentKeywordsCsv = input.IntentKeywordsCsv?.Trim() ?? string.Empty;
         profile.MinimumEmployees = input.MinimumEmployees;
         profile.MaximumEmployees = input.MaximumEmployees;
-        profile.CriteriaJson = NormalizeCriteria(input.CriteriaJson, input.MinimumScore);
+        profile.CriteriaJson = criteriaService.NormalizeCriteria(input.CriteriaJson, input.MinimumScore);
         profile.Active = input.Active;
         profile.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -108,7 +110,7 @@ public sealed class AcquisitionController(
             profile.CriteriaJson,
             profile.Active,
             profile.LastDiscoveryAtUtc,
-            minimumScore = ReadMinimumScore(profile.CriteriaJson)
+            minimumScore = criteriaService.ReadMinimumScore(profile.CriteriaJson)
         });
     }
 
