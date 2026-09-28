@@ -40,13 +40,13 @@ public static class RealWorkspaceEndpoints
         });
 
         // Backward-compatible alias. The UI should use /prepare as the single workspace activation entry point.
-        g.MapPost("/activate", async (RealWorkspaceRequest request, ICurrentTenant currentTenant, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct) =>
+        g.MapPost("/activate", async (RealWorkspaceRequest request, ICurrentTenant currentTenant, AppDbContext db, IAutonomousAcquisitionTemplateRegistry templates, IAgentJobFactory jobFactory, ICampaignContainerRuntime containers, CancellationToken ct) =>
         {
             var tenantId = ResolveTenant(request, currentTenant);
             if (tenantId is null) return Results.BadRequest(new { error = "The selected workspace does not belong to the current tenant." });
 
             var scopedRequest = request with { TenantId = tenantId.Value };
-            var result = await PrepareAndQueueAsync(scopedRequest, db, templates, ct);
+            var result = await PrepareAndQueueAsync(scopedRequest, db, templates, jobFactory, containers, ct);
             return Results.Accepted($"/api/real-workspace/tenants/{tenantId.Value}", result);
         });
 
