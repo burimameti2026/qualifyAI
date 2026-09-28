@@ -55,8 +55,20 @@ public static class AutonomousAcquisitionEndpoints
                 x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct);
             if (agent is null)
                 return Results.BadRequest(new { error = "Campaign agent was not found." });
-            if (agent.Status != AutonomousAgentStatus.Active)
-                return Results.BadRequest(new { error = "Autonomous acquisition agent must be active." });
+
+            // Manual Run is the explicit command to resume this campaign runtime.
+            // A newly provisioned or previously stopped/paused agent must be activated
+            // before the job can be queued; otherwise the UI reports a stopped runtime
+            // even though the user just requested a run.
+            if (agent.Status is AutonomousAgentStatus.Draft or AutonomousAgentStatus.Paused or AutonomousAgentStatus.Stopped)
+            {
+                agent.Status = AutonomousAgentStatus.Active;
+                agent.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            else if (agent.Status == AutonomousAgentStatus.Failed)
+            {
+                return Results.Conflict(new { error = "Campaign agent is failed and requires attention before it can run again." });
+            }
 
             var container = await containers.EnsureAsync(
                 tenantId,
