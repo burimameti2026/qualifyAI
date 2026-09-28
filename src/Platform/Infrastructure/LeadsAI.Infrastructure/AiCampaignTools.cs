@@ -49,7 +49,7 @@ public sealed class CreateTargetListTool(AppDbContext db) : IAiTool
     }
 }
 
-public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
+public sealed class RunAutonomousAcquisitionTool(AppDbContext db, IAgentJobFactory jobFactory) : IAiTool
 {
     public string Name => "RunAutonomousAcquisition";
 
@@ -73,32 +73,30 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db) : IAiTool
         if (agent.Status is AutonomousAgentStatus.Stopped)
             return new(false, "{}", "The autonomous acquisition agent is stopped.");
 
-        var existing = await db.AutonomousAcquisitionAgentRuns
-            .AnyAsync(x => x.TenantId == context.TenantId && x.AgentId == agentId && x.CampaignId == campaignId &&
-                           (x.Status == AutonomousAgentRunStatus.Queued || x.Status == AutonomousAgentRunStatus.Running || x.Status == AutonomousAgentRunStatus.WaitingApproval), ct);
-        if (existing) return new(false, "{}", "This agent already has a queued or running acquisition run.");
+        var existing = await db.AgentJobs.AnyAsync(x =>
+            x.TenantId == context.TenantId &&
+            x.CampaignId == campaignId &&
+            (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Running || x.Status == AgentJobStatus.Waiting), ct);
+        if (existing) return new(false, "{}", "This campaign already has a queued or running acquisition job.");
 
-        var run = new AutonomousAcquisitionAgentRun
-        {
-            Id = Guid.NewGuid(),
-            TenantId = context.TenantId,
-            AgentId = agentId,
-            CampaignId = campaignId,
-            IsManual = true,
-            Status = AutonomousAgentRunStatus.Queued,
-            ScheduledAtUtc = DateTime.UtcNow
-        };
-        db.AutonomousAcquisitionAgentRuns.Add(run);
-        await db.SaveChangesAsync(ct);
+        var job = await jobFactory.QueueCampaignAsync(
+            context.TenantId,
+            campaignId,
+            agentId,
+            null,
+            "campaign.execute",
+            $"campaign:{campaignId}",
+            true,
+            ct);
 
         return new(true, JsonSerializer.Serialize(new
         {
-            run.Id,
-            run.AgentId,
-            run.CampaignId,
-            run.Status,
-            run.ScheduledAtUtc,
-            message = "Acquisition run queued. The worker will execute discovery and qualification."
+            job.Id,
+            job.AgentId,
+            job.CampaignId,
+            status = job.Status.ToString(),
+            job.ScheduledAtUtc,
+            message = "Acquisition job queued. The worker will execute discovery and qualification."
         }));
     }
 }
