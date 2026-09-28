@@ -6,6 +6,7 @@ public sealed record CampaignContainerActivity(
     Guid ContainerId,
     Guid RunId,
     Guid? TaskId,
+    int ContainerVersion,
     DateTime AtUtc,
     string Level,
     string EventType,
