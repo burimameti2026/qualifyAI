@@ -15,7 +15,7 @@ public static class AiCampaignOperatorEndpoints
 
         g.MapPost("/tenants/{tenantId:guid}/prepare",
             async (Guid tenantId, AiCampaignBrief input, AppDbContext db,
-                IAutonomousAcquisitionTemplateRegistry templates, CancellationToken ct) =>
+                IAutonomousAcquisitionTemplateRegistry templates, ICampaignContainerRuntime containers, CancellationToken ct) =>
             {
                 if (string.IsNullOrWhiteSpace(input.Brief))
                     return Results.BadRequest(new { error = "brief_required" });
@@ -191,36 +191,16 @@ public static class AiCampaignOperatorEndpoints
                     }
                 });
 
-                var container = await db.CampaignContainers
-                    .FirstOrDefaultAsync(x => x.TenantId == tenantId &&
-                                               x.CampaignId == campaign.Id &&
-                                               x.AgentId == agent.Id, ct);
-
-                if (container is null)
-                {
-                    container = new CampaignContainer
-                    {
-                        TenantId = tenantId,
-                        CampaignId = campaign.Id,
-                        AgentId = agent.Id,
-                        Name = $"{campaign.Name} Container",
-                        PackageCode = campaign.PackageCode,
-                        PackageVersion = campaign.PackageVersion,
-                        Status = CampaignContainerStatus.Queued,
-                        ConfigurationJson = campaign.PlanJson
-                    };
-                    db.CampaignContainers.Add(container);
-                    actions.Add("created campaign container in queued state");
-                }
-                else
-                {
-                    container.PackageCode = campaign.PackageCode;
-                    container.PackageVersion = campaign.PackageVersion;
-                    container.ConfigurationJson = campaign.PlanJson;
-                    if (container.Status is CampaignContainerStatus.Stopped or CampaignContainerStatus.Failed or CampaignContainerStatus.Pending)
-                        container.Status = CampaignContainerStatus.Queued;
-                    container.UpdatedAtUtc = DateTime.UtcNow;
-                }
+                var container = await containers.EnsureAsync(
+                    tenantId,
+                    campaign.Id,
+                    agent.Id,
+                    $"{campaign.Name} Container",
+                    campaign.PackageCode,
+                    campaign.PackageVersion,
+                    campaign.PlanJson,
+                    ct);
+                actions.Add("synchronized campaign container");
 
                 await db.SaveChangesAsync(ct);
 
@@ -260,7 +240,7 @@ public static class AiCampaignOperatorEndpoints
 
         g.MapPost("/tenants/{tenantId:guid}/campaigns/{campaignId:guid}/start",
             async (Guid tenantId, Guid campaignId, AppDbContext db,
-                IAgentJobFactory jobFactory, CancellationToken ct) =>
+                IAgentJobFactory jobFactory, ICampaignContainerRuntime containers, CancellationToken ct) =>
             {
                 var campaign = await db.Campaigns.FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
@@ -277,35 +257,15 @@ public static class AiCampaignOperatorEndpoints
 
                 campaign.Start();
 
-                var container = await db.CampaignContainers
-                    .FirstOrDefaultAsync(x => x.TenantId == tenantId &&
-                                               x.CampaignId == campaignId &&
-                                               x.AgentId == agent.Id, ct);
-
-                if (container is null)
-                {
-                    container = new CampaignContainer
-                    {
-                        TenantId = tenantId,
-                        CampaignId = campaignId,
-                        AgentId = agent.Id,
-                        Name = $"{campaign.Name} Container",
-                        PackageCode = campaign.PackageCode,
-                        PackageVersion = campaign.PackageVersion,
-                        Status = CampaignContainerStatus.Queued,
-                        ConfigurationJson = campaign.PlanJson
-                    };
-                    db.CampaignContainers.Add(container);
-                }
-                else if (container.Status is CampaignContainerStatus.Stopped or CampaignContainerStatus.Failed or CampaignContainerStatus.Pending)
-                {
-                    container.Status = CampaignContainerStatus.Queued;
-                    container.LastStoppedAtUtc = null;
-                    container.ConfigurationJson = campaign.PlanJson;
-                    container.PackageCode = campaign.PackageCode;
-                    container.PackageVersion = campaign.PackageVersion;
-                    container.UpdatedAtUtc = DateTime.UtcNow;
-                }
+                var container = await containers.EnsureAsync(
+                    tenantId,
+                    campaignId,
+                    agent.Id,
+                    $"{campaign.Name} Container",
+                    campaign.PackageCode,
+                    campaign.PackageVersion,
+                    campaign.PlanJson,
+                    ct);
 
                 var job = await jobFactory.QueueCampaignAsync(
                     tenantId,
