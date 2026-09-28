@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using LeadsAI.BuildingBlocks.Security.Tenancy;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure.Acquisition;
-using LeadsAI.Persistence.SqlServer;
+using LeadsAI.Domain.Core;
 
 namespace LeadsAI.Api;
 

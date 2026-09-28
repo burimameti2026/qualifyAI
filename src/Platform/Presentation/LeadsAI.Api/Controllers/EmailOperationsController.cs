@@ -1,16 +1,17 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Email;
 using LeadsAI.Persistence.SqlServer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -361,15 +362,14 @@ public sealed class EmailOperationsController(
         if (hasOpenApproval)
             return;
 
-        await db.AutonomousAcquisitionAgentRuns
-            .Where(run => run.TenantId == TenantId &&
-                          run.CampaignId == campaignId &&
-                          run.Status == AutonomousAgentRunStatus.WaitingApproval)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(run => run.Status, AutonomousAgentRunStatus.Queued)
-                .SetProperty(run => run.CompletedAtUtc, (DateTime?)null)
-                .SetProperty(run => run.Error, (string?)null), ct);
-    }
+        await db.AgentJobs
+           .Where(job => job.TenantId==TenantId&&
+                         job.CampaignId==campaignId&&
+                         job.Status==AgentJobStatus.Waiting)
+           .ExecuteUpdateAsync(setters => setters
+               .SetProperty(job => job.Status, AgentJobStatus.Queued)
+               .SetProperty(job => job.CompletedAtUtc, (DateTime?)null)
+               .SetProperty(job => job.Error, (string?)null), ct); }
 
     private async Task<OutreachMessage?> FindMessageAsync(string correlationId, string providerMessageId, CancellationToken ct)
     {

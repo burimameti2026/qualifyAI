@@ -1,7 +1,9 @@
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using LeadsAI.Application;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
+using LeadsAI.Infrastructure.Acquisition;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace LeadsAI.Infrastructure;
 
@@ -74,9 +76,12 @@ public sealed class RunAutonomousAcquisitionTool(AppDbContext db, IAgentJobFacto
             return new(false, "{}", "The autonomous acquisition agent is stopped.");
 
         var existing = await db.AgentJobs.AnyAsync(x =>
-            x.TenantId == context.TenantId &&
-            x.CampaignId == campaignId &&
-            (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Running || x.Status == AgentJobStatus.Waiting), ct);
+     x.TenantId==context.TenantId&&
+     x.CampaignId==campaignId&&
+     (x.Status==AgentJobStatus.Queued||
+      x.Status==AgentJobStatus.Running||
+      x.Status==AgentJobStatus.Waiting),
+     ct);
         if (existing) return new(false, "{}", "This campaign already has a queued or running acquisition job.");
 
         var job = await jobFactory.QueueCampaignAsync(
