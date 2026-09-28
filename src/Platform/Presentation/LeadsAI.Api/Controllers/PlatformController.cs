@@ -11,7 +11,6 @@ using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
-using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api.Controllers;
 

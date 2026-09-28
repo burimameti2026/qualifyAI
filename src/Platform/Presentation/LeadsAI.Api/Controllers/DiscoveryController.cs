@@ -1,11 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
-using LeadsAI.Domain;
-using LeadsAI.Domain.Core;
-using LeadsAI.Api.Services;
+using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.BuildingBlocks.Security.Access;
 
 namespace LeadsAI.Api.Controllers;
 
@@ -21,7 +18,6 @@ public sealed class DiscoveryController(ITenantContext tenant, ProspectDiscovery
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
 
-    [HttpPost("icp/{id:guid}
 
     [HttpPost("icp/{id:guid}/discover")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
