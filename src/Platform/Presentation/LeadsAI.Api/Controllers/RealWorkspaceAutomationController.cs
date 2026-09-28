@@ -11,7 +11,7 @@ namespace LeadsAI.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/real-workspace")]
-public sealed class RealWorkspaceAutomationController(AppDbContext db, ITenantContext tenant, IAutonomousAcquisitionTemplateRegistry templates) : ControllerBase
+public sealed class RealWorkspaceAutomationController(AppDbContext db, ITenantContext tenant, IAutonomousAcquisitionTemplateRegistry templates, IAgentJobFactory jobFactory) : ControllerBase
 {
     public sealed record PrepareRequest(string? Name, string? UseCase, string? TemplateKey, string? Industry, string? Region, string? CountriesJson, int DailyDiscoveryLimit = 25, int MinimumScore = 70, string? RunTimeUtc = null);
     public sealed record Result(Guid TenantId, Guid AgentId, string AgentName, string AgentStatus, Guid? InitialRunId, string Status, Guid? TargetListId, Guid? CampaignId);
@@ -49,18 +49,19 @@ public sealed class RealWorkspaceAutomationController(AppDbContext db, ITenantCo
         agent.Status = AutonomousAgentStatus.Active;
 
         db.AutonomousAcquisitionAgents.Add(agent);
-        var run = new AutonomousAcquisitionAgentRun
-        {
-            TenantId = tenantId,
-            AgentId = agent.Id,
-            IsManual = false,
-            Status = AutonomousAgentRunStatus.Queued,
-            ScheduledAtUtc = DateTime.UtcNow
-        };
-        db.AutonomousAcquisitionAgentRuns.Add(run);
         await db.SaveChangesAsync(ct);
 
-        return Ok(new Result(tenantId, agent.Id, agent.Name, agent.Status.ToString(), run.Id, "activation-queued", null, null));
+        var job = await jobFactory.QueueCampaignAsync(
+            tenantId,
+            Guid.Empty,
+            agent.Id,
+            null,
+            "agent.execute",
+            $"agent:{agent.Id}",
+            false,
+            ct);
+
+        return Ok(new Result(tenantId, agent.Id, agent.Name, agent.Status.ToString(), job.Id, "activation-queued", null, null));
     }
 
     private static TimeOnly ParseRunTime(string? value)
