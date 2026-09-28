@@ -1,3 +1,4 @@
+using LeadsAI.Api.Services;
 using LeadsAI.Api;
 using LeadsAI.Api.Modules;
 using LeadsAI.Api.Security;
@@ -29,6 +30,8 @@ builder.Services.AddPlatformModules(builder.Configuration);
 builder.Services.AddScoped<IRequestSecurityContext, BusinessRequestSecurityContext>();
 builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
 builder.Services.AddScoped<LeadQualificationService>();
+builder.Services.AddScoped<AcquisitionCriteriaService>();
+builder.Services.AddScoped<CampaignContainerConfigurationService>();
 builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<SlaService>();
 builder.Services.AddScoped<KnowledgeGapService>();
