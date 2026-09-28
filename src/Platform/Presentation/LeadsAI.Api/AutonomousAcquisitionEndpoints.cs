@@ -124,10 +124,29 @@ public static class AutonomousAcquisitionEndpoints
                 .OrderBy(x => x.StepNumber)
                 .ToListAsync(ct);
 
+            var container = await db.CampaignContainers
+                .AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.CampaignId == campaign.Id)
+                .OrderByDescending(x => x.UpdatedAtUtc)
+                .FirstOrDefaultAsync(ct);
+
             return Results.Ok(new
             {
                 campaign,
                 latestRun,
+                container,
+                runtime = new
+                {
+                    status = container?.Status.ToString() ?? latestRun?.Status.ToString() ?? "Unknown",
+                    containerVersion = container?.Version,
+                    containerVersionLabel = container?.VersionLabel,
+                    jobId = latestRun?.Id,
+                    jobStatus = latestRun?.Status.ToString(),
+                    jobType = latestRun?.Type,
+                    taskCount = tasks.Count,
+                    completedTasks = tasks.Count(x => x.Status == AutonomousAgentTaskStatus.Completed),
+                    runningTask = tasks.FirstOrDefault(x => x.Status == AutonomousAgentTaskStatus.Running)?.Id
+                },
                 currentStep = tasks.FirstOrDefault(x => (x.Status == AutonomousAgentTaskStatus.Running || x.Status == AutonomousAgentTaskStatus.Pending)),
                 packageCode = campaign.PackageCode,
                 agent,
@@ -141,7 +160,17 @@ public static class AutonomousAcquisitionEndpoints
                         name = t.Name,
                         purpose = ReadTaskPurpose(t.ConfigurationJson),
                         input = ReadTaskInput(t.ConfigurationJson),
-                        status = t.Status,
+                        statusCode = t.Status.ToString(),
+                        status = t.Status switch
+                        {
+                            AutonomousAgentTaskStatus.Pending => "IDLE",
+                            AutonomousAgentTaskStatus.Running => "RUNNING",
+                            AutonomousAgentTaskStatus.Completed => "DONE",
+                            AutonomousAgentTaskStatus.Paused => "PAUSED",
+                            AutonomousAgentTaskStatus.Failed => "FAILED",
+                            AutonomousAgentTaskStatus.Skipped => "SKIPPED",
+                            _ => "UNKNOWN"
+                        },
                         nextStep = ReadTaskNext(t.ConfigurationJson),
                         requiresApproval = t.RequiresApproval,
                         result = t.ResultJson,
