@@ -7,6 +7,7 @@ using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
 using LeadsAI.Infrastructure;
+using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Automation;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
@@ -67,12 +68,12 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
         if (!flow.Active) return Conflict(new { code = "workflow_inactive", detail = "The workflow is inactive and cannot be executed." });
 
         var containerIds = ReadIds(flow.ContainerIdsJson);
-        var containers = await db.CampaignContainers
+        var campaignContainers = await db.CampaignContainers
             .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
             .ToListAsync(ct);
 
         var started = new List<object>();
-        foreach (var container in containers)
+        foreach (var container in campaignContainers)
         {
             if (container.Status == CampaignContainerStatus.Running) continue;
             var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == container.CampaignId, ct);
