@@ -191,6 +191,37 @@ public static class AiCampaignOperatorEndpoints
                     }
                 });
 
+                var container = await db.CampaignContainers
+                    .FirstOrDefaultAsync(x => x.TenantId == tenantId &&
+                                               x.CampaignId == campaign.Id &&
+                                               x.AgentId == agent.Id, ct);
+
+                if (container is null)
+                {
+                    container = new CampaignContainer
+                    {
+                        TenantId = tenantId,
+                        CampaignId = campaign.Id,
+                        AgentId = agent.Id,
+                        Name = $"{campaign.Name} Container",
+                        PackageCode = campaign.PackageCode,
+                        PackageVersion = campaign.PackageVersion,
+                        Status = CampaignContainerStatus.Queued,
+                        ConfigurationJson = campaign.PlanJson
+                    };
+                    db.CampaignContainers.Add(container);
+                    actions.Add("created campaign container in queued state");
+                }
+                else
+                {
+                    container.PackageCode = campaign.PackageCode;
+                    container.PackageVersion = campaign.PackageVersion;
+                    container.ConfigurationJson = campaign.PlanJson;
+                    if (container.Status is CampaignContainerStatus.Stopped or CampaignContainerStatus.Failed or CampaignContainerStatus.Pending)
+                        container.Status = CampaignContainerStatus.Queued;
+                    container.UpdatedAtUtc = DateTime.UtcNow;
+                }
+
                 await db.SaveChangesAsync(ct);
 
                 var checks = new[]
