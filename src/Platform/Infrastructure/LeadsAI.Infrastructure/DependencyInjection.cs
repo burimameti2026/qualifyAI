@@ -103,6 +103,7 @@ public static class DependencyInjection
         services.AddScoped<IAutonomousAcquisitionJobOrchestrator, AutonomousAcquisitionJobOrchestrator>();
         services.AddScoped<IAgentJobQueue, AgentJobQueue>();
         services.AddScoped<IAgentJobFactory, AgentJobFactory>();
+        services.AddScoped<ICampaignContainerRuntime, CampaignContainerRuntime>();
         services.AddScoped<IAgentJobExecutor, AutonomousAcquisitionJobExecutor>();
         services.AddHostedService<TenantJobWorkerPool>();
         services.AddHttpClient<SerpApiProspectDiscoveryProvider>(c =>
