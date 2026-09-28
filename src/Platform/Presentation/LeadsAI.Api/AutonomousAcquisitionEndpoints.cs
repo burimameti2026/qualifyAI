@@ -179,23 +179,21 @@ public static class AutonomousAcquisitionEndpoints
                 .ToListAsync(ct)));
 
         g.MapPost("/tenants/{tenantId}/campaigns/{campaignId}/container/stop", async (
-            Guid tenantId, Guid campaignId, AppDbContext db, CancellationToken ct) =>
+            Guid tenantId, Guid campaignId, AppDbContext db, ICampaignContainerRuntime containers, CancellationToken ct) =>
         {
             var container = await db.CampaignContainers
                 .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId, ct);
 
             if (container is null) return Results.NotFound(new { error = "campaign_container_not_found" });
 
-            container.Status = CampaignContainerStatus.Stopped;
-            container.LastStoppedAtUtc = DateTime.UtcNow;
-            container.UpdatedAtUtc = DateTime.UtcNow;
+            containers.Stop(container, DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
 
             return Results.Ok(container);
         });
 
         g.MapPost("/tenants/{tenantId}/campaigns/{campaignId}/container/queue", async (
-            Guid tenantId, Guid campaignId, AppDbContext db, CancellationToken ct) =>
+            Guid tenantId, Guid campaignId, AppDbContext db, ICampaignContainerRuntime containers, CancellationToken ct) =>
         {
             var container = await db.CampaignContainers
                 .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CampaignId == campaignId, ct);
@@ -205,9 +203,7 @@ public static class AutonomousAcquisitionEndpoints
             if (container.Status is CampaignContainerStatus.Running)
                 return Results.Conflict(new { error = "campaign_container_already_running" });
 
-            container.Status = CampaignContainerStatus.Queued;
-            container.LastStoppedAtUtc = null;
-            container.UpdatedAtUtc = DateTime.UtcNow;
+            containers.Queue(container);
             await db.SaveChangesAsync(ct);
 
             return Results.Accepted($"/api/autonomous-acquisition/tenants/{tenantId}/campaigns/{campaignId}/container", container);
