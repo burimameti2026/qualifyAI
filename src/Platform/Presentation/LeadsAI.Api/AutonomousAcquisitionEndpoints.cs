@@ -157,6 +157,9 @@ public static class AutonomousAcquisitionEndpoints
                     steps = tasks.Select(t => new
                     {
                         sequence = t.Sequence,
+                        taskId = t.Id,
+                        jobId = t.RunId,
+                        containerVersion = t.ContainerVersion,
                         key = t.Type,
                         name = t.Name,
                         purpose = ReadTaskPurpose(t.ConfigurationJson),
