@@ -14,7 +14,7 @@ namespace LeadsAI.Api.Controllers;
 [ApiController]
 [Authorize]
 [RequireModule(QualifyAiModules.Crm)]
-[Route("api/acquisition/campaigns")]
+[Route("api/acquisition/campaigns/{campaignId:guid}/containers")]
 public sealed class CampaignContainersController(
     AppDbContext db,
     ITenantContext tenant,
@@ -24,11 +24,11 @@ public sealed class CampaignContainersController(
 {
     private Guid TenantId => tenant.TenantId();
 
-    [HttpGet("campaigns/{id:guid}/containers")]
+    [HttpGet("")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
-    public async Task<IActionResult> Containers(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Containers(Guid campaignId, CancellationToken ct)
     {
-        var exists = await db.Campaigns.AnyAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        var exists = await db.Campaigns.AnyAsync(x => x.TenantId == TenantId && x.Id == campaignId, ct);
         if (!exists) return NotFound();
 
         var rows = await db.CampaignContainers.AsNoTracking()
@@ -51,7 +51,7 @@ public sealed class CampaignContainersController(
                 Runs = db.AgentJobs.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
                 ActiveRuns = db.AgentJobs.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
                     (r.Status == AgentJobStatus.Queued || r.Status == AgentJobStatus.Running ||
-                     r.Status == AgentJobStatus.Waiting || r.Status == AgentJobStatus.Waiting))
+                     r.Status == AgentJobStatus.Waiting))
             })
             .ToListAsync(ct);
 
@@ -64,7 +64,7 @@ public sealed class CampaignContainersController(
         }));
     }
 
-    [HttpPost("campaigns/{id:guid}/containers")]
+    [HttpPost("")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> CreateContainer(Guid id, CampaignContainerCreateRequest input, CancellationToken ct)
     {
@@ -124,7 +124,7 @@ public sealed class CampaignContainersController(
         });
     }
 
-    [HttpPut("campaigns/{campaignId:guid}/containers/{containerId:guid}/target-list")]
+    [HttpPut("{containerId:guid}/target-list")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> SetContainerTargetList(Guid campaignId, Guid containerId, ContainerTargetListRequest input, CancellationToken ct)
     {
@@ -150,7 +150,7 @@ public sealed class CampaignContainersController(
         return Ok(new { container.Id, container.CampaignId, targetList, targetListId = input.TargetListId });
     }
 
-    [HttpPost("campaigns/{campaignId:guid}/containers/{containerId:guid}/start")]
+    [HttpPost("{containerId:guid}/start")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> StartContainer(Guid campaignId, Guid containerId, CancellationToken ct)
     {
@@ -205,7 +205,7 @@ public sealed class CampaignContainersController(
         return Ok(new { container.Id, container.Status, jobId = job.Id, jobStatus = job.Status.ToString() });
     }
 
-    [HttpPost("campaigns/{campaignId:guid}/containers/{containerId:guid}/stop")]
+    [HttpPost("{containerId:guid}/stop")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> StopContainer(Guid campaignId, Guid containerId, CancellationToken ct)
     {
@@ -243,7 +243,7 @@ db.AuditLogs.Add(new AuditLog
         return Ok(new { container.Id, container.Status });
     }
 
-    [HttpGet("campaigns/{campaignId:guid}/containers/{containerId:guid}/activity")]
+    [HttpGet("{containerId:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> ContainerActivity(
         Guid campaignId,
