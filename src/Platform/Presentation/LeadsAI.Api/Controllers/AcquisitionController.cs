@@ -657,7 +657,7 @@ await db.SaveChangesAsync(ct);
                 Runs = db.AgentJobs.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id),
                 ActiveRuns = db.AgentJobs.Count(r => r.TenantId == TenantId && r.ContainerId == x.Id &&
                     (r.Status == AgentJobStatus.Queued || r.Status == AgentJobStatus.Running ||
-                     r.Status == AgentJobStatus.Waiting || r.Status == AutonomousAgentRunStatus.Paused))
+                     r.Status == AgentJobStatus.Waiting || r.Status == AgentJobStatus.Waiting))
             })
             .ToListAsync(ct);
 
