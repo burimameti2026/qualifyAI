@@ -32,7 +32,7 @@ public sealed class CampaignContainersController(
         if (!exists) return NotFound();
 
         var rows = await db.CampaignContainers.AsNoTracking()
-            .Where(x => x.TenantId == TenantId && x.CampaignId == id)
+            .Where(x => x.TenantId == TenantId && x.CampaignId == campaignId)
             .OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new
             {
@@ -66,9 +66,9 @@ public sealed class CampaignContainersController(
 
     [HttpPost("")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
-    public async Task<IActionResult> CreateContainer(Guid id, CampaignContainerCreateRequest input, CancellationToken ct)
+    public async Task<IActionResult> CreateContainer(Guid campaignId, CampaignContainerCreateRequest input, CancellationToken ct)
     {
-        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == id, ct);
+        var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Id == campaignId, ct);
         if (campaign is null) return NotFound();
 
         var sourceAgent = campaign.AgentId.HasValue
@@ -169,10 +169,7 @@ public sealed class CampaignContainersController(
             x => x.TenantId == TenantId && x.Id == container.AgentId, ct);
         if (agent is null) return NotFound();
 
-        container.Status = CampaignContainerStatus.Running;
-        container.LastStartedAtUtc = DateTime.UtcNow;
-        container.LastStoppedAtUtc = null;
-        container.UpdatedAtUtc = DateTime.UtcNow;
+        containers.Start(container, DateTime.UtcNow);
         agent.Status = AutonomousAgentStatus.Active;
         agent.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -213,9 +210,7 @@ public sealed class CampaignContainersController(
             x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
         if (container is null) return NotFound();
 
-        container.Status = CampaignContainerStatus.Stopped;
-        container.LastStoppedAtUtc = DateTime.UtcNow;
-        container.UpdatedAtUtc = DateTime.UtcNow;
+        containers.Stop(container, DateTime.UtcNow);
 
         var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
             x => x.TenantId == TenantId && x.Id == container.AgentId, ct);
