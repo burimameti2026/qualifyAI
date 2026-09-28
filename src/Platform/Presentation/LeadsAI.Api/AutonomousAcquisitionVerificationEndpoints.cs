@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Domain.Core;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api;
@@ -11,7 +12,7 @@ public static class AutonomousAcquisitionVerificationEndpoints
   {
    var canConnect=await db.Database.CanConnectAsync(ct);
    var agents=await db.AutonomousAcquisitionAgents.CountAsync(ct);
-   var runs=await db.AutonomousAcquisitionAgentRuns.CountAsync(ct);
+   var runs=await db.AgentJobs.CountAsync(ct);
    var memory=await db.AutonomousAcquisitionAgentMemories.CountAsync(ct);
    var templateCount=templates.List().Count();
    return Results.Ok(new{status=canConnect&&templateCount>0?"ready":"degraded",database=canConnect,orchestrator=orchestrator is not null,templates=templateCount,agents,runs,memory,checkedAtUtc=DateTime.UtcNow});
