@@ -19,7 +19,7 @@ namespace LeadsAI.Api.Controllers;
 [Authorize]
 [RequireModule(QualifyAiModules.Automation)]
 [Route("api/workflows")]
-public sealed class WorkflowsController(ISender sender, ITenantContext tenant, AppDbContext db, AutomationActionExecutor executor) : ControllerBase
+public sealed class WorkflowsController(ISender sender, ITenantContext tenant, AppDbContext db, AutomationActionExecutor executor, IAgentJobFactory jobFactory, ICampaignContainerRuntime containers) : ControllerBase
 {
     [HttpGet]
     [RequirePermission(QualifyAiPermissions.AutomationRead)]
@@ -82,20 +82,19 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
 
             var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == container.AgentId, ct);
             if (agent is null) continue;
-            container.Status = CampaignContainerStatus.Running;
-            container.LastStartedAtUtc = DateTime.UtcNow;
-            container.LastStoppedAtUtc = null;
-            container.UpdatedAtUtc = DateTime.UtcNow;
+            containers.Queue(container);
             agent.Status = AutonomousAgentStatus.Active;
             agent.UpdatedAtUtc = DateTime.UtcNow;
-            var run = new AutonomousAcquisitionAgentRun
-            {
-                Id = Guid.NewGuid(), TenantId = tenantId, AgentId = agent.Id,
-                CampaignId = campaign.Id, ContainerId = container.Id, IsManual = true,
-                Status = AutonomousAgentRunStatus.Queued, ScheduledAtUtc = DateTime.UtcNow
-            };
-            db.AutonomousAcquisitionAgentRuns.Add(run);
-            started.Add(new { containerId = container.Id, container = container.Name, runId = run.Id });
+            var job = await jobFactory.QueueCampaignAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                container.Id,
+                "container.execute",
+                $"campaign:{campaign.Id}:container:{container.Id}",
+                true,
+                ct);
+            started.Add(new { containerId = container.Id, container = container.Name, runId = job.Id, jobId = job.Id });
         }
         await db.SaveChangesAsync(ct);
 
