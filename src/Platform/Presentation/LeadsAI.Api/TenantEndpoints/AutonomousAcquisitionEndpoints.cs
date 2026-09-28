@@ -83,6 +83,41 @@ public static class AutonomousAcquisitionEndpoints
                 new { job, container });
         });
 
+        g.MapGet("/tenants/{tenantId}/runs", async (
+            Guid tenantId, AppDbContext db, CancellationToken ct) =>
+            Results.Ok(await db.AgentJobs
+                .AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .OrderByDescending(x => x.ScheduledAtUtc)
+                .Take(100)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.TenantId,
+                    x.AgentId,
+                    x.CampaignId,
+                    x.ContainerId,
+                    x.ContainerVersion,
+                    x.TaskId,
+                    x.TaskType,
+                    x.Status,
+                    x.IsManual,
+                    x.Query,
+                    x.DiscoveredCount,
+                    x.QualifiedCount,
+                    x.HighScoreCount,
+                    x.EmailsQueuedCount,
+                    x.EmailsSentCount,
+                    x.ScheduledAtUtc,
+                    x.StartedAtUtc,
+                    x.CompletedAtUtc,
+                    x.Error,
+                    x.AttemptCount,
+                    x.CreatedAtUtc,
+                    x.UpdatedAtUtc
+                })
+                .ToListAsync(ct)));
+
         g.MapGet("/tenants/{tenantId}/campaigns", async (
             Guid tenantId, AppDbContext db, CancellationToken ct) =>
             Results.Ok(await db.Campaigns
