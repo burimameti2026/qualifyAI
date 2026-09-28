@@ -246,11 +246,41 @@ public static class AiCampaignOperatorEndpoints
 
                 campaign.Start();
 
+                var container = await db.CampaignContainers
+                    .FirstOrDefaultAsync(x => x.TenantId == tenantId &&
+                                               x.CampaignId == campaignId &&
+                                               x.AgentId == agent.Id, ct);
+
+                if (container is null)
+                {
+                    container = new CampaignContainer
+                    {
+                        TenantId = tenantId,
+                        CampaignId = campaignId,
+                        AgentId = agent.Id,
+                        Name = $"{campaign.Name} Container",
+                        PackageCode = campaign.PackageCode,
+                        PackageVersion = campaign.PackageVersion,
+                        Status = CampaignContainerStatus.Queued,
+                        ConfigurationJson = campaign.PlanJson
+                    };
+                    db.CampaignContainers.Add(container);
+                }
+                else if (container.Status is CampaignContainerStatus.Stopped or CampaignContainerStatus.Failed or CampaignContainerStatus.Pending)
+                {
+                    container.Status = CampaignContainerStatus.Queued;
+                    container.LastStoppedAtUtc = null;
+                    container.ConfigurationJson = campaign.PlanJson;
+                    container.PackageCode = campaign.PackageCode;
+                    container.PackageVersion = campaign.PackageVersion;
+                    container.UpdatedAtUtc = DateTime.UtcNow;
+                }
+
                 var job = await jobFactory.QueueCampaignAsync(
                     tenantId,
                     campaignId,
                     agent.Id,
-                    null,
+                    container.Id,
                     "campaign.execute",
                     $"campaign:{campaignId}",
                     false,
@@ -303,6 +333,23 @@ public static class AiCampaignOperatorEndpoints
                 {
                     campaign = new { campaign.Id, campaign.Name, campaign.Status, campaign.StartsAtUtc },
                     agent = agent is null ? null : new { agent.Id, agent.Name, agent.Status, agent.TemplateCode, agent.LastRunAtUtc },
+                    container = campaign.AgentId.HasValue
+                        ? await db.CampaignContainers.AsNoTracking()
+                            .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId && x.AgentId == campaign.AgentId.Value)
+                            .OrderByDescending(x => x.UpdatedAtUtc)
+                            .Select(x => new
+                            {
+                                x.Id,
+                                x.Name,
+                                x.Status,
+                                x.PackageCode,
+                                x.PackageVersion,
+                                x.LastStartedAtUtc,
+                                x.LastStoppedAtUtc,
+                                x.UpdatedAtUtc
+                            })
+                            .FirstOrDefaultAsync(ct)
+                        : null,
                     job = job is null ? null : new
                     {
                         job.Id,
