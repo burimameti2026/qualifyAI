@@ -105,7 +105,8 @@ public static class AutonomousAcquisitionEndpoints
 
             var latestRun = agent is null
                 ? null
-                : await db.AutonomousAcquisitionAgentRuns
+                : await db.AgentJobs
+                    .AsNoTracking()
                     .Where(x => x.TenantId == tenantId && x.AgentId == agent.Id && x.CampaignId == campaign.Id)
                     .OrderByDescending(x => x.ScheduledAtUtc)
                     .FirstOrDefaultAsync(ct);
