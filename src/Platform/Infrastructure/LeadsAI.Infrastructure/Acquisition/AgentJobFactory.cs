@@ -50,8 +50,13 @@ public sealed class AgentJobFactory(AppDbContext db) : IAgentJobFactory
             TenantId = tenantId,
             CampaignId = campaignId,
             ContainerId = containerId,
+            ContainerVersion = containerId.HasValue
+                ? await db.CampaignContainers.Where(x => x.TenantId == tenantId && x.Id == containerId.Value).Select(x => (int?)x.Version).FirstOrDefaultAsync(ct)
+                : null,
             AgentId = agentId,
             Type = type,
+            TaskType = type,
+            TaskPayloadJson = JsonSerializer.Serialize(new { query, type }),
             IsManual = isManual,
             Query = query,
             Sequence = 1,
