@@ -154,7 +154,7 @@ public sealed class AutonomousAcquisitionWorkflowPlanner(AppDbContext db) : IAut
             "discovery" or "discover" => AutonomousAgentTaskTypes.Discover,
             "qualification" or "qualify" => AutonomousAgentTaskTypes.Qualify,
             "enrichment" or "enrich" => AutonomousAgentTaskTypes.Enrich,
-            "targetlist" or "target-list" or "target_list" => AutonomousAgentTaskTypes.BuildTargetList,
+            "targetlist" or "target-list" or "target_list" or "buildtargetlist" or "build-target-list" or "build_target_list" or "build target list" or "target list" => AutonomousAgentTaskTypes.BuildTargetList,
             "outreach" => AutonomousAgentTaskTypes.Outreach,
             // Approval and Delivery are lifecycle gates handled by the runtime,
             // not autonomous worker task executors.
