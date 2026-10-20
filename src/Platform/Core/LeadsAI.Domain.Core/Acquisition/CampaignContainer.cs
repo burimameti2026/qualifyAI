@@ -21,5 +21,4 @@ public sealed class CampaignContainer : TenantEntity
     public DateTime? LastStartedAtUtc { get; set; }
     public DateTime? LastStoppedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
-    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }
