@@ -5735,6 +5735,69 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
 
                     b.ToTable("TenantModuleProvisionings", (string)null);
                 });
+            modelBuilder.Entity("LeadsAI.Domain.CampaignContainerActivityRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ContainerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ContainerVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StepName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("StepType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ContainerId", "AtUtc");
+
+                    b.HasIndex("TenantId", "RunId", "AtUtc");
+
+                    b.HasIndex("TenantId", "TaskId");
+
+                    b.ToTable("CampaignContainerActivities", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }
