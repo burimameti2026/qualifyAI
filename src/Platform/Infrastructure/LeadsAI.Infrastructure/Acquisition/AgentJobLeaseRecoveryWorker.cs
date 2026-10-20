@@ -64,13 +64,17 @@ public sealed class AgentJobLeaseRecoveryWorker(
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var containers = scope.ServiceProvider.GetRequiredService<ICampaignContainerRuntime>();
         var now = DateTime.UtcNow;
+        // Older runtime records may be Running without a lease due to legacy data or an
+        // interrupted transition. Recover those only after the same stale window used
+        // for the normal lease, rather than leaving them Running forever.
+        var staleLeaseCutoff = now.AddMinutes(-10);
 
         var expired = await db.AgentJobs
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId &&
                         x.Status == AgentJobStatus.Running &&
-                        x.LeaseUntilUtc.HasValue &&
-                        x.LeaseUntilUtc.Value <= now)
+                        ((x.LeaseUntilUtc.HasValue && x.LeaseUntilUtc.Value <= now) ||
+                         (!x.LeaseUntilUtc.HasValue && x.UpdatedAtUtc <= staleLeaseCutoff)))
             .Select(x => new { x.Id, x.AttemptCount, x.MaxAttempts, x.ContainerId })
             .Take(100)
             .ToListAsync(ct);
@@ -87,8 +91,8 @@ public sealed class AgentJobLeaseRecoveryWorker(
                 .Where(x => x.TenantId == tenantId &&
                             x.Id == item.Id &&
                             x.Status == AgentJobStatus.Running &&
-                            x.LeaseUntilUtc.HasValue &&
-                            x.LeaseUntilUtc.Value <= now)
+                            ((x.LeaseUntilUtc.HasValue && x.LeaseUntilUtc.Value <= now) ||
+                             (!x.LeaseUntilUtc.HasValue && x.UpdatedAtUtc <= staleLeaseCutoff)))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, nextStatus)
                     .SetProperty(x => x.Error, error)
