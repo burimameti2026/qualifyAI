@@ -187,6 +187,14 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 job.CompletedAtUtc = null;
                 job.LeaseUntilUtc = null;
                 job.WorkerId = null;
+
+                if (job.ContainerId.HasValue)
+                {
+                    var waitingContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                        x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                    if (waitingContainer is not null)
+                        containers.Wait(waitingContainer, DateTime.UtcNow);
+                }
             }
             else
             {
@@ -194,6 +202,14 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 job.CompletedAtUtc = DateTime.UtcNow;
                 job.LeaseUntilUtc = null;
                 job.WorkerId = null;
+
+                if (job.ContainerId.HasValue)
+                {
+                    var completedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                        x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                    if (completedContainer is not null)
+                        containers.Complete(completedContainer, DateTime.UtcNow);
+                }
             }
 
             job.UpdatedAtUtc = DateTime.UtcNow;
@@ -236,6 +252,12 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             job.UpdatedAtUtc = DateTime.UtcNow;
             if (job.ContainerId.HasValue)
             {
+                var failedContainer = await db.CampaignContainers.FirstOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value,
+                    CancellationToken.None);
+                if (failedContainer is not null)
+                    containers.Fail(failedContainer, DateTime.UtcNow);
+
                 db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
                 {
                     TenantId = job.TenantId,
