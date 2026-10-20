@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using LeadsAI.Application;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
@@ -20,7 +21,8 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     ITenantContext tenantContext,
     IAutonomousAcquisitionWorkflowPlanner planner,
     IAgentJobTaskFactory taskFactory,
-    ICampaignContainerRuntime containers) : IAutonomousAcquisitionJobOrchestrator
+    ICampaignContainerRuntime containers,
+    IServiceScopeFactory scopeFactory) : IAutonomousAcquisitionJobOrchestrator
 {
     public async Task ExecuteAsync(AgentJob job, CancellationToken ct = default)
     {
@@ -120,7 +122,24 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 job.UpdatedAtUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync(ct);
 
-                awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, ct);
+                // A task can legitimately run longer than the lease window. Renew it
+                // from an isolated scope so the same DbContext is never used concurrently.
+                using (var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    var heartbeat = RenewLeaseWhileExecutingAsync(
+                        job.TenantId, job.Id, job.WorkerId, tenantContext.Current?.Slug ?? string.Empty,
+                        heartbeatStop.Token);
+                    try
+                    {
+                        awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, ct);
+                    }
+                    finally
+                    {
+                        await heartbeatStop.CancelAsync();
+                        try { await heartbeat; }
+                        catch (OperationCanceledException) when (heartbeatStop.IsCancellationRequested) { }
+                    }
+                }
 
                 job.LeaseUntilUtc = DateTime.UtcNow.AddMinutes(10);
                 job.UpdatedAtUtc = DateTime.UtcNow;
@@ -196,6 +215,38 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
 
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
+        }
+    }
+
+    private async Task RenewLeaseWhileExecutingAsync(
+        Guid tenantId,
+        Guid jobId,
+        string? workerId,
+        string tenantSlug,
+        CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync(ct))
+        {
+            using var scope = scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+            context.Set(new CurrentTenant(tenantId, tenantSlug));
+            var scopedDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+
+            var updated = await scopedDb.AgentJobs
+                .Where(x => x.TenantId == tenantId &&
+                            x.Id == jobId &&
+                            x.Status == AgentJobStatus.Running &&
+                            x.WorkerId == workerId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.LeaseUntilUtc, now.AddMinutes(10))
+                    .SetProperty(x => x.UpdatedAtUtc, now), ct);
+
+            // The job was stopped, reclaimed or moved to Waiting by another lifecycle
+            // operation. Do not continue extending a lease we no longer own.
+            if (updated == 0)
+                return;
         }
     }
 
