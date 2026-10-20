@@ -105,8 +105,13 @@ public sealed class CampaignContainersController(
             PackageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? campaign.PackageCode : input.PackageCode.Trim(),
             PackageVersion = string.IsNullOrWhiteSpace(input.PackageVersion) ? campaign.PackageVersion : input.PackageVersion.Trim(),
             ConfigurationJson = configurationService.Build(input.ConfigurationJson, campaign.TargetListId),
-            Status = CampaignContainerStatus.Pending
+            Status = CampaignContainerStatus.Queued
         };
+
+        // A container created from a campaign becomes the campaign's canonical runtime agent.
+        // Without this link, the campaign Run endpoint cannot resolve the newly created container agent.
+        campaign.AgentId = agent.Id;
+        campaign.UpdatedAtUtc = DateTime.UtcNow;
 
         db.AutonomousAcquisitionAgents.Add(agent);
         db.CampaignContainers.Add(container);
