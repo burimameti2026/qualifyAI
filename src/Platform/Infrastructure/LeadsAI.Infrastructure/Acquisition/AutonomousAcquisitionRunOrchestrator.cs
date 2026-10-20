@@ -147,20 +147,21 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
 
                 // A task can legitimately run longer than the lease window. Renew it
                 // from an isolated scope so the same DbContext is never used concurrently.
-                using (var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                using (var executionStop = CancellationTokenSource.CreateLinkedTokenSource(ct))
                 {
                     var heartbeat = RenewLeaseWhileExecutingAsync(
                         job.TenantId, job.Id, job.WorkerId, tenantContext.Current?.Slug ?? string.Empty,
-                        heartbeatStop.Token);
+                        executionStop);
                     try
                     {
-                        awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, ct);
+                        awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, executionStop.Token);
                     }
                     finally
                     {
-                        await heartbeatStop.CancelAsync();
+                        await executionStop.CancelAsync();
                         try { await heartbeat; }
-                        catch (OperationCanceledException) when (heartbeatStop.IsCancellationRequested) { }
+                        catch (OperationCanceledException) when (executionStop.IsCancellationRequested && ct.IsCancellationRequested) { }
+                        catch (OperationCanceledException) when (executionStop.IsCancellationRequested) { }
                     }
                 }
 
@@ -197,6 +198,12 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
 
             job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+        }
+        catch (AgentJobLeaseLostException)
+        {
+            // Recovery or a lifecycle transition already changed ownership/state.
+            // Leave that state intact instead of overwriting it as Failed.
+            throw;
         }
         catch (Exception ex)
         {
@@ -246,10 +253,10 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         Guid jobId,
         string? workerId,
         string tenantSlug,
-        CancellationToken ct)
+        CancellationTokenSource executionStop)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        while (await timer.WaitForNextTickAsync(ct))
+        while (await timer.WaitForNextTickAsync(executionStop.Token))
         {
             using var scope = scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ITenantContext>();
@@ -264,13 +271,22 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                             x.WorkerId == workerId)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.LeaseUntilUtc, now.AddMinutes(10))
-                    .SetProperty(x => x.UpdatedAtUtc, now), ct);
+                    .SetProperty(x => x.UpdatedAtUtc, now), executionStop.Token);
 
             // The job was stopped, reclaimed or moved to Waiting by another lifecycle
-            // operation. Do not continue extending a lease we no longer own.
+            // operation. Cancel the task and preserve the state written by that owner.
             if (updated == 0)
-                return;
+            {
+                executionStop.Cancel();
+                throw new AgentJobLeaseLostException();
+            }
         }
+    }
+
+    private sealed class AgentJobLeaseLostException : Exception
+    {
+        public AgentJobLeaseLostException()
+            : base("AgentJob lease ownership was lost during task execution.") { }
     }
 
     private static AutonomousAcquisitionTemplate ApplyCampaignPlan(
