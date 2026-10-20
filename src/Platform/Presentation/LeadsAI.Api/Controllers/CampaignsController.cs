@@ -19,10 +19,7 @@ public sealed class CampaignsController(
     ITenantContext tenant,
     CampaignExecutionService executor,
     ProspectReplyProcessingService replyProcessor,
-    IAgentJobFactory jobFactory,
-    CampaignRuntimeService runtime,
-    AcquisitionCriteriaService criteriaService,
-    CampaignContainerConfigurationService configurationService) : ControllerBase
+    CampaignRuntimeService runtime) : ControllerBase
 {
     private Guid TenantId => tenant.TenantId();
 
