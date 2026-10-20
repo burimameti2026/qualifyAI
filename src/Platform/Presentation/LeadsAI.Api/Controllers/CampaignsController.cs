@@ -173,15 +173,19 @@ public sealed class CampaignsController(
                               activity.Level.Equals("failed", StringComparison.OrdinalIgnoreCase) ||
                               activity.EventType.Contains("failed", StringComparison.OrdinalIgnoreCase)
                 ? "Failed"
-                : activity.EventType.Contains("waiting", StringComparison.OrdinalIgnoreCase)
-                    ? "Waiting"
-                    : activity.EventType.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
-                      activity.EventType.Contains("stopped", StringComparison.OrdinalIgnoreCase)
-                        ? "Completed"
-                        : activity.EventType.Contains("started", StringComparison.OrdinalIgnoreCase) ||
-                          activity.EventType.Contains("step.started", StringComparison.OrdinalIgnoreCase)
-                            ? "Running"
-                            : activity.Level;
+                : activity.EventType.Contains("paused", StringComparison.OrdinalIgnoreCase)
+                    ? "Paused"
+                    : activity.EventType.Contains("waiting", StringComparison.OrdinalIgnoreCase)
+                        ? "Waiting"
+                        : activity.EventType.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
+                          activity.EventType.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
+                          activity.EventType.Contains("stopped", StringComparison.OrdinalIgnoreCase)
+                            ? "Completed"
+                            : activity.EventType.Contains("queued", StringComparison.OrdinalIgnoreCase)
+                                ? "Queued"
+                                : activity.EventType.Contains("started", StringComparison.OrdinalIgnoreCase)
+                                    ? "Running"
+                                    : activity.Level;
 
             if (!string.IsNullOrWhiteSpace(status) &&
                 !string.Equals(eventStatus, status.Trim(), StringComparison.OrdinalIgnoreCase))
