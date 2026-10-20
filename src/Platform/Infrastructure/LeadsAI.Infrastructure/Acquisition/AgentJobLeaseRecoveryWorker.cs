@@ -29,12 +29,11 @@ public sealed class AgentJobLeaseRecoveryWorker(
                 using (var discoveryScope = scopes.CreateScope())
                 {
                     var db = discoveryScope.ServiceProvider.GetRequiredService<AppDbContext>();
-                    tenants = await db.Tenants
+                    var activeTenants = await db.Tenants
                         .Where(x => x.IsActive)
                         .Select(x => new { x.Id, x.Slug })
-                        .ToListAsync(stoppingToken)
-                        .ContinueWith(t => t.GetAwaiter().GetResult()
-                            .Select(x => (x.Id, x.Slug)).ToList(), stoppingToken);
+                        .ToListAsync(stoppingToken);
+                    tenants = activeTenants.Select(x => (x.Id, x.Slug)).ToList();
                 }
 
                 foreach (var tenant in tenants)
