@@ -39,6 +39,10 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             job.Status = campaign.Status == CampaignStatus.Paused
                 ? AgentJobStatus.Waiting
                 : AgentJobStatus.Cancelled;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.CompletedAtUtc = job.Status == AgentJobStatus.Cancelled ? DateTime.UtcNow : null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -50,6 +54,10 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         if (agent.Status is AutonomousAgentStatus.Paused)
         {
             job.Status = AgentJobStatus.Waiting;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.CompletedAtUtc = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -58,6 +66,9 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         {
             job.Status = AgentJobStatus.Cancelled;
             job.CompletedAtUtc = DateTime.UtcNow;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -131,11 +142,15 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             {
                 job.Status = AgentJobStatus.Waiting;
                 job.CompletedAtUtc = null;
+                job.LeaseUntilUtc = null;
+                job.WorkerId = null;
             }
             else
             {
                 job.Status = AgentJobStatus.Completed;
                 job.CompletedAtUtc = DateTime.UtcNow;
+                job.LeaseUntilUtc = null;
+                job.WorkerId = null;
             }
 
             job.UpdatedAtUtc = DateTime.UtcNow;
