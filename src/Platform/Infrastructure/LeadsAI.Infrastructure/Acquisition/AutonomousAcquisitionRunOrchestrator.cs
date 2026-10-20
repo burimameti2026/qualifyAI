@@ -236,13 +236,19 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             job.UpdatedAtUtc = DateTime.UtcNow;
             if (job.ContainerId.HasValue)
             {
-                db.AuditLogs.Add(new AuditLog
+                db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
                 {
                     TenantId = job.TenantId,
-                    Action = "container.failed",
-                    EntityType = "CampaignContainerActivity",
-                    EntityId = job.ContainerId.Value.ToString(),
-                    DataJson = JsonSerializer.Serialize(new { level = "error", jobId = job.Id, message = $"Container job failed: {ex.Message}", error = ex.Message })
+                    ContainerId = job.ContainerId.Value,
+                    RunId = job.Id,
+                    ContainerVersion = job.ContainerVersion ?? 0,
+                    AtUtc = DateTime.UtcNow,
+                    Level = "error",
+                    EventType = "container.failed",
+                    StepType = string.Empty,
+                    StepName = string.Empty,
+                    Message = $"Container job failed: {ex.Message}",
+                    DataJson = JsonSerializer.Serialize(new { error = ex.Message })
                 });
             }
 
@@ -490,13 +496,20 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         CancellationToken ct)
     {
         if (!job.ContainerId.HasValue) return;
-        db.AuditLogs.Add(new AuditLog
+        db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
         {
             TenantId = job.TenantId,
-            Action = eventType,
-            EntityType = "CampaignContainerActivity",
-            EntityId = job.ContainerId.Value.ToString(),
-            DataJson = JsonSerializer.Serialize(new { level, jobId = job.Id, taskId = task.Id, stepType = task.Type, stepName = task.Name, message, data })
+            ContainerId = job.ContainerId.Value,
+            RunId = job.Id,
+            TaskId = task.Id,
+            ContainerVersion = job.ContainerVersion ?? 0,
+            AtUtc = DateTime.UtcNow,
+            Level = level,
+            EventType = eventType,
+            StepType = task.Type,
+            StepName = task.Name,
+            Message = message,
+            DataJson = JsonSerializer.Serialize(data ?? new { })
         });
         await db.SaveChangesAsync(ct);
     }
