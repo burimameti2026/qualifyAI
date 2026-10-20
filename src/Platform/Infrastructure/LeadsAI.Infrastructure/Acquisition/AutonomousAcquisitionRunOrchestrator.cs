@@ -103,7 +103,18 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 if (!await CanContinueAsync(job, agent, ct))
                     return;
 
+                // Renew the lease at task boundaries so multi-step campaigns can run
+                // longer than the initial claim window without being recovered as abandoned.
+                job.LeaseUntilUtc = DateTime.UtcNow.AddMinutes(10);
+                job.UpdatedAtUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+
                 awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, ct);
+
+                job.LeaseUntilUtc = DateTime.UtcNow.AddMinutes(10);
+                job.UpdatedAtUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+
                 if (awaitingApproval)
                     break;
 
