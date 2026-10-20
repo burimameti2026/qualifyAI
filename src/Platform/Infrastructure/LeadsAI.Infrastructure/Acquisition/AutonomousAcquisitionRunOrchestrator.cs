@@ -205,6 +205,12 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             // Leave that state intact instead of overwriting it as Failed.
             throw;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host shutdown must not convert an interrupted job into a terminal failure;
+            // the lease recovery worker can safely requeue it after the lease expires.
+            throw;
+        }
         catch (Exception ex)
         {
             var runningTask = await db.AutonomousAcquisitionTasks
