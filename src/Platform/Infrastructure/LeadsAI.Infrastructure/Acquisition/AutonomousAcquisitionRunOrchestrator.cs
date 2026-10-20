@@ -777,29 +777,18 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Qualify);
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
         var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
-        List<Prospect> prospects;
-        if (targetListId.HasValue)
-        {
-            prospects = await (
-                from member in db.TargetListMembers
-                join prospect in db.Prospects on member.ProspectId equals prospect.Id
-                where member.TenantId == agent.TenantId &&
-                      member.TargetListId == targetListId.Value &&
-                      prospect.TenantId == agent.TenantId
-                orderby prospect.UpdatedAtUtc descending
-                select prospect)
-                .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
-                .ToListAsync(ct);
-        }
-        else
-        {
-            var since = job.StartedAtUtc ?? DateTime.UtcNow;
-            prospects = await db.Prospects
-                .Where(x => x.TenantId == agent.TenantId && x.CreatedAtUtc >= since && x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}")
-                .OrderByDescending(x => x.CreatedAtUtc)
-                .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
-                .ToListAsync(ct);
-        }
+        var since = job.StartedAtUtc ?? DateTime.UtcNow;
+        var campaignOrigin = $"autonomous-agent:{job.CampaignId:N}";
+        var prospects = await db.Prospects
+            .Where(prospect => prospect.TenantId == agent.TenantId &&
+                ((prospect.CreatedAtUtc >= since && prospect.DatasetOrigin == campaignOrigin) ||
+                 (targetListId.HasValue && db.TargetListMembers.Any(member =>
+                    member.TenantId == agent.TenantId &&
+                    member.TargetListId == targetListId.Value &&
+                    member.ProspectId == prospect.Id))))
+            .OrderByDescending(prospect => prospect.UpdatedAtUtc)
+            .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
+            .ToListAsync(ct);
 
         foreach (var prospect in prospects)
         {
