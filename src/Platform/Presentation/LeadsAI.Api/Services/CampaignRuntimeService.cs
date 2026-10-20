@@ -1,5 +1,6 @@
 using System.Data;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Application;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
