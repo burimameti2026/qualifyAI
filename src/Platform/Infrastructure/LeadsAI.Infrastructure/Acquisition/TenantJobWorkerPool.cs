@@ -35,10 +35,11 @@ public sealed class TenantJobWorkerPool(
                     using (var discoveryScope = scopes.CreateScope())
                     {
                         var db = discoveryScope.ServiceProvider.GetRequiredService<AppDbContext>();
-                        tenants = await db.Tenants
+                        var activeTenants = await db.Tenants
                             .Where(x => x.IsActive)
-                            .Select(x => new ValueTuple<Guid, string>(x.Id, x.Slug))
+                            .Select(x => new { x.Id, x.Slug })
                             .ToListAsync(stoppingToken);
+                        tenants = activeTenants.Select(x => (x.Id, x.Slug)).ToList();
                     }
 
                     var activeIds = tenants.Select(x => x.Id).ToHashSet();
