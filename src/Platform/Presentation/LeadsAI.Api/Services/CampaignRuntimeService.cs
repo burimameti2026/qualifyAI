@@ -1,5 +1,6 @@
 using System.Data;
 using LeadsAI.Domain;
+using LeadsAI.Application;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,8 @@ namespace LeadsAI.Api.Services;
 
 public sealed class CampaignRuntimeService(
     AppDbContext db,
-    IAgentJobFactory jobFactory)
+    IAgentJobFactory jobFactory,
+    ICampaignContainerRuntime containers)
 {
     public async Task<CampaignRuntimeResult?> StartAsync(Guid tenantId, Guid campaignId, CancellationToken ct)
         => await RunLifecycleAsync(tenantId, campaignId, resume: false, ct);
@@ -103,8 +105,28 @@ public sealed class CampaignRuntimeService(
             if (!campaign.AgentId.HasValue)
                 throw new InvalidOperationException("Campaign agent is not configured.");
 
+            var agent = await db.AutonomousAcquisitionAgents
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct)
+                ?? throw new InvalidOperationException("Campaign agent was not found.");
+
+            if (agent.Status == AutonomousAgentStatus.Stopped)
+                throw new InvalidOperationException("A stopped acquisition agent cannot be restarted. Create or reactivate the agent first.");
+
+            agent.Status = AutonomousAgentStatus.Active;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+
+            var container = await containers.EnsureAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                $"{campaign.Name} Container",
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanJson,
+                ct);
+
             var job = await jobFactory.QueueCampaignAsync(
-                tenantId, campaign.Id, campaign.AgentId.Value, null,
+                tenantId, campaign.Id, agent.Id, container.Id,
                 "campaign.execute", $"campaign:{campaign.Id}", true, ct);
             jobId = job.Id;
             await db.SaveChangesAsync(ct);
