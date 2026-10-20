@@ -128,6 +128,34 @@ public sealed class CampaignRuntimeService(
             var job = await jobFactory.QueueCampaignAsync(
                 tenantId, campaign.Id, agent.Id, container.Id,
                 "campaign.execute", $"campaign:{campaign.Id}", true, ct);
+
+            // Resume a paused job in-place instead of creating a second runtime job.
+            // A job blocked on outreach approval remains Waiting; the outreach approval
+            // workflow owns that gate and must not be bypassed by Resume.
+            if (resume && job.Status == AgentJobStatus.Waiting)
+            {
+                var approvalPending = await db.OutreachMessages.AnyAsync(message =>
+                    message.TenantId == tenantId &&
+                    message.CampaignId == campaign.Id &&
+                    message.Status == OutreachStatus.Queued &&
+                    db.CrmTasks.Any(task =>
+                        task.TenantId == tenantId &&
+                        task.Title == $"APPROVAL: Send outreach {message.Id}" &&
+                        !task.Completed), ct);
+
+                if (!approvalPending)
+                {
+                    job.Status = AgentJobStatus.Queued;
+                    job.Error = null;
+                    job.LeaseUntilUtc = null;
+                    job.WorkerId = null;
+                    job.CompletedAtUtc = null;
+                    job.ScheduledAtUtc = DateTime.UtcNow;
+                    job.UpdatedAtUtc = DateTime.UtcNow;
+                    containers.Queue(container);
+                }
+            }
+
             jobId = job.Id;
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
