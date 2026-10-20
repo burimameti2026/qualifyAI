@@ -579,7 +579,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             {
                 AutonomousAgentTaskTypes.Discover => $"Discovery completed: found {ReadJsonInt(root, "discovered")} prospects.",
                 AutonomousAgentTaskTypes.Qualify => $"Qualification completed: processed {ReadJsonInt(root, "processed")} prospects, {ReadJsonInt(root, "qualified")} qualified.",
-                AutonomousAgentTaskTypes.Enrich => $"Enrichment completed: {ReadJsonInt(root, "enriched")} qualified prospects have evidence.",
+                AutonomousAgentTaskTypes.Enrich => BuildEnrichmentSummary(root),
                 AutonomousAgentTaskTypes.BuildTargetList => $"Target list completed: added {ReadJsonInt(root, "added")} prospects.",
                 AutonomousAgentTaskTypes.Outreach => $"Outreach preparation completed: prepared {ReadJsonInt(root, "prepared")} messages; approval required.",
                 _ => $"{task.Name} completed."
@@ -590,6 +590,23 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
 
     private static int ReadJsonInt(JsonElement root, string property) =>
         root.TryGetProperty(property, out var value) && value.TryGetInt32(out var number) ? number : 0;
+
+    private static string BuildEnrichmentSummary(JsonElement root)
+    {
+        var status = root.TryGetProperty("status", out var statusValue) &&
+                     statusValue.ValueKind == JsonValueKind.String
+            ? statusValue.GetString()
+            : null;
+
+        if (string.Equals(status, "provider-not-configured", StringComparison.Ordinal))
+        {
+            return $"Enrichment not run: no enrichment provider is configured. " +
+                   $"{ReadJsonInt(root, "evidenceAvailable")} qualified prospects have existing public evidence; " +
+                   $"{ReadJsonInt(root, "awaitingContactData")} still need contact data.";
+        }
+
+        return $"Enrichment result: {ReadJsonInt(root, "enriched")} prospects enriched.";
+    }
 
     private async Task<bool> ExecuteDiscoveryAndContinueAsync(AutonomousAcquisitionTask task, AgentJob job, AutonomousAcquisitionAgent agent, AutonomousAcquisitionTemplate templateAgentTemplate, IReadOnlyList<AutonomousAcquisitionTask> tasks, DateTime now, CancellationToken ct)
     {
@@ -810,26 +827,48 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Enrich);
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
         var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
-        var count = targetListId.HasValue
+        var qualifiedProspects = db.Prospects.Where(x =>
+            x.TenantId == agent.TenantId &&
+            x.Status == ProspectStatus.Qualified);
+
+        var prospects = targetListId.HasValue
             ? await (from member in db.TargetListMembers
-                     join prospect in db.Prospects on member.ProspectId equals prospect.Id
+                     join prospect in qualifiedProspects on member.ProspectId equals prospect.Id
                      where member.TenantId == agent.TenantId &&
-                           member.TargetListId == targetListId.Value &&
-                           prospect.TenantId == agent.TenantId &&
-                           prospect.Status == ProspectStatus.Qualified
-                     select prospect.Id).CountAsync(ct)
-            : await db.Prospects.CountAsync(x =>
-                x.TenantId == agent.TenantId &&
-                x.CreatedAtUtc >= (job.StartedAtUtc ?? DateTime.UtcNow) &&
-                x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}" &&
-                x.Status == ProspectStatus.Qualified, ct);
+                           member.TargetListId == targetListId.Value
+                     select prospect).Distinct().ToListAsync(ct)
+            : await qualifiedProspects
+                .Where(x => x.CreatedAtUtc >= (job.StartedAtUtc ?? DateTime.UtcNow) &&
+                            x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}")
+                .ToListAsync(ct);
+
+        // There is no enrichment provider in the current runtime. Do not report these
+        // prospects as enriched merely because they passed qualification or have signals.
+        // Existing public evidence is counted separately from contact data still missing.
+        var evidenceAvailable = prospects.Count(x =>
+            !string.IsNullOrWhiteSpace(x.SourceUrl) ||
+            !string.IsNullOrWhiteSpace(x.PainHypothesis));
+        var awaitingContactData = prospects.Count(x =>
+            string.IsNullOrWhiteSpace(x.Email) ||
+            string.IsNullOrWhiteSpace(x.ContactName));
 
         CompleteTask(task, new
         {
-            enriched = count,
-            mode = "evidence-preserving",
-            note = "Company enrichment is currently based on discovered public evidence; no contact data is fabricated."
+            status = "provider-not-configured",
+            enriched = 0,
+            evidenceAvailable,
+            awaitingContactData,
+            provider = (string?)null,
+            note = "No enrichment provider is configured. Existing public evidence is preserved; contact/company fields are not fabricated."
         });
+        await LogActivityAsync(
+            job,
+            task,
+            "warning",
+            "acquisition.enrichment.not_configured",
+            $"Enrichment skipped: no provider configured. {evidenceAvailable} prospects have existing public evidence; {awaitingContactData} still need contact data.",
+            new { enriched = 0, evidenceAvailable, awaitingContactData, status = "provider-not-configured" },
+            ct);
     }
 
     private async Task ExecuteTargetListAsync(
