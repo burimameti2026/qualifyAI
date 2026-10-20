@@ -32,6 +32,31 @@ namespace LeadsAI.Persistence.SqlServer.Migrations
                     table.PrimaryKey("PK_CampaignContainerActivities", x => x.Id);
                 });
 
+            // Preserve previously recorded container activity before the API switches
+            // to the dedicated operational history table.
+            migrationBuilder.Sql(@"
+INSERT INTO [CampaignContainerActivities]
+    ([Id], [TenantId], [ContainerId], [RunId], [TaskId], [ContainerVersion], [AtUtc],
+     [Level], [EventType], [StepType], [StepName], [Message], [DataJson])
+SELECT
+    NEWID(),
+    a.[TenantId],
+    TRY_CONVERT(uniqueidentifier, a.[EntityId]),
+    TRY_CONVERT(uniqueidentifier, JSON_VALUE(a.[DataJson], '$.jobId')),
+    TRY_CONVERT(uniqueidentifier, JSON_VALUE(a.[DataJson], '$.taskId')),
+    0,
+    a.[CreatedAtUtc],
+    COALESCE(JSON_VALUE(a.[DataJson], '$.level'), 'info'),
+    a.[Action],
+    COALESCE(JSON_VALUE(a.[DataJson], '$.stepType'), ''),
+    COALESCE(JSON_VALUE(a.[DataJson], '$.stepName'), ''),
+    COALESCE(JSON_VALUE(a.[DataJson], '$.message'), a.[Action]),
+    COALESCE(JSON_QUERY(a.[DataJson], '$.data'), a.[DataJson], '{}')
+FROM [AuditLogs] a
+WHERE a.[EntityType] = 'CampaignContainerActivity'
+  AND TRY_CONVERT(uniqueidentifier, a.[EntityId]) IS NOT NULL
+  AND ISJSON(a.[DataJson]) = 1;
+");
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignContainerActivities_TenantId_ContainerId_AtUtc",
                 table: "CampaignContainerActivities",
