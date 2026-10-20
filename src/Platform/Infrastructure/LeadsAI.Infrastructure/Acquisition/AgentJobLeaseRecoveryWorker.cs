@@ -100,6 +100,19 @@ public sealed class AgentJobLeaseRecoveryWorker(
             if (changed == 0)
                 continue;
 
+            // A crashed worker can leave its current task marked Running forever.
+            // Reconcile that step with the job recovery decision before another worker
+            // starts the job, so history does not show a permanently active task.
+            await db.AutonomousAcquisitionTasks
+                .Where(x => x.TenantId == tenantId &&
+                            x.RunId == item.Id &&
+                            x.Status == AutonomousAgentTaskStatus.Running)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, terminal ? AutonomousAgentTaskStatus.Failed : AutonomousAgentTaskStatus.Pending)
+                    .SetProperty(x => x.Error, terminal ? error : (string?)null)
+                    .SetProperty(x => x.CompletedAtUtc, terminal ? now : (DateTime?)null)
+                    .SetProperty(x => x.UpdatedAtUtc, now), ct);
+
             if (item.ContainerId.HasValue)
             {
                 var container = await db.CampaignContainers
