@@ -193,7 +193,24 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                     var waitingContainer = await db.CampaignContainers.SingleOrDefaultAsync(
                         x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
                     if (waitingContainer is not null)
+                    {
                         containers.Wait(waitingContainer, DateTime.UtcNow);
+                        db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
+                        {
+                            TenantId = job.TenantId,
+                            ContainerId = waitingContainer.Id,
+                            RunId = job.Id,
+                            TaskId = current?.Id,
+                            ContainerVersion = job.ContainerVersion ?? waitingContainer.Version,
+                            AtUtc = DateTime.UtcNow,
+                            Level = "warning",
+                            EventType = "container.waiting",
+                            StepType = current?.Type ?? string.Empty,
+                            StepName = current?.Name ?? string.Empty,
+                            Message = "Container is waiting for outreach approval.",
+                            DataJson = JsonSerializer.Serialize(new { status = "waiting", reason = "approval-required" })
+                        });
+                    }
                 }
             }
             else
@@ -208,7 +225,23 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                     var completedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
                         x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
                     if (completedContainer is not null)
+                    {
                         containers.Complete(completedContainer, DateTime.UtcNow);
+                        db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
+                        {
+                            TenantId = job.TenantId,
+                            ContainerId = completedContainer.Id,
+                            RunId = job.Id,
+                            ContainerVersion = job.ContainerVersion ?? completedContainer.Version,
+                            AtUtc = DateTime.UtcNow,
+                            Level = "info",
+                            EventType = "container.completed",
+                            StepType = string.Empty,
+                            StepName = string.Empty,
+                            Message = "Container execution completed successfully.",
+                            DataJson = JsonSerializer.Serialize(new { status = "completed" })
+                        });
+                    }
                 }
             }
 
