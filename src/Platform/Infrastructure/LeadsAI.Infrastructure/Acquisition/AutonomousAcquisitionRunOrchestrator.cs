@@ -879,24 +879,31 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.BuildTargetList);
         var campaign = await db.Campaigns
-            .SingleOrDefaultAsync(x => x.TenantId == agent.TenantId && x.Id == job.CampaignId, ct);
+            .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct)
+            ?? throw new InvalidOperationException("Campaign was not found for target-list construction.");
 
-        if (campaign is null)
+        // A container may run against its own target list. Fall back to the
+        // campaign's configured list only when no valid container target is set.
+        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct) ?? campaign.TargetListId;
+        if (!targetListId.HasValue ||
+            !await db.TargetLists.AnyAsync(
+                x => x.TenantId == job.TenantId && x.Id == targetListId.Value,
+                ct))
         {
-            CompleteTask(task, new { added = 0, note = "No campaign container is linked to this agent." });
-            return;
+            throw new InvalidOperationException(
+                "Target-list construction cannot continue because this campaign/container has no valid target list.");
         }
 
         var since = job.StartedAtUtc ?? DateTime.UtcNow;
         var prospects = await db.Prospects
-            .Where(x => x.TenantId == agent.TenantId &&
+            .Where(x => x.TenantId == job.TenantId &&
                         x.CreatedAtUtc >= since &&
                         x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}" &&
                         x.Status == ProspectStatus.Qualified)
             .ToListAsync(ct);
 
         var existing = await db.TargetListMembers
-            .Where(x => x.TenantId == agent.TenantId && x.TargetListId == campaign.TargetListId)
+            .Where(x => x.TenantId == job.TenantId && x.TargetListId == targetListId.Value)
             .Select(x => x.ProspectId)
             .ToListAsync(ct);
 
@@ -904,11 +911,13 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var added = 0;
         foreach (var prospect in prospects)
         {
-            if (!known.Add(prospect.Id)) continue;
+            if (!known.Add(prospect.Id))
+                continue;
+
             db.TargetListMembers.Add(new TargetListMember
             {
-                TenantId = agent.TenantId,
-                TargetListId = campaign.TargetListId,
+                TenantId = job.TenantId,
+                TargetListId = targetListId.Value,
                 ProspectId = prospect.Id,
                 AddedAtUtc = DateTime.UtcNow
             });
@@ -916,7 +925,13 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         }
 
         await db.SaveChangesAsync(ct);
-        CompleteTask(task, new { added, targetListId = campaign.TargetListId });
+        CompleteTask(task, new
+        {
+            added,
+            targetListId = targetListId.Value,
+            qualifiedCandidates = prospects.Count,
+            alreadyPresent = prospects.Count - added
+        });
     }
 
     private async Task<bool> PrepareOutreachAsync(
