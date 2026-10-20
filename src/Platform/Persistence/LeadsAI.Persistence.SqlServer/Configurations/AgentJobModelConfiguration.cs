@@ -28,5 +28,20 @@ public static class AgentJobModelConfiguration
             e.HasIndex(x => new { x.TenantId, x.AgentId, x.Status });
             e.HasIndex(x => x.LeaseUntilUtc);
         });
+
+        builder.Entity<CampaignContainerActivityRecord>(e =>
+        {
+            e.ToTable("CampaignContainerActivities");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Level).HasMaxLength(32).IsRequired();
+            e.Property(x => x.EventType).HasMaxLength(128).IsRequired();
+            e.Property(x => x.StepType).HasMaxLength(128).IsRequired();
+            e.Property(x => x.StepName).HasMaxLength(256).IsRequired();
+            e.Property(x => x.Message).HasMaxLength(4000).IsRequired();
+            e.Property(x => x.DataJson).IsRequired();
+            e.HasIndex(x => new { x.TenantId, x.ContainerId, x.AtUtc });
+            e.HasIndex(x => new { x.TenantId, x.RunId, x.AtUtc });
+            e.HasIndex(x => new { x.TenantId, x.TaskId });
+        });
     }
 }
