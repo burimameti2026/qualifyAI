@@ -56,6 +56,11 @@ FROM [AuditLogs] a
 WHERE a.[EntityType] = 'CampaignContainerActivity'
   AND TRY_CONVERT(uniqueidentifier, a.[EntityId]) IS NOT NULL
   AND ISJSON(a.[DataJson]) = 1;
+
+DELETE FROM [AuditLogs]
+WHERE [EntityType] = 'CampaignContainerActivity'
+  AND TRY_CONVERT(uniqueidentifier, [EntityId]) IS NOT NULL
+  AND ISJSON([DataJson]) = 1;
 ");
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignContainerActivities_TenantId_ContainerId_AtUtc",
