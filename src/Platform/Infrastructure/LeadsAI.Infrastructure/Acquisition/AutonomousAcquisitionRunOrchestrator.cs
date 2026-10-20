@@ -461,6 +461,13 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             job.LeaseUntilUtc = null;
             job.WorkerId = null;
             job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
+            {
+                var pausedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (pausedContainer is not null)
+                    containers.Stop(pausedContainer, DateTime.UtcNow);
+            }
             await db.SaveChangesAsync(ct);
             return false;
         }
@@ -472,6 +479,13 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             job.LeaseUntilUtc = null;
             job.WorkerId = null;
             job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
+            {
+                var stoppedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (stoppedContainer is not null)
+                    containers.Stop(stoppedContainer, DateTime.UtcNow);
+            }
             await db.SaveChangesAsync(ct);
             return false;
         }
