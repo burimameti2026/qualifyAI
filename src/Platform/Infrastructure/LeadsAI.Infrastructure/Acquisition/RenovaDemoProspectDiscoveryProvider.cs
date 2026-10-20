@@ -45,6 +45,13 @@ public sealed class RenovaDemoProspectDiscoveryProvider : IProspectDiscoveryProv
 
     public Task<DiscoveryVerificationResult> VerifyAsync(CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        // This provider is a deterministic local demo source, not a live external integration.
+        // Report it as available so readiness checks do not fail on an unimplemented method.
+        return Task.FromResult(new DiscoveryVerificationResult(
+            true,
+            null,
+            "demo",
+            0,
+            0));
     }
 }
