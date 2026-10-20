@@ -135,67 +135,53 @@ public sealed class CampaignsController(
             .Select(x => x.Id)
             .ToHashSet();
 
-        var logs = await db.AuditLogs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId &&
-                        x.EntityType == "CampaignContainerActivity")
-            .OrderByDescending(x => x.CreatedAtUtc)
+        var activities = await db.CampaignContainerActivities.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && allowedContainerIds.Contains(x.ContainerId))
+            .OrderByDescending(x => x.AtUtc)
             .Take(Math.Min(take * 5, 10000))
             .ToListAsync(ct);
 
-        var items = new List<object>(Math.Min(logs.Count, take));
+        var items = new List<object>(Math.Min(activities.Count, take));
 
-        foreach (var log in logs)
+        foreach (var activity in activities)
         {
-            if (!Guid.TryParse(log.EntityId, out var containerId) ||
-                !allowedContainerIds.Contains(containerId) ||
-                !containerMap.TryGetValue(containerId, out var container) ||
+            if (!containerMap.TryGetValue(activity.ContainerId, out var container) ||
                 !campaignMap.TryGetValue(container.CampaignId, out var campaign))
                 continue;
 
-            if (fromUtc.HasValue && log.CreatedAtUtc < fromUtc.Value) continue;
-            if (toUtc.HasValue && log.CreatedAtUtc > toUtc.Value) continue;
+            if (fromUtc.HasValue && activity.AtUtc < fromUtc.Value) continue;
+            if (toUtc.HasValue && activity.AtUtc > toUtc.Value) continue;
 
-            string level = "info";
-            string eventStepType = "";
-            string stepName = "";
-            string message = log.Action;
-            string? runId = null;
-            string? taskId = null;
-            object data = new { };
+            if (!string.IsNullOrWhiteSpace(stepType) &&
+                !string.Equals(activity.StepType, stepType.Trim(), StringComparison.OrdinalIgnoreCase))
+                continue;
 
+            System.Text.Json.JsonElement data;
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(log.DataJson ?? "{}");
-                var root = doc.RootElement;
-                if (root.TryGetProperty("level", out var p)) level = p.GetString() ?? level;
-                if (root.TryGetProperty("stepType", out p)) eventStepType = p.GetString() ?? "";
-                if (root.TryGetProperty("stepName", out p)) stepName = p.GetString() ?? "";
-                if (root.TryGetProperty("message", out p)) message = p.GetString() ?? message;
-                if (root.TryGetProperty("runId", out p)) runId = p.ToString();
-                if (root.TryGetProperty("taskId", out p)) taskId = p.ToString();
-                if (root.TryGetProperty("data", out p)) data = p.Clone();
+                using var doc = System.Text.Json.JsonDocument.Parse(
+                    string.IsNullOrWhiteSpace(activity.DataJson) ? "{}" : activity.DataJson);
+                data = doc.RootElement.Clone();
             }
             catch (System.Text.Json.JsonException)
             {
-                // Keep the persisted audit event visible even when an older payload is malformed.
+                using var doc = System.Text.Json.JsonDocument.Parse("{}");
+                data = doc.RootElement.Clone();
             }
 
-            if (!string.IsNullOrWhiteSpace(stepType) &&
-                !string.Equals(eventStepType, stepType.Trim(), StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var eventStatus = level.Equals("error", StringComparison.OrdinalIgnoreCase) ||
-                              level.Equals("failed", StringComparison.OrdinalIgnoreCase) ||
-                              log.Action.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            var eventStatus = activity.Level.Equals("error", StringComparison.OrdinalIgnoreCase) ||
+                              activity.Level.Equals("failed", StringComparison.OrdinalIgnoreCase) ||
+                              activity.EventType.Contains("failed", StringComparison.OrdinalIgnoreCase)
                 ? "Failed"
-                : log.Action.Contains("waiting", StringComparison.OrdinalIgnoreCase)
+                : activity.EventType.Contains("waiting", StringComparison.OrdinalIgnoreCase)
                     ? "Waiting"
-                    : log.Action.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
-                      log.Action.Contains("stopped", StringComparison.OrdinalIgnoreCase)
+                    : activity.EventType.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
+                      activity.EventType.Contains("stopped", StringComparison.OrdinalIgnoreCase)
                         ? "Completed"
-                        : log.Action.Contains("started", StringComparison.OrdinalIgnoreCase)
+                        : activity.EventType.Contains("started", StringComparison.OrdinalIgnoreCase) ||
+                          activity.EventType.Contains("step.started", StringComparison.OrdinalIgnoreCase)
                             ? "Running"
-                            : level;
+                            : activity.Level;
 
             if (!string.IsNullOrWhiteSpace(status) &&
                 !string.Equals(eventStatus, status.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -203,8 +189,8 @@ public sealed class CampaignsController(
 
             items.Add(new
             {
-                id = log.Id,
-                atUtc = log.CreatedAtUtc,
+                id = activity.Id,
+                atUtc = activity.AtUtc,
                 campaignId = campaign.Id,
                 campaignName = campaign.Name,
                 containerId = container.Id,
@@ -213,14 +199,14 @@ public sealed class CampaignsController(
                 agentName = agents.TryGetValue(container.AgentId, out var agent) ? agent : "Unknown",
                 packCode = container.PackageCode,
                 packVersion = container.PackageVersion,
-                runId,
-                taskId,
-                stepType = eventStepType,
-                stepName,
-                eventType = log.Action,
-                level,
+                runId = activity.RunId,
+                taskId = activity.TaskId,
+                stepType = activity.StepType,
+                stepName = activity.StepName,
+                eventType = activity.EventType,
+                level = activity.Level,
                 status = eventStatus,
-                message,
+                message = activity.Message,
                 data
             });
 
