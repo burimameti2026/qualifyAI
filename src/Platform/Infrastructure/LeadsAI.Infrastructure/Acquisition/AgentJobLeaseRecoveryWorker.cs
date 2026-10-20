@@ -110,10 +110,7 @@ public sealed class AgentJobLeaseRecoveryWorker(
                     if (terminal)
                         containers.Fail(container, now);
                     else
-                        container.Status = CampaignContainerStatus.Queued;
-                        container.LastStoppedAtUtc = now;
-                        container.CompletedAtUtc = null;
-                        container.UpdatedAtUtc = now;
+                        containers.RequeueAfterLeaseExpiry(container, now);
                 }
             }
 
