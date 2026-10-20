@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using LeadsAI.Application;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
@@ -20,7 +21,8 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     ITenantContext tenantContext,
     IAutonomousAcquisitionWorkflowPlanner planner,
     IAgentJobTaskFactory taskFactory,
-    ICampaignContainerRuntime containers) : IAutonomousAcquisitionJobOrchestrator
+    ICampaignContainerRuntime containers,
+    IServiceScopeFactory scopeFactory) : IAutonomousAcquisitionJobOrchestrator
 {
     public async Task ExecuteAsync(AgentJob job, CancellationToken ct = default)
     {
@@ -39,6 +41,19 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             job.Status = campaign.Status == CampaignStatus.Paused
                 ? AgentJobStatus.Waiting
                 : AgentJobStatus.Cancelled;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.CompletedAtUtc = job.Status == AgentJobStatus.Cancelled ? DateTime.UtcNow : null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
+
+            if (job.ContainerId.HasValue)
+            {
+                var inactiveContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (inactiveContainer is not null)
+                    containers.Stop(inactiveContainer, DateTime.UtcNow);
+            }
+
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -50,6 +65,17 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         if (agent.Status is AutonomousAgentStatus.Paused)
         {
             job.Status = AgentJobStatus.Waiting;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.CompletedAtUtc = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
+            {
+                var pausedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (pausedContainer is not null)
+                    containers.Stop(pausedContainer, DateTime.UtcNow);
+            }
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -58,6 +84,16 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         {
             job.Status = AgentJobStatus.Cancelled;
             job.CompletedAtUtc = DateTime.UtcNow;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
+            {
+                var stoppedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (stoppedContainer is not null)
+                    containers.Stop(stoppedContainer, DateTime.UtcNow);
+            }
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -103,7 +139,36 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 if (!await CanContinueAsync(job, agent, ct))
                     return;
 
-                awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, ct);
+                // Renew the lease at task boundaries so multi-step campaigns can run
+                // longer than the initial claim window without being recovered as abandoned.
+                job.LeaseUntilUtc = DateTime.UtcNow.AddMinutes(10);
+                job.UpdatedAtUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+
+                // A task can legitimately run longer than the lease window. Renew it
+                // from an isolated scope so the same DbContext is never used concurrently.
+                using (var executionStop = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    var heartbeat = RenewLeaseWhileExecutingAsync(
+                        job.TenantId, job.Id, job.WorkerId, tenantContext.Current?.Slug ?? string.Empty,
+                        executionStop);
+                    try
+                    {
+                        awaitingApproval = await ExecuteTaskAsync(current, job, agent, template, tasks, now, executionStop.Token);
+                    }
+                    finally
+                    {
+                        await executionStop.CancelAsync();
+                        try { await heartbeat; }
+                        catch (OperationCanceledException) when (executionStop.IsCancellationRequested && ct.IsCancellationRequested) { }
+                        catch (OperationCanceledException) when (executionStop.IsCancellationRequested) { }
+                    }
+                }
+
+                job.LeaseUntilUtc = DateTime.UtcNow.AddMinutes(10);
+                job.UpdatedAtUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+
                 if (awaitingApproval)
                     break;
 
@@ -120,15 +185,31 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             {
                 job.Status = AgentJobStatus.Waiting;
                 job.CompletedAtUtc = null;
+                job.LeaseUntilUtc = null;
+                job.WorkerId = null;
             }
             else
             {
                 job.Status = AgentJobStatus.Completed;
                 job.CompletedAtUtc = DateTime.UtcNow;
+                job.LeaseUntilUtc = null;
+                job.WorkerId = null;
             }
 
             job.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+        }
+        catch (AgentJobLeaseLostException)
+        {
+            // Recovery or a lifecycle transition already changed ownership/state.
+            // Leave that state intact instead of overwriting it as Failed.
+            throw;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host shutdown must not convert an interrupted job into a terminal failure;
+            // the lease recovery worker can safely requeue it after the lease expires.
+            throw;
         }
         catch (Exception ex)
         {
@@ -171,6 +252,47 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private async Task RenewLeaseWhileExecutingAsync(
+        Guid tenantId,
+        Guid jobId,
+        string? workerId,
+        string tenantSlug,
+        CancellationTokenSource executionStop)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync(executionStop.Token))
+        {
+            using var scope = scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<ITenantContext>();
+            context.Set(new CurrentTenant(tenantId, tenantSlug));
+            var scopedDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+
+            var updated = await scopedDb.AgentJobs
+                .Where(x => x.TenantId == tenantId &&
+                            x.Id == jobId &&
+                            x.Status == AgentJobStatus.Running &&
+                            x.WorkerId == workerId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.LeaseUntilUtc, now.AddMinutes(10))
+                    .SetProperty(x => x.UpdatedAtUtc, now), executionStop.Token);
+
+            // The job was stopped, reclaimed or moved to Waiting by another lifecycle
+            // operation. Cancel the task and preserve the state written by that owner.
+            if (updated == 0)
+            {
+                executionStop.Cancel();
+                throw new AgentJobLeaseLostException();
+            }
+        }
+    }
+
+    private sealed class AgentJobLeaseLostException : Exception
+    {
+        public AgentJobLeaseLostException()
+            : base("AgentJob lease ownership was lost during task execution.") { }
     }
 
     private static AutonomousAcquisitionTemplate ApplyCampaignPlan(
@@ -430,8 +552,18 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
         if (campaign.Status == CampaignStatus.Paused || agent.Status == AutonomousAgentStatus.Paused)
         {
-            job.Status =AgentJobStatus.Waiting;
+            job.Status = AgentJobStatus.Waiting;
             job.CompletedAtUtc = null;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
+            {
+                var pausedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (pausedContainer is not null)
+                    containers.Stop(pausedContainer, DateTime.UtcNow);
+            }
             await db.SaveChangesAsync(ct);
             return false;
         }
@@ -440,6 +572,16 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         {
             job.Status = AgentJobStatus.Cancelled;
             job.CompletedAtUtc = DateTime.UtcNow;
+            job.LeaseUntilUtc = null;
+            job.WorkerId = null;
+            job.UpdatedAtUtc = DateTime.UtcNow;
+            if (job.ContainerId.HasValue)
+            {
+                var stoppedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
+                    x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
+                if (stoppedContainer is not null)
+                    containers.Stop(stoppedContainer, DateTime.UtcNow);
+            }
             await db.SaveChangesAsync(ct);
             return false;
         }

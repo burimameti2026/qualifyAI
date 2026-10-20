@@ -24,6 +24,7 @@ public interface ICampaignContainerRuntime
     void Start(CampaignContainer container, DateTime nowUtc);
     void Run(CampaignContainer container, DateTime nowUtc);
     void Fail(CampaignContainer container, DateTime nowUtc);
+    void RequeueAfterLeaseExpiry(CampaignContainer container, DateTime nowUtc);
     void Complete(CampaignContainer container, DateTime nowUtc);
     void Stop(CampaignContainer container, DateTime nowUtc);
 }
@@ -106,6 +107,18 @@ public sealed class CampaignContainerRuntime(AppDbContext db) : ICampaignContain
         container.Status = CampaignContainerStatus.Running;
         container.LastStartedAtUtc ??= nowUtc;
         container.LastStoppedAtUtc = null;
+        container.CompletedAtUtc = null;
+        container.UpdatedAtUtc = nowUtc;
+    }
+
+    public void RequeueAfterLeaseExpiry(CampaignContainer container, DateTime nowUtc)
+    {
+        // Preserve terminal/stopped containers; only recover an active or failed runtime.
+        if (container.Status is CampaignContainerStatus.Stopped or CampaignContainerStatus.Completed)
+            return;
+
+        container.Status = CampaignContainerStatus.Queued;
+        container.LastStoppedAtUtc = nowUtc;
         container.CompletedAtUtc = null;
         container.UpdatedAtUtc = nowUtc;
     }

@@ -1,5 +1,6 @@
 using System.Data;
 using LeadsAI.Domain;
+using LeadsAI.Application;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,8 @@ namespace LeadsAI.Api.Services;
 
 public sealed class CampaignRuntimeService(
     AppDbContext db,
-    IAgentJobFactory jobFactory)
+    IAgentJobFactory jobFactory,
+    ICampaignContainerRuntime containers)
 {
     public async Task<CampaignRuntimeResult?> StartAsync(Guid tenantId, Guid campaignId, CancellationToken ct)
         => await RunLifecycleAsync(tenantId, campaignId, resume: false, ct);
@@ -103,9 +105,57 @@ public sealed class CampaignRuntimeService(
             if (!campaign.AgentId.HasValue)
                 throw new InvalidOperationException("Campaign agent is not configured.");
 
+            var agent = await db.AutonomousAcquisitionAgents
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaign.AgentId.Value, ct)
+                ?? throw new InvalidOperationException("Campaign agent was not found.");
+
+            if (agent.Status == AutonomousAgentStatus.Stopped)
+                throw new InvalidOperationException("A stopped acquisition agent cannot be restarted. Create or reactivate the agent first.");
+
+            agent.Status = AutonomousAgentStatus.Active;
+            agent.UpdatedAtUtc = DateTime.UtcNow;
+
+            var container = await containers.EnsureAsync(
+                tenantId,
+                campaign.Id,
+                agent.Id,
+                $"{campaign.Name} Container",
+                campaign.PackageCode,
+                campaign.PackageVersion,
+                campaign.PlanJson,
+                ct);
+
             var job = await jobFactory.QueueCampaignAsync(
-                tenantId, campaign.Id, campaign.AgentId.Value, null,
+                tenantId, campaign.Id, agent.Id, container.Id,
                 "campaign.execute", $"campaign:{campaign.Id}", true, ct);
+
+            // Resume a paused job in-place instead of creating a second runtime job.
+            // A job blocked on outreach approval remains Waiting; the outreach approval
+            // workflow owns that gate and must not be bypassed by Resume.
+            if (resume && job.Status == AgentJobStatus.Waiting)
+            {
+                var approvalPending = await db.OutreachMessages.AnyAsync(message =>
+                    message.TenantId == tenantId &&
+                    message.CampaignId == campaign.Id &&
+                    message.Status == OutreachStatus.Queued &&
+                    db.CrmTasks.Any(task =>
+                        task.TenantId == tenantId &&
+                        task.Title == $"APPROVAL: Send outreach {message.Id}" &&
+                        !task.Completed), ct);
+
+                if (!approvalPending)
+                {
+                    job.Status = AgentJobStatus.Queued;
+                    job.Error = null;
+                    job.LeaseUntilUtc = null;
+                    job.WorkerId = null;
+                    job.CompletedAtUtc = null;
+                    job.ScheduledAtUtc = DateTime.UtcNow;
+                    job.UpdatedAtUtc = DateTime.UtcNow;
+                    containers.Queue(container);
+                }
+            }
+
             jobId = job.Id;
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
