@@ -1,14 +1,12 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using LeadsAI.Application.Commands;
 using LeadsAI.Application.Commands.Modules;
 using LeadsAI.Application.Queries.Support;
 using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
-using LeadsAI.Infrastructure;
-using LeadsAI.Persistence.SqlServer;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace LeadsAI.Api.Controllers;

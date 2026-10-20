@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../../../Shared/LeadsAI.BuildingBlocks.Messaging/LeadsAI.BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="../LeadsAI.AIOrchestration.Domain/LeadsAI.AIOrchestration.Domain.csproj" />
+    <ProjectReference Include="../LeadsAI.AIOrchestration.Application/LeadsAI.AIOrchestration.Application.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design"><PrivateAssets>all</PrivateAssets><IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets></PackageReference>
+  </ItemGroup>
+</Project>

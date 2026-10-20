@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../LeadsAI.Application/LeadsAI.Application.csproj" />
+    <ProjectReference Include="../../Core/LeadsAI.Domain.Core/LeadsAI.Domain.Core.csproj" />
+    <ProjectReference Include="../../../Shared/LeadsAI.BuildingBlocks.Application/LeadsAI.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="../../../Shared/LeadsAI.BuildingBlocks.Security/LeadsAI.BuildingBlocks.Security.csproj" />
+    <PackageReference Include="MediatR" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,19 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace LeadsAI.Knowledge.Persistence.SqlServer;
+
+public sealed class KnowledgeDbContextDesignTimeFactory : IDesignTimeDbContextFactory<KnowledgeDbContext>
+{
+    public KnowledgeDbContext CreateDbContext(string[] args)
+    {
+        var options = new DbContextOptionsBuilder<KnowledgeDbContext>()
+            .UseSqlServer(DesignConnectionString)
+            .Options;
+
+        return new KnowledgeDbContext(options);
+    }
+
+    private const string DesignConnectionString =
+        "Server=localhost;Database=LeadsAI_Knowledge_Design;User Id=t24test;Password=DesignOnly123!;TrustServerCertificate=True;Encrypt=False";
+}

@@ -49,7 +49,7 @@ public sealed class OpenRouterAiProvider(HttpClient http, IConfiguration configu
 
             var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
-        {
+            {
                 var detail = TryGetError(body);
                 throw new InvalidOperationException(
                     $"Online AI provider request failed ({(int)response.StatusCode}). {detail}");
