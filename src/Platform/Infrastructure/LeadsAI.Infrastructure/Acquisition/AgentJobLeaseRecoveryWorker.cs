@@ -75,7 +75,7 @@ public sealed class AgentJobLeaseRecoveryWorker(
                         x.Status == AgentJobStatus.Running &&
                         ((x.LeaseUntilUtc.HasValue && x.LeaseUntilUtc.Value <= now) ||
                          (!x.LeaseUntilUtc.HasValue && x.UpdatedAtUtc <= staleLeaseCutoff)))
-            .Select(x => new { x.Id, x.AttemptCount, x.MaxAttempts, x.ContainerId })
+            .Select(x => new { x.Id, x.AttemptCount, x.MaxAttempts, x.ContainerId, x.ContainerVersion })
             .Take(100)
             .ToListAsync(ct);
 
@@ -125,9 +125,41 @@ public sealed class AgentJobLeaseRecoveryWorker(
                 if (container is not null)
                 {
                     if (terminal)
+                    {
                         containers.Fail(container, now);
+                        db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
+                        {
+                            TenantId = tenantId,
+                            ContainerId = container.Id,
+                            RunId = item.Id,
+                            ContainerVersion = item.ContainerVersion ?? container.Version,
+                            AtUtc = now,
+                            Level = "error",
+                            EventType = "container.failed",
+                            StepType = string.Empty,
+                            StepName = string.Empty,
+                            Message = "Container failed because its worker lease expired and retry attempts were exhausted.",
+                            DataJson = System.Text.Json.JsonSerializer.Serialize(new { attempt = item.AttemptCount, maxAttempts = item.MaxAttempts })
+                        });
+                    }
                     else
+                    {
                         containers.RequeueAfterLeaseExpiry(container, now);
+                        db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
+                        {
+                            TenantId = tenantId,
+                            ContainerId = container.Id,
+                            RunId = item.Id,
+                            ContainerVersion = item.ContainerVersion ?? container.Version,
+                            AtUtc = now,
+                            Level = "warning",
+                            EventType = "container.requeued",
+                            StepType = string.Empty,
+                            StepName = string.Empty,
+                            Message = "Container was requeued after its worker lease expired.",
+                            DataJson = System.Text.Json.JsonSerializer.Serialize(new { attempt = item.AttemptCount, maxAttempts = item.MaxAttempts })
+                        });
+                    }
                 }
             }
 
