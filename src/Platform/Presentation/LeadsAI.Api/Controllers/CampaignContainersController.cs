@@ -236,7 +236,14 @@ db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
             StepType = string.Empty,
             StepName = string.Empty,
             Message = $"Container '{container.Name}' stopped.",
-            DataJson = System.Text.Json.JsonSerializer.    [HttpGet("{containerId:guid}/activity")]
+            DataJson = System.Text.Json.JsonSerializer.Serialize(new { status = "stopped" })
+        });
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { container.Id, container.Status });
+    }
+
+    [HttpGet("{containerId:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> ContainerActivity(
         Guid campaignId,
@@ -295,5 +302,4 @@ db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
 
         return Ok(items);
     }
-}
 }
