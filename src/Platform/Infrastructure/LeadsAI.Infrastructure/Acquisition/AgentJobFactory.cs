@@ -45,14 +45,28 @@ public sealed class AgentJobFactory(AppDbContext db) : IAgentJobFactory
         if (existing is not null)
             return existing;
 
+        // EnsureAsync can return a newly-added, not-yet-persisted container.
+        // Read its version from the change tracker first; a database-only lookup
+        // would incorrectly store null for a job created in the same unit of work.
+        int? containerVersion = null;
+        if (containerId.HasValue)
+        {
+            var trackedContainer = db.CampaignContainers.Local.FirstOrDefault(
+                x => x.TenantId == tenantId && x.Id == containerId.Value);
+
+            containerVersion = trackedContainer?.Version
+                ?? await db.CampaignContainers
+                    .Where(x => x.TenantId == tenantId && x.Id == containerId.Value)
+                    .Select(x => (int?)x.Version)
+                    .FirstOrDefaultAsync(ct);
+        }
+
         var job = new AgentJob
         {
             TenantId = tenantId,
             CampaignId = campaignId,
             ContainerId = containerId,
-            ContainerVersion = containerId.HasValue
-                ? await db.CampaignContainers.Where(x => x.TenantId == tenantId && x.Id == containerId.Value).Select(x => (int?)x.Version).FirstOrDefaultAsync(ct)
-                : null,
+            ContainerVersion = containerVersion,
             AgentId = agentId,
             Type = type,
             TaskType = type,
