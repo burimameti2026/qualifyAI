@@ -461,7 +461,9 @@ public sealed class CampaignsController(
                         message.ProviderMessageId,
                         message.SentAtUtc,
                         message.CreatedAtUtc,
-                        approvalRequested = db.CrmTasks.Any(task => task.TenantId==tenantId&&task.Title=="APPROVAL: Send outreach "+message.Id&&!task.Completed)
+                        approvalRequested = db.CrmTasks.Any(task => task.TenantId==tenantId&&task.Title=="APPROVAL: Send outreach "+message.Id&&!task.Completed),
+                        approvalGranted = message.Status == OutreachStatus.Queued &&
+                            db.CrmTasks.Any(task => task.TenantId==tenantId&&task.Title=="APPROVAL: Send outreach "+message.Id&&task.Completed)
                     };
         return Ok(await query.Take(200).ToListAsync(ct));
     }
