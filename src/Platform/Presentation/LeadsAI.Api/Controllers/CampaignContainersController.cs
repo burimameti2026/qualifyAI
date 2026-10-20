@@ -188,19 +188,19 @@ public sealed class CampaignContainersController(
             true,
             ct);
 
-        db.AuditLogs.Add(new AuditLog
+        db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
         {
             TenantId = TenantId,
-            Action = "container.started",
-            EntityType = "CampaignContainerActivity",
-            EntityId = container.Id.ToString(),
-            DataJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                level = "info",
-                jobId = job.Id,
-                message = $"Container '{container.Name}' started.",
-                data = new { status = job.Status.ToString() }
-            })
+            ContainerId = container.Id,
+            RunId = job.Id,
+            ContainerVersion = container.Version,
+            AtUtc = DateTime.UtcNow,
+            Level = "info",
+            EventType = "container.started",
+            StepType = string.Empty,
+            StepName = string.Empty,
+            Message = $"Container '{container.Name}' started.",
+            DataJson = System.Text.Json.JsonSerializer.Serialize(new { status = job.Status.ToString() })
         });
         await db.SaveChangesAsync(ct);
 
@@ -225,25 +225,18 @@ public sealed class CampaignContainersController(
             agent.UpdatedAtUtc = DateTime.UtcNow;
         }
 
-db.AuditLogs.Add(new AuditLog
+db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
         {
             TenantId = TenantId,
-            Action = "container.stopped",
-            EntityType = "CampaignContainerActivity",
-            EntityId = container.Id.ToString(),
-            DataJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                level = "info",
-                message = $"Container '{container.Name}' stopped.",
-                data = new { status = "stopped" }
-            })
-        });
-
-        await db.SaveChangesAsync(ct);
-        return Ok(new { container.Id, container.Status });
-    }
-
-    [HttpGet("{containerId:guid}/activity")]
+            ContainerId = container.Id,
+            ContainerVersion = container.Version,
+            AtUtc = DateTime.UtcNow,
+            Level = "info",
+            EventType = "container.stopped",
+            StepType = string.Empty,
+            StepName = string.Empty,
+            Message = $"Container '{container.Name}' stopped.",
+            DataJson = System.Text.Json.JsonSerializer.    [HttpGet("{containerId:guid}/activity")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> ContainerActivity(
         Guid campaignId,
@@ -257,59 +250,50 @@ db.AuditLogs.Add(new AuditLog
             x => x.TenantId == tenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
         if (!valid) return NotFound();
 
-        var rows = await db.AuditLogs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId &&
-                        x.EntityType == "CampaignContainerActivity" &&
-                        x.EntityId == containerId.ToString())
-            .OrderByDescending(x => x.CreatedAtUtc)
+        var query = db.CampaignContainerActivities.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ContainerId == containerId);
+
+        if (taskId.HasValue)
+            query = query.Where(x => x.TaskId == taskId.Value);
+        if (!string.IsNullOrWhiteSpace(stepType))
+            query = query.Where(x => x.StepType == stepType);
+
+        var rows = await query
+            .OrderByDescending(x => x.AtUtc)
             .Take(500)
             .ToListAsync(ct);
 
         var items = rows.Select(x =>
         {
+            System.Text.Json.JsonElement data;
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(x.DataJson ?? "{}");
-                var root = doc.RootElement;
-                Guid? rowTaskId = null;
-                if (root.TryGetProperty("taskId", out var taskValue) &&
-                    Guid.TryParse(taskValue.GetString(), out var parsedTaskId))
-                    rowTaskId = parsedTaskId;
-
-                return new
-                {
-                    id = x.Id,
-                    atUtc = x.CreatedAtUtc,
-                    level = root.TryGetProperty("level", out var level) ? level.GetString() ?? "info" : "info",
-                    eventType = x.Action,
-                    stepId = rowTaskId,
-                    stepType = root.TryGetProperty("stepType", out var stepTypeValue) ? stepTypeValue.GetString() ?? "" : "",
-                    stepName = root.TryGetProperty("stepName", out var stepNameValue) ? stepNameValue.GetString() ?? "" : "",
-                    message = root.TryGetProperty("message", out var message) ? message.GetString() ?? x.Action : x.Action,
-                    data = root.TryGetProperty("data", out var data) ? data.Clone() : System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone()
-                };
+                using var document = System.Text.Json.JsonDocument.Parse(
+                    string.IsNullOrWhiteSpace(x.DataJson) ? "{}" : x.DataJson);
+                data = document.RootElement.Clone();
             }
             catch
             {
-                return new
-                {
-                    id = x.Id,
-                    atUtc = x.CreatedAtUtc,
-                    level = "info",
-                    eventType = x.Action,
-                    stepId = (Guid?)null,
-                    stepType = "",
-                    stepName = "",
-                    message = x.Action,
-                    data = System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone()
-                };
+                using var document = System.Text.Json.JsonDocument.Parse("{}");
+                data = document.RootElement.Clone();
             }
-        }).Where(x =>
-            (!taskId.HasValue || x.stepId == taskId.Value) &&
-            (string.IsNullOrWhiteSpace(stepType) ||
-             string.Equals(x.stepType, stepType, StringComparison.OrdinalIgnoreCase)))
-          .ToList();
+
+            return new
+            {
+                id = x.Id,
+                atUtc = x.AtUtc,
+                level = x.Level,
+                eventType = x.EventType,
+                runId = x.RunId,
+                stepId = x.TaskId,
+                stepType = x.StepType,
+                stepName = x.StepName,
+                message = x.Message,
+                data
+            };
+        });
 
         return Ok(items);
     }
+}
 }
