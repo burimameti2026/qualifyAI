@@ -3,7 +3,7 @@ name: LeadsAI CI
 on:
   workflow_dispatch:
   push:
-    branches: [feature/fixes, feature/golden-pipeline, dev, master, renova]
+    branches: [feature/fixes, feature/golden-pipeline, dev, master, renova, refactor/tenant-job-runtime]
   pull_request:
     branches: [dev, master]
 
