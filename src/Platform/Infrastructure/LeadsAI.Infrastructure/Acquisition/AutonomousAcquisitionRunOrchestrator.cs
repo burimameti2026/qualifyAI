@@ -677,24 +677,6 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct)
             ?? throw new InvalidOperationException("Campaign container was not found for the acquisition job.");
 
-        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
-        if (targetListId.HasValue)
-        {
-            var existingProspects = await (
-                from member in db.TargetListMembers.AsNoTracking()
-                join prospect in db.Prospects.AsNoTracking() on member.ProspectId equals prospect.Id
-                where member.TenantId == job.TenantId &&
-                      member.TargetListId == targetListId.Value &&
-                      prospect.TenantId == job.TenantId
-                select prospect.Id)
-                .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
-                .ToListAsync(ct);
-
-            job.DiscoveredCount = existingProspects.Count;
-            CompleteTask(task, new { discovered = job.DiscoveredCount, source = "prospect-group", targetListId });
-            return;
-        }
-
         var icpId = await db.TargetLists
             .Where(x => x.TenantId == job.TenantId && x.Id == campaign.TargetListId)
             .Select(x => x.IcpProfileId)
