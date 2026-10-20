@@ -272,10 +272,30 @@ public sealed class EmailOperationsController(
     [HttpPost("messages/{id:guid}/request-approval"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
     public async Task<IActionResult> RequestApproval(Guid id, CancellationToken ct)
     {
-        if (!await db.OutreachMessages.AnyAsync(x => x.TenantId == TenantId && x.Id == id, ct)) return NotFound();
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+        if (message.Status != OutreachStatus.Queued)
+            return Conflict(new { detail = "Only queued outreach messages can request approval." });
+
         var title = $"APPROVAL: Send outreach {id}";
-        var task = await db.CrmTasks.FirstOrDefaultAsync(x => x.TenantId == TenantId && x.Title == title, ct);
-        if (task is null) { task = new CrmTask { TenantId = TenantId, Title = title, DueAtUtc = DateTime.UtcNow.AddHours(4) }; db.CrmTasks.Add(task); await db.SaveChangesAsync(ct); }
+        var task = await db.CrmTasks.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.Title == title, ct);
+        if (task?.Completed == true)
+            return Conflict(new { detail = "This queued message has already been approved. It cannot be submitted for approval again." });
+
+        if (task is null)
+        {
+            task = new CrmTask
+            {
+                TenantId = TenantId,
+                Title = title,
+                DueAtUtc = DateTime.UtcNow.AddHours(4)
+            };
+            db.CrmTasks.Add(task);
+            await db.SaveChangesAsync(ct);
+        }
+
         return Ok(task);
     }
 
