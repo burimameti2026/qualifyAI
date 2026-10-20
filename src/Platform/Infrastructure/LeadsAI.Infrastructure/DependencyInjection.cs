@@ -107,6 +107,7 @@ public static class DependencyInjection
         services.AddScoped<ICampaignContainerRuntime, CampaignContainerRuntime>();
         services.AddScoped<IAgentJobExecutor, AutonomousAcquisitionJobExecutor>();
         services.AddHostedService<TenantJobWorkerPool>();
+        services.AddHostedService<AgentJobLeaseRecoveryWorker>();
         services.AddHttpClient<SerpApiProspectDiscoveryProvider>(c =>
         {
             c.BaseAddress = new Uri("https://serpapi.com/");
