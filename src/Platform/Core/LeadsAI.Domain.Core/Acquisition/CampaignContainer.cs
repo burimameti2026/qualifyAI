@@ -1,6 +1,6 @@
 namespace LeadsAI.Domain;
 
-public enum CampaignContainerStatus { Stopped, Running, Paused, Failed, Pending, Queued, Starting, Waiting, Completed }
+public enum CampaignContainerStatus { Stopped, Running, Paused, Failed, Pending, Queued, Starting, Completed, Waiting }
 
 public sealed class CampaignContainer : TenantEntity
 {
