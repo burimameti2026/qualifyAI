@@ -22,6 +22,8 @@ public sealed class CampaignRuntimeService(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaignId, ct);
         if (campaign is null) return null;
+
+        var now = DateTime.UtcNow;
         campaign.Status = CampaignStatus.Paused;
         if (campaign.AgentId.HasValue)
         {
@@ -30,9 +32,42 @@ public sealed class CampaignRuntimeService(
             if (agent is not null)
             {
                 agent.Status = AutonomousAgentStatus.Paused;
-                agent.UpdatedAtUtc = DateTime.UtcNow;
+                agent.UpdatedAtUtc = now;
             }
         }
+
+        // Revoke the active worker's lease immediately. The running orchestrator's
+        // heartbeat observes the ownership change and cancels its in-flight step.
+        // Waiting jobs stay Waiting so approval-gated outreach is not bypassed.
+        await db.AgentJobs
+            .Where(x => x.TenantId == tenantId &&
+                        x.CampaignId == campaignId &&
+                        (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Running))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AgentJobStatus.Waiting)
+                .SetProperty(x => x.LeaseUntilUtc, (DateTime?)null)
+                .SetProperty(x => x.WorkerId, (string?)null)
+                .SetProperty(x => x.CompletedAtUtc, (DateTime?)null)
+                .SetProperty(x => x.UpdatedAtUtc, now), ct);
+
+        await db.AutonomousAcquisitionTasks
+            .Where(x => x.TenantId == tenantId &&
+                        x.Status == AutonomousAgentTaskStatus.Running &&
+                        db.AgentJobs.Any(job => job.TenantId == tenantId &&
+                                                job.CampaignId == campaignId &&
+                                                job.Id == x.RunId))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AutonomousAgentTaskStatus.Pending)
+                .SetProperty(x => x.Error, (string?)null)
+                .SetProperty(x => x.CompletedAtUtc, (DateTime?)null)
+                .SetProperty(x => x.UpdatedAtUtc, now), ct);
+
+        var campaignContainers = await db.CampaignContainers
+            .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
+            .ToListAsync(ct);
+        foreach (var container in campaignContainers)
+            containers.Stop(container, now);
+
         await db.SaveChangesAsync(ct);
         return campaign.Status;
     }
@@ -41,6 +76,8 @@ public sealed class CampaignRuntimeService(
     {
         var campaign = await db.Campaigns.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == campaignId, ct);
         if (campaign is null) return null;
+
+        var now = DateTime.UtcNow;
         campaign.Status = CampaignStatus.Stopped;
         if (campaign.AgentId.HasValue)
         {
@@ -49,9 +86,43 @@ public sealed class CampaignRuntimeService(
             if (agent is not null)
             {
                 agent.Status = AutonomousAgentStatus.Stopped;
-                agent.UpdatedAtUtc = DateTime.UtcNow;
+                agent.UpdatedAtUtc = now;
             }
         }
+
+        // Stopping is terminal for the current job; clear its lease so an in-flight
+        // worker cannot keep ownership or have the recovery worker requeue it.
+        await db.AgentJobs
+            .Where(x => x.TenantId == tenantId &&
+                        x.CampaignId == campaignId &&
+                        (x.Status == AgentJobStatus.Queued ||
+                         x.Status == AgentJobStatus.Running ||
+                         x.Status == AgentJobStatus.Waiting))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AgentJobStatus.Cancelled)
+                .SetProperty(x => x.LeaseUntilUtc, (DateTime?)null)
+                .SetProperty(x => x.WorkerId, (string?)null)
+                .SetProperty(x => x.CompletedAtUtc, now)
+                .SetProperty(x => x.UpdatedAtUtc, now), ct);
+
+        await db.AutonomousAcquisitionTasks
+            .Where(x => x.TenantId == tenantId &&
+                        x.Status == AutonomousAgentTaskStatus.Running &&
+                        db.AgentJobs.Any(job => job.TenantId == tenantId &&
+                                                job.CampaignId == campaignId &&
+                                                job.Id == x.RunId))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, AutonomousAgentTaskStatus.Failed)
+                .SetProperty(x => x.Error, "Campaign was stopped.")
+                .SetProperty(x => x.CompletedAtUtc, now)
+                .SetProperty(x => x.UpdatedAtUtc, now), ct);
+
+        var campaignContainers = await db.CampaignContainers
+            .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
+            .ToListAsync(ct);
+        foreach (var container in campaignContainers)
+            containers.Stop(container, now);
+
         await db.SaveChangesAsync(ct);
         return campaign.Status;
     }
