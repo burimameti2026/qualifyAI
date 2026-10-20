@@ -66,7 +66,22 @@ public sealed class CampaignRuntimeService(
             .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
             .ToListAsync(ct);
         foreach (var container in campaignContainers)
+        {
             containers.Stop(container, now);
+            db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
+            {
+                TenantId = tenantId,
+                ContainerId = container.Id,
+                ContainerVersion = container.Version,
+                AtUtc = now,
+                Level = "info",
+                EventType = "campaign.paused",
+                StepType = string.Empty,
+                StepName = string.Empty,
+                Message = $"Campaign '{campaign.Name}' paused; container execution has been suspended.",
+                DataJson = System.Text.Json.JsonSerializer.Serialize(new { campaignId, status = "paused" })
+            });
+        }
 
         await db.SaveChangesAsync(ct);
         return campaign.Status;
@@ -121,7 +136,22 @@ public sealed class CampaignRuntimeService(
             .Where(x => x.TenantId == tenantId && x.CampaignId == campaignId)
             .ToListAsync(ct);
         foreach (var container in campaignContainers)
+        {
             containers.Stop(container, now);
+            db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
+            {
+                TenantId = tenantId,
+                ContainerId = container.Id,
+                ContainerVersion = container.Version,
+                AtUtc = now,
+                Level = "warning",
+                EventType = "campaign.stopped",
+                StepType = string.Empty,
+                StepName = string.Empty,
+                Message = $"Campaign '{campaign.Name}' stopped; active jobs were cancelled.",
+                DataJson = System.Text.Json.JsonSerializer.Serialize(new { campaignId, status = "stopped" })
+            });
+        }
 
         await db.SaveChangesAsync(ct);
         return campaign.Status;
