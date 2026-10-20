@@ -148,7 +148,7 @@ public static class AiCampaignOperatorEndpoints
                         Region = template.Region,
                         CountriesJson = JsonSerializer.Serialize(parsed.Countries),
                         IcpJson = JsonSerializer.Serialize(new { icpId = icp.Id, brief = input.Brief }),
-                        MinimumScore = template.MinimumScore,
+                        MinimumScore = parsed.MinimumScore,
                         DailyDiscoveryLimit = input.DailyDiscoveryLimit is > 0 and <= 100 ? input.DailyDiscoveryLimit : 50,
                         DailyEmailLimit = input.DailyEmailLimit is > 0 and <= 100 ? input.DailyEmailLimit : 10,
                         Status = AutonomousAgentStatus.Active
