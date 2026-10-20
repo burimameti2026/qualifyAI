@@ -110,7 +110,7 @@ public sealed class AgentJobLeaseRecoveryWorker(
                     if (terminal)
                         containers.Fail(container, now);
                     else
-                        containers.Queue(container);
+                        containers.RequeueAfterLeaseExpiry(container, now);
                 }
             }
 
