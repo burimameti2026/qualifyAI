@@ -1,5 +1,7 @@
 using System.Text.Json;
 using LeadsAI.Application;
+using LeadsAI.BuildingBlocks.Security.Access;
+using LeadsAI.BuildingBlocks.Security.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
@@ -14,7 +16,7 @@ public static class AiCampaignOperatorEndpoints
     public static IEndpointRouteBuilder MapAiCampaignOperator(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/api/ai-campaign-operator");
-        g.RequireAuthorization();
+        g.RequireAuthorization(AccessPolicyNames.ModulePrefix + QualifyAiModules.Crm);
         g.AddEndpointFilter(async (context, next) =>
         {
             var routeTenant = context.HttpContext.Request.RouteValues["tenantId"]?.ToString();
@@ -254,7 +256,7 @@ public static class AiCampaignOperatorEndpoints
                     actions,
                     canStart = checks.All(x => x.status is "ok" or "fixed")
                 });
-            });
+            }).RequireAuthorization(AccessPolicyNames.PermissionPrefix + QualifyAiPermissions.CrmManage);
 
         g.MapPost("/tenants/{tenantId:guid}/campaigns/{campaignId:guid}/start",
             async (Guid tenantId, Guid campaignId, AppDbContext db,
@@ -307,7 +309,7 @@ public static class AiCampaignOperatorEndpoints
                         jobId = job.Id,
                         jobStatus = job.Status.ToString()
                     });
-            });
+            }).RequireAuthorization(AccessPolicyNames.PermissionPrefix + QualifyAiPermissions.CrmManage);
 
         g.MapGet("/tenants/{tenantId:guid}/campaigns/{campaignId:guid}/status",
             async (Guid tenantId, Guid campaignId, AppDbContext db, CancellationToken ct) =>
@@ -385,7 +387,7 @@ public static class AiCampaignOperatorEndpoints
                         _ => campaign.Status == CampaignStatus.Running ? "queued" : "ready"
                     }
                 });
-            });
+            }).RequireAuthorization(AccessPolicyNames.PermissionPrefix + QualifyAiPermissions.CrmRead);
 
         return app;
     }
