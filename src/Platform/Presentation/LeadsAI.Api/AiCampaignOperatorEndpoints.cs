@@ -1,4 +1,6 @@
 using System.Text.Json;
+using LeadsAI.Application;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
@@ -12,6 +14,22 @@ public static class AiCampaignOperatorEndpoints
     public static IEndpointRouteBuilder MapAiCampaignOperator(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/api/ai-campaign-operator");
+        g.RequireAuthorization();
+        g.AddEndpointFilter(async (context, next) =>
+        {
+            var routeTenant = context.HttpContext.Request.RouteValues["tenantId"]?.ToString();
+            var tenantContext = context.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
+            if (!Guid.TryParse(routeTenant, out var requestedTenantId) ||
+                tenantContext.Current?.Id != requestedTenantId)
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "tenant_scope_mismatch",
+                    detail: "The requested tenant must match the authenticated tenant context.");
+            }
+
+            return await next(context);
+        });
 
         g.MapPost("/tenants/{tenantId:guid}/prepare",
             async (Guid tenantId, AiCampaignBrief input, AppDbContext db,
