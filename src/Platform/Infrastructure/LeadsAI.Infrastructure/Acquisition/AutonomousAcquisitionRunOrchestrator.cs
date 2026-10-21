@@ -793,7 +793,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Qualify);
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
-        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
+        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct) ?? campaign.TargetListId;
         var since = job.StartedAtUtc ?? DateTime.UtcNow;
         var campaignOrigin = $"autonomous-agent:{job.CampaignId:N}";
         var prospects = await db.Prospects
@@ -826,7 +826,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     {
         var task = StartTask(tasks, AutonomousAgentTaskTypes.Enrich);
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
-        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct);
+        var targetListId = await GetJobTargetListIdAsync(job, campaign, ct) ?? campaign.TargetListId;
         var qualifiedProspects = db.Prospects.Where(x =>
             x.TenantId == agent.TenantId &&
             x.Status == ProspectStatus.Qualified);
