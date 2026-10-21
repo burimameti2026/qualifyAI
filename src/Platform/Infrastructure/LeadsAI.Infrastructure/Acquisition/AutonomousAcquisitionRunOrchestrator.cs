@@ -51,7 +51,12 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 var inactiveContainer = await db.CampaignContainers.SingleOrDefaultAsync(
                     x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
                 if (inactiveContainer is not null)
-                    containers.Stop(inactiveContainer, DateTime.UtcNow);
+                {
+                    if (campaign.Status == CampaignStatus.Paused)
+                        containers.Wait(inactiveContainer, DateTime.UtcNow);
+                    else
+                        containers.Stop(inactiveContainer, DateTime.UtcNow);
+                }
             }
 
             await db.SaveChangesAsync(ct);
@@ -74,7 +79,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 var pausedContainer = await db.CampaignContainers.SingleOrDefaultAsync(
                     x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
                 if (pausedContainer is not null)
-                    containers.Stop(pausedContainer, DateTime.UtcNow);
+                    containers.Wait(pausedContainer, DateTime.UtcNow);
             }
             await db.SaveChangesAsync(ct);
             return;
