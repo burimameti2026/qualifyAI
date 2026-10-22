@@ -17,6 +17,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     AppDbContext db,
     IAutonomousAcquisitionTemplateRegistry templates,
     IEnumerable<IProspectDiscoveryProvider> providers,
+    IProspectEnrichmentProvider enrichmentProvider,
     IAutonomousAcquisitionBackendService backend,
     ITenantContext tenantContext,
     IAutonomousAcquisitionWorkflowPlanner planner,
@@ -847,33 +848,113 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                             x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}")
                 .ToListAsync(ct);
 
-        // There is no enrichment provider in the current runtime. Do not report these
-        // prospects as enriched merely because they passed qualification or have signals.
-        // Existing public evidence is counted separately from contact data still missing.
-        var evidenceAvailable = prospects.Count(x =>
-            !string.IsNullOrWhiteSpace(x.SourceUrl) ||
-            !string.IsNullOrWhiteSpace(x.PainHypothesis));
-        var awaitingContactData = prospects.Count(x =>
+        var enriched = 0;
+        var evidenceCount = 0;
+        var awaitingContactData = 0;
+        var warnings = new List<string>();
+
+        if (!enrichmentProvider.IsConfigured)
+        {
+            var evidenceAvailable = prospects.Count(x =>
+                !string.IsNullOrWhiteSpace(x.SourceUrl) ||
+                !string.IsNullOrWhiteSpace(x.PainHypothesis));
+            awaitingContactData = prospects.Count(x =>
+                string.IsNullOrWhiteSpace(x.Email) ||
+                string.IsNullOrWhiteSpace(x.ContactName));
+
+            CompleteTask(task, new
+            {
+                status = "provider-not-configured",
+                enriched = 0,
+                evidenceAvailable,
+                evidenceCount = 0,
+                awaitingContactData,
+                provider = enrichmentProvider.Name,
+                note = "Enrichment provider is disabled. Existing evidence is preserved; no contact data is fabricated."
+            });
+            await LogActivityAsync(job, task, "warning", "acquisition.enrichment.not_configured",
+                $"Enrichment skipped: provider '{enrichmentProvider.Name}' is disabled. {awaitingContactData} prospects still need contact data.",
+                new { enriched = 0, evidenceAvailable, awaitingContactData, status = "provider-not-configured" }, ct);
+            return;
+        }
+
+        foreach (var prospect in prospects)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var result = await enrichmentProvider.EnrichAsync(prospect, ct);
+                foreach (var item in result.Evidence)
+                {
+                    var duplicate = await db.ProspectSignals.AnyAsync(x =>
+                        x.TenantId == job.TenantId &&
+                        x.ProspectId == prospect.Id &&
+                        x.Type == item.Field &&
+                        x.SourceUrl == item.SourceUrl &&
+                        x.Evidence == $"{item.Field}: {item.Value}", ct);
+                    if (duplicate)
+                        continue;
+
+                    db.ProspectSignals.Add(new ProspectSignal
+                    {
+                        TenantId = job.TenantId,
+                        ProspectId = prospect.Id,
+                        Type = item.Field,
+                        Source = result.Provider,
+                        Evidence = $"{item.Field}: {item.Value}",
+                        Score = 0,
+                        SourceUrl = item.SourceUrl,
+                        ObservedAtUtc = item.ObservedAtUtc
+                    });
+                    evidenceCount++;
+
+                    // Only populate the company-level contact channel when the provider
+                    // found it explicitly on the public website. Never infer a person.
+                    if (item.Field == "public-email" && string.IsNullOrWhiteSpace(prospect.Email))
+                    {
+                        prospect.Email = item.Value;
+                        prospect.ContactReadiness = "public-company-contact";
+                        prospect.VerificationStatus = "public-contact-evidence";
+                        enriched++;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(result.Warning))
+                    warnings.Add($"{prospect.CompanyName}: {result.Warning}");
+
+                prospect.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"{prospect.CompanyName}: {ex.Message}");
+            }
+        }
+
+        awaitingContactData = prospects.Count(x =>
             string.IsNullOrWhiteSpace(x.Email) ||
             string.IsNullOrWhiteSpace(x.ContactName));
 
+        await db.SaveChangesAsync(ct);
         CompleteTask(task, new
         {
-            status = "provider-not-configured",
-            enriched = 0,
-            evidenceAvailable,
+            status = enriched > 0 || evidenceCount > 0 ? "completed" : "completed-no-evidence",
+            provider = enrichmentProvider.Name,
+            processed = prospects.Count,
+            enriched,
+            evidenceCount,
             awaitingContactData,
-            provider = (string?)null,
-            note = "No enrichment provider is configured. Existing public evidence is preserved; contact/company fields are not fabricated."
+            warnings = warnings.Take(10).ToArray(),
+            note = "Only explicit public website contact data was saved. Each saved field has a source URL and observation timestamp."
         });
-        await LogActivityAsync(
-            job,
-            task,
-            "warning",
-            "acquisition.enrichment.not_configured",
-            $"Enrichment skipped: no provider configured. {evidenceAvailable} prospects have existing public evidence; {awaitingContactData} still need contact data.",
-            new { enriched = 0, evidenceAvailable, awaitingContactData, status = "provider-not-configured" },
-            ct);
+        await LogActivityAsync(job, task,
+            enriched > 0 || evidenceCount > 0 ? "info" : "warning",
+            "acquisition.enrichment.completed",
+            $"Public website enrichment checked {prospects.Count} qualified prospects; saved {evidenceCount} evidence records and found {enriched} previously missing public email addresses. {awaitingContactData} still need contact data.",
+            new { provider = enrichmentProvider.Name, processed = prospects.Count, enriched, evidenceCount, awaitingContactData, warningCount = warnings.Count }, ct);
     }
 
     private async Task ExecuteTargetListAsync(
