@@ -68,6 +68,54 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
         if (flow is null) return NotFound();
         if (!flow.Active) return Conflict(new { code = "workflow_inactive", detail = "The workflow is inactive and cannot be executed." });
 
+        var graphNodes = await db.WorkflowNodes.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.FlowId == id)
+            .ToListAsync(ct);
+        var graphEdges = await db.WorkflowEdges.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.FlowId == id)
+            .ToListAsync(ct);
+        var startNodes = graphNodes.Where(x =>
+            string.Equals(x.Type, "start", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "trigger", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var hasRule = graphNodes.Any(x =>
+            string.Equals(x.Type, "condition", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "score", StringComparison.OrdinalIgnoreCase));
+        var hasAction = graphNodes.Any(x =>
+            string.Equals(x.Type, "action", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "meeting", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "handoff", StringComparison.OrdinalIgnoreCase));
+        if (graphNodes.Count == 0 || startNodes.Length == 0 || !hasRule || !hasAction)
+            return Conflict(new
+            {
+                code = "workflow_graph_not_ready",
+                detail = "The workflow needs a start, a qualification rule, an action and connected transitions before it can run."
+            });
+
+        var nodeKeys = graphNodes.Select(x => x.NodeKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var edgesBySource = graphEdges
+            .Where(x => nodeKeys.Contains(x.FromNodeKey) && nodeKeys.Contains(x.ToNodeKey))
+            .GroupBy(x => x.FromNodeKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Select(edge => edge.ToNodeKey).ToArray(), StringComparer.OrdinalIgnoreCase);
+        var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pendingNodes = new Stack<string>(startNodes.Select(x => x.NodeKey));
+        while (pendingNodes.Count > 0)
+        {
+            var nodeKey = pendingNodes.Pop();
+            if (!reachable.Add(nodeKey)) continue;
+            if (!edgesBySource.TryGetValue(nodeKey, out var nextNodes)) continue;
+            foreach (var nextNode in nextNodes) pendingNodes.Push(nextNode);
+        }
+        if (reachable.Count != graphNodes.Count)
+        {
+            var unreachable = graphNodes.Where(x => !reachable.Contains(x.NodeKey)).Select(x => x.NodeKey).ToArray();
+            return Conflict(new
+            {
+                code = "workflow_graph_disconnected",
+                detail = "Every workflow step must be reachable from a start node.",
+                unreachableSteps = unreachable
+            });
+        }
+
         var containerIds = ReadIds(flow.ContainerIdsJson);
         var campaignContainers = await db.CampaignContainers
             .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
@@ -121,6 +169,8 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
             pipelineId = flow.PipelineId,
             startedContainers = started,
             automations = automationResults,
+            validatedSteps = graphNodes.Count,
+            graphStatus = "validated",
             execution = "workflow-orchestration"
         });
     }
