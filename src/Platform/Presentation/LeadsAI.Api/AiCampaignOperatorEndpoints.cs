@@ -265,6 +265,12 @@ public static class AiCampaignOperatorEndpoints
                 var campaign = await db.Campaigns.FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
                 if (campaign is null) return Results.NotFound(new { error = "campaign_not_found" });
+                if (campaign.Status is CampaignStatus.Completed or CampaignStatus.Stopped)
+                    return Results.Conflict(new
+                    {
+                        error = "campaign_not_restartable",
+                        detail = $"Campaign is {campaign.Status} and cannot start another autonomous run."
+                    });
 
                 if (!campaign.AgentId.HasValue)
                     return Results.Conflict(new { error = "campaign_agent_not_ready" });
