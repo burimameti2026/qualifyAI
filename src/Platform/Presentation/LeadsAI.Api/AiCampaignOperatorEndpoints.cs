@@ -253,11 +253,10 @@ public static class AiCampaignOperatorEndpoints
                     .Where(x => x.name != "enrichment" && x.name != "sender")
                     .All(x => x.status is "ok" or "fixed" or "configured");
 
+                var fullSetupReady = checks.All(x => x.status is "ok" or "fixed" or "configured");
                 return Results.Ok(new
                 {
-                    status = requiredChecksReady && checks.All(x => x.status is "ok" or "fixed")
-                        ? "ready"
-                        : "needs-attention",
+                    status = fullSetupReady ? "ready" : "needs-attention",
                     campaignId = campaign.Id,
                     targetListId = target.Id,
                     icpId = icp.Id,
