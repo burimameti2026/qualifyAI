@@ -143,7 +143,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         try
         {
             var template = templates.Apply(agent);
-            template = ApplyCampaignPlan(campaign, agent, template);
+            template = ApplyCampaignPlan(campaign, agent, template, executionPlanJson);
             await planner.EnsurePlanAsync(agent, template, ct, executionPlanJson);
             var tasks = await taskFactory.EnsureAsync(job, agent, template, executionPlanJson, ct);
             var now = DateTime.UtcNow;
@@ -380,14 +380,15 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
     private static AutonomousAcquisitionTemplate ApplyCampaignPlan(
         Campaign campaign,
         AutonomousAcquisitionAgent agent,
-        AutonomousAcquisitionTemplate fallback)
+        AutonomousAcquisitionTemplate fallback,
+        string planJson)
     {
-        if (string.IsNullOrWhiteSpace(campaign.PlanJson))
+        if (string.IsNullOrWhiteSpace(planJson))
             return fallback;
 
         try
         {
-            using var document = JsonDocument.Parse(campaign.PlanJson);
+            using var document = JsonDocument.Parse(planJson);
             var root = document.RootElement;
 
             var industry = ReadString(root, "industry");
