@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using LeadsAI.Domain;
 using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure.Acquisition;
+using LeadsAI.Infrastructure.Email;
 using LeadsAI.Persistence.SqlServer;
 
 namespace LeadsAI.Api;
@@ -38,6 +39,9 @@ public static class AiCampaignOperatorEndpoints
                 IAutonomousAcquisitionTemplateRegistry templates,
                 ICampaignContainerRuntime containers,
                 IEnumerable<IProspectDiscoveryProvider> discoveryProviders,
+                IProspectEnrichmentProvider enrichmentProvider,
+                IEnumerable<IEmailDeliveryProvider> emailProviders,
+                IConfiguration configuration,
                 CancellationToken ct) =>
             {
                 if (string.IsNullOrWhiteSpace(input.Brief))
@@ -233,7 +237,51 @@ public static class AiCampaignOperatorEndpoints
                 // provider is configured. Keep the limitation visible without
                 // blocking the useful discovery/qualification/list workflow.
                 var discoveryConfigured = discoveryProviders.Any(provider => provider.IsConfigured);
-                var senderConfigured = !string.IsNullOrWhiteSpace(campaign.SenderEmail);
+                var enrichmentConfigured = enrichmentProvider.IsConfigured;
+                var deliveryProviderName = configuration["Email:Provider"] ?? "disabled";
+                var deliveryProviderConfigured = emailProviders.Any(provider =>
+                    provider.Name.Equals(deliveryProviderName, StringComparison.OrdinalIgnoreCase)) &&
+                    (deliveryProviderName.ToLowerInvariant() switch
+                    {
+                        "brevo" => !string.IsNullOrWhiteSpace(configuration["Email:Brevo:ApiKey"]),
+                        "sendgrid" => !string.IsNullOrWhiteSpace(configuration["Email:SendGrid:ApiKey"]),
+                        "smtp" => !string.IsNullOrWhiteSpace(configuration["Email:Smtp:Host"]),
+                        _ => false
+                    });
+
+                var verifiedSender = false;
+                if (!string.IsNullOrWhiteSpace(campaign.SenderEmail) && deliveryProviderConfigured)
+                {
+                    var senderConnections = await db.IntegrationConnections.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId &&
+                                    x.Provider == "email-sender" &&
+                                    x.Status == IntegrationStatus.Connected)
+                        .ToListAsync(ct);
+                    foreach (var connection in senderConnections)
+                    {
+                        try
+                        {
+                            using var settings = JsonDocument.Parse(connection.SettingsJson);
+                            var root = settings.RootElement;
+                            var email = root.TryGetProperty("email", out var emailValue) ? emailValue.GetString() : null;
+                            var provider = root.TryGetProperty("provider", out var providerValue) ? providerValue.GetString() : null;
+                            var verified = root.TryGetProperty("verified", out var verifiedValue) &&
+                                           verifiedValue.ValueKind == JsonValueKind.True;
+                            if (verified &&
+                                string.Equals(email, campaign.SenderEmail.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(provider, deliveryProviderName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                verifiedSender = true;
+                                break;
+                            }
+                        }
+                        catch (JsonException)
+                        {
+                            // Invalid sender settings are not a verified sender.
+                        }
+                    }
+                }
+
                 var checks = new[]
                 {
                     new { name = "pack", status = packInstalled ? "ok" : "missing" },
@@ -243,14 +291,14 @@ public static class AiCampaignOperatorEndpoints
                     new { name = "workflow", status = "ok" },
                     new { name = "runtime", status = agent.Status == AutonomousAgentStatus.Active ? "ok" : "fixed" },
                     new { name = "discovery-provider", status = discoveryConfigured ? "configured" : "not-configured" },
-                    new { name = "enrichment", status = "not-configured" },
-                    new { name = "sender", status = senderConfigured ? "configured" : "not-configured" }
+                    new { name = "enrichment", status = enrichmentConfigured ? "configured" : "not-configured" },
+                    new { name = "delivery-provider", status = deliveryProviderConfigured ? "configured" : "not-configured" },
+                    new { name = "sender", status = verifiedSender ? "configured" : "not-configured" }
                 };
                 // Discovery is required to run the acquisition job. Enrichment and
-                // sender identity are explicit downstream readiness warnings: discovery
-                // can still be useful, but the operator must not report a full setup.
+                // outreach readiness remain visible, but do not block discovery/qualification.
                 var requiredChecksReady = checks
-                    .Where(x => x.name != "enrichment" && x.name != "sender")
+                    .Where(x => x.name is not ("enrichment" or "delivery-provider" or "sender"))
                     .All(x => x.status is "ok" or "fixed" or "configured");
 
                 var fullSetupReady = checks.All(x => x.status is "ok" or "fixed" or "configured");
