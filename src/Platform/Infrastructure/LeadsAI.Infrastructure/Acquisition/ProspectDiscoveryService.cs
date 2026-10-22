@@ -553,7 +553,8 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
 
             prospect.Evaluate(score.Fit, score.Intent);
             // The discovery request's configured threshold is authoritative for this run.
-            prospect.Status = ProspectStatus.Qualified;
+            if (prospect.Status is not (ProspectStatus.Replied or ProspectStatus.DemoReady or ProspectStatus.Converted))
+                prospect.Status = ProspectStatus.Qualified;
             prospect.PainHypothesis=score.Reason;
             db.ProspectSignals.Add(new ProspectSignal
             {
