@@ -92,7 +92,8 @@ public static class AiCampaignOperatorEndpoints
                 var campaignName = input.CampaignName ?? $"{parsed.Industry} Prospecting";
                 var campaign = await db.Campaigns.FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.Name == campaignName &&
-                         x.Status is not (CampaignStatus.Completed or CampaignStatus.Stopped), ct);
+                         x.Status != CampaignStatus.Completed &&
+                         x.Status != CampaignStatus.Stopped, ct);
 
                 if (campaign is null)
                 {
