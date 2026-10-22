@@ -545,18 +545,46 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
         }
 
         TargetList? targetList = null;
-        if(options.CreateTargetList&&qualified.Count>0)
+        if (options.CreateTargetList && qualified.Count > 0)
         {
-            targetList=new TargetList
+            var listName = string.IsNullOrWhiteSpace(options.TargetListName)
+                ? $"Review — {icp.Name} — {now:yyyy-MM-dd}"
+                : options.TargetListName.Trim();
+            targetList = await db.TargetLists.FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.CampaignId == Guid.Empty && x.Name == listName, ct);
+            if (targetList is null)
             {
-                TenantId=tenantId,
-                IcpProfileId=icp.Id,
-                Name=string.IsNullOrWhiteSpace(options.TargetListName) ? $"Review — {icp.Name} — {now:yyyy-MM-dd}" : options.TargetListName.Trim(),
-                Description=$"Online discovery via {provider.Name}. {qualified.Count} accounts met score ≥ {Math.Clamp(options.MinimumScore, 0, 100)}. Human review required before outreach.",
-                Dynamic=false
-            };
-            db.TargetLists.Add(targetList);
-            db.TargetListMembers.AddRange(qualified.Select(x => new TargetListMember { TenantId=tenantId, TargetListId=targetList.Id, ProspectId=x.Id, AddedAtUtc=now }));
+                targetList = new TargetList
+                {
+                    TenantId = tenantId,
+                    CampaignId = Guid.Empty,
+                    IcpProfileId = icp.Id,
+                    Name = listName,
+                    Description = $"Online discovery via {provider.Name}. Human review required before outreach.",
+                    Dynamic = false
+                };
+                db.TargetLists.Add(targetList);
+            }
+            else
+            {
+                targetList.IcpProfileId = icp.Id;
+                targetList.Description = $"Online discovery via {provider.Name}; refreshed {now:yyyy-MM-dd}. Human review required before outreach.";
+                targetList.UpdatedAtUtc = now;
+            }
+
+            var qualifiedIds = qualified.Select(x => x.Id).Distinct().ToArray();
+            var existingMemberIds = await db.TargetListMembers
+                .Where(x => x.TenantId == tenantId && x.TargetListId == targetList.Id && qualifiedIds.Contains(x.ProspectId))
+                .Select(x => x.ProspectId).ToListAsync(ct);
+            var knownMemberIds = existingMemberIds.ToHashSet();
+            db.TargetListMembers.AddRange(qualified.Where(x => knownMemberIds.Add(x.Id))
+                .Select(x => new TargetListMember
+                {
+                    TenantId = tenantId,
+                    TargetListId = targetList.Id,
+                    ProspectId = x.Id,
+                    AddedAtUtc = now
+                }));
         }
         icp.LastDiscoveryAtUtc=now;
         await db.SaveChangesAsync(ct);
