@@ -35,7 +35,10 @@ public static class AiCampaignOperatorEndpoints
 
         g.MapPost("/tenants/{tenantId:guid}/prepare",
             async (Guid tenantId, AiCampaignBrief input, AppDbContext db,
-                IAutonomousAcquisitionTemplateRegistry templates, ICampaignContainerRuntime containers, CancellationToken ct) =>
+                IAutonomousAcquisitionTemplateRegistry templates,
+                ICampaignContainerRuntime containers,
+                IEnumerable<IProspectDiscoveryProvider> discoveryProviders,
+                CancellationToken ct) =>
             {
                 if (string.IsNullOrWhiteSpace(input.Brief))
                     return Results.BadRequest(new { error = "brief_required" });
@@ -229,6 +232,8 @@ public static class AiCampaignOperatorEndpoints
                 // operator must not advertise a complete setup when no enrichment
                 // provider is configured. Keep the limitation visible without
                 // blocking the useful discovery/qualification/list workflow.
+                var discoveryConfigured = discoveryProviders.Any(provider => provider.IsConfigured);
+                var senderConfigured = !string.IsNullOrWhiteSpace(campaign.SenderEmail);
                 var checks = new[]
                 {
                     new { name = "pack", status = packInstalled ? "ok" : "missing" },
@@ -237,11 +242,16 @@ public static class AiCampaignOperatorEndpoints
                     new { name = "agent", status = "ok" },
                     new { name = "workflow", status = "ok" },
                     new { name = "runtime", status = agent.Status == AutonomousAgentStatus.Active ? "ok" : "fixed" },
-                    new { name = "enrichment", status = "not-configured" }
+                    new { name = "discovery-provider", status = discoveryConfigured ? "configured" : "not-configured" },
+                    new { name = "enrichment", status = "not-configured" },
+                    new { name = "sender", status = senderConfigured ? "configured" : "not-configured" }
                 };
+                // Discovery is required to run the acquisition job. Enrichment and
+                // sender identity are explicit downstream readiness warnings: discovery
+                // can still be useful, but the operator must not report a full setup.
                 var requiredChecksReady = checks
-                    .Where(x => x.name != "enrichment")
-                    .All(x => x.status is "ok" or "fixed");
+                    .Where(x => x.name != "enrichment" && x.name != "sender")
+                    .All(x => x.status is "ok" or "fixed" or "configured");
 
                 return Results.Ok(new
                 {
