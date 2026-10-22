@@ -225,6 +225,10 @@ public static class AiCampaignOperatorEndpoints
 
                 await db.SaveChangesAsync(ct);
 
+                // Discovery and qualification can run without enrichment, but the
+                // operator must not advertise a complete setup when no enrichment
+                // provider is configured. Keep the limitation visible without
+                // blocking the useful discovery/qualification/list workflow.
                 var checks = new[]
                 {
                     new { name = "pack", status = packInstalled ? "ok" : "missing" },
@@ -232,12 +236,18 @@ public static class AiCampaignOperatorEndpoints
                     new { name = "target-list", status = "ok" },
                     new { name = "agent", status = "ok" },
                     new { name = "workflow", status = "ok" },
-                    new { name = "runtime", status = agent.Status == AutonomousAgentStatus.Active ? "ok" : "fixed" }
+                    new { name = "runtime", status = agent.Status == AutonomousAgentStatus.Active ? "ok" : "fixed" },
+                    new { name = "enrichment", status = "not-configured" }
                 };
+                var requiredChecksReady = checks
+                    .Where(x => x.name != "enrichment")
+                    .All(x => x.status is "ok" or "fixed");
 
                 return Results.Ok(new
                 {
-                    status = checks.All(x => x.status is "ok" or "fixed") ? "ready" : "needs-attention",
+                    status = requiredChecksReady && checks.All(x => x.status is "ok" or "fixed")
+                        ? "ready"
+                        : "needs-attention",
                     campaignId = campaign.Id,
                     targetListId = target.Id,
                     icpId = icp.Id,
@@ -255,7 +265,7 @@ public static class AiCampaignOperatorEndpoints
                     },
                     checks,
                     actions,
-                    canStart = checks.All(x => x.status is "ok" or "fixed")
+                    canStart = requiredChecksReady
                 });
             }).RequireAuthorization(AccessPolicyNames.PermissionPrefix + QualifyAiPermissions.CrmManage);
 
