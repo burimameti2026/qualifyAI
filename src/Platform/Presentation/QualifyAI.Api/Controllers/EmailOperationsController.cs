@@ -279,6 +279,37 @@ public sealed class EmailOperationsController(
         return Ok(task);
     }
 
+    [HttpPost("messages/{id:guid}/reject"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
+    public async Task<IActionResult> RejectApproval(Guid id, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var message = await db.OutreachMessages.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Id == id, ct);
+        if (message is null) return NotFound();
+
+        if (message.Status is OutreachStatus.Sent or OutreachStatus.Delivered or OutreachStatus.Replied)
+            return Conflict(new { detail = "A message that has already been sent cannot be rejected." });
+
+        var taskTitle = $"APPROVAL: Send outreach {id}";
+        var task = await db.CrmTasks.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Title == taskTitle, ct);
+        if (task is null)
+            return BadRequest(new { detail = "Request approval before rejecting this message." });
+
+        task.Completed = true;
+        message.Status = OutreachStatus.Suppressed;
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenantId,
+            Action = "outreach.approval.rejected",
+            EntityType = nameof(OutreachMessage),
+            EntityId = message.Id.ToString(),
+            DataJson = JsonSerializer.Serialize(new { task.Id, decision = "rejected" })
+        });
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message.Id, status = message.Status.ToString(), rejected = true });
+    }
+
     [HttpPost("messages/{id:guid}/approve-and-send"), RequirePermission(QualifyAiPermissions.IntegrationsManage)]
     public async Task<IActionResult> ApproveAndSend(Guid id, CancellationToken ct)
     {
