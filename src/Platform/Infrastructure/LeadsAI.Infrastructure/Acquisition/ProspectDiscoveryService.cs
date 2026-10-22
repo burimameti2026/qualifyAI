@@ -528,7 +528,32 @@ public sealed class ProspectDiscoveryService(AppDbContext db, IEnumerable<IProsp
                 updated++;
             }
 
+            if (prospect.Status == ProspectStatus.Suppressed)
+            {
+                rejected++;
+                continue;
+            }
+            if (!string.IsNullOrWhiteSpace(prospect.Email))
+            {
+                var contactId = prospect.ContactId ?? await db.Contacts
+                    .Where(x => x.TenantId == tenantId && x.Email == prospect.Email)
+                    .Select(x => (Guid?)x.Id)
+                    .FirstOrDefaultAsync(ct);
+                if (contactId.HasValue && await db.ConsentRecords.AnyAsync(
+                    x => x.TenantId == tenantId && x.ContactId == contactId.Value &&
+                         x.Type == "marketing" && !x.Granted, ct))
+                {
+                    prospect.Status = ProspectStatus.Suppressed;
+                    prospect.OutreachStatus = "suppressed";
+                    prospect.UpdatedAtUtc = now;
+                    rejected++;
+                    continue;
+                }
+            }
+
             prospect.Evaluate(score.Fit, score.Intent);
+            // The discovery request's configured threshold is authoritative for this run.
+            prospect.Status = ProspectStatus.Qualified;
             prospect.PainHypothesis=score.Reason;
             db.ProspectSignals.Add(new ProspectSignal
             {
