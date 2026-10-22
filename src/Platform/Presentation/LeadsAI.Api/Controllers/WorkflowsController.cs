@@ -6,6 +6,7 @@ using LeadsAI.Application.Queries.Modules;
 using LeadsAI.BuildingBlocks.Security.Access;
 using LeadsAI.BuildingBlocks.Security.Authorization;
 using LeadsAI.Domain;
+using LeadsAI.Domain.Core;
 using LeadsAI.Infrastructure;
 using LeadsAI.Infrastructure.Acquisition;
 using LeadsAI.Infrastructure.Automation;
