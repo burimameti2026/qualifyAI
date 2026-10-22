@@ -444,7 +444,10 @@ public sealed class CampaignsController(
         var query = from message in db.OutreachMessages.AsNoTracking()
                     join prospect in db.Prospects.AsNoTracking() on message.ProspectId equals prospect.Id
                     join campaign in db.Campaigns.AsNoTracking() on message.CampaignId equals campaign.Id
-                    where message.TenantId==tenantId&&(!status.HasValue||message.Status==status.Value)
+                    where message.TenantId == tenantId &&
+                          prospect.TenantId == tenantId &&
+                          campaign.TenantId == tenantId &&
+                          (!status.HasValue || message.Status == status.Value)
                     orderby message.CreatedAtUtc descending
                     select new
                     {
