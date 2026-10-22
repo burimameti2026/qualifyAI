@@ -53,7 +53,12 @@ public sealed class IcpController(AppDbContext db, ITenantContext tenant, Acquis
         var tenantId = TenantId;
         IcpProfile? profile = null;
         if (input.Id.HasValue && input.Id.Value != Guid.Empty)
-            profile = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == input.Id.Value, ct);
+        {
+            profile = await db.IcpProfiles.FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Id == input.Id.Value, ct);
+            if (profile is null)
+                return NotFound(new { error = "icp_not_found", detail = "The selected ICP does not belong to this workspace." });
+        }
 
         var isNew = profile is null;
         profile ??= new IcpProfile { Id = Guid.NewGuid(), TenantId = tenantId };
