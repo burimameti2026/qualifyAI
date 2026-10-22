@@ -51,6 +51,26 @@ public sealed class AcquisitionController(
         return Created($"/api/acquisition/icp/{input.Id}", input);
     }
 
+    [HttpPut("icp/{id:guid}")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> UpdateIcp(Guid id, IcpProfile input, CancellationToken ct)
+    {
+        var tenantId = TenantId;
+        var profile = await db.IcpProfiles.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (profile is null) return NotFound();
+
+        profile.Name = input.Name.Trim();
+        profile.Industry = input.Industry?.Trim() ?? string.Empty;
+        profile.CountriesCsv = input.CountriesCsv?.Trim() ?? string.Empty;
+        profile.IntentKeywordsCsv = input.IntentKeywordsCsv?.Trim() ?? string.Empty;
+        profile.CriteriaJson = string.IsNullOrWhiteSpace(input.CriteriaJson) ? "{}" : input.CriteriaJson;
+        profile.MinimumScore = Math.Clamp(input.MinimumScore, 0, 100);
+        profile.Active = input.Active;
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Ok(profile);
+    }
+
     [HttpGet("discovery/providers")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public IActionResult DiscoveryProviders() => Ok(discovery.ProviderStatus());
