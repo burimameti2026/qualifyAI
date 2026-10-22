@@ -211,10 +211,42 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
             .Select(x => new { x.Id, x.Name, x.Trigger, x.Active })
             .ToListAsync(ct);
 
-        var containers = await db.CampaignContainers.AsNoTracking()
+        var containerRows = await db.CampaignContainers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
             .Select(x => new { x.Id, x.CampaignId, x.Name, x.Status, x.AgentId, x.PackageCode, x.PackageVersion })
             .ToListAsync(ct);
+        var selectedContainerIds = containerRows.Select(x => x.Id).ToArray();
+        var jobs = selectedContainerIds.Length == 0
+            ? new List<AgentJob>()
+            : await db.AgentJobs.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ContainerId.HasValue && selectedContainerIds.Contains(x.ContainerId.Value))
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .ToListAsync(ct);
+        var containers = containerRows.Select(container =>
+        {
+            var latestJob = jobs.FirstOrDefault(job => job.ContainerId == container.Id);
+            return new
+            {
+                container.Id,
+                container.CampaignId,
+                container.Name,
+                container.Status,
+                container.AgentId,
+                container.PackageCode,
+                container.PackageVersion,
+                latestJob = latestJob is null ? null : new
+                {
+                    latestJob.Id,
+                    latestJob.Type,
+                    status = latestJob.Status.ToString(),
+                    latestJob.AttemptCount,
+                    latestJob.MaxAttempts,
+                    latestJob.StartedAtUtc,
+                    latestJob.CompletedAtUtc,
+                    latestJob.Error
+                }
+            };
+        }).ToList();
 
         return new
         {
