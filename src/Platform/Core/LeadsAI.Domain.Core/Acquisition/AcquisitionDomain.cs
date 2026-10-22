@@ -38,9 +38,18 @@ public sealed class Prospect : TenantEntity
     {
         FitScore = Math.Clamp(fitScore, 0, 100);
         IntentScore = Math.Clamp(intentScore, 0, 100);
-        Status = PriorityScore >= 75 ? ProspectStatus.Qualified : ProspectStatus.Enriched;
         LastEvaluatedAtUtc = DateTime.UtcNow;
         Touch();
+
+        // Scoring is not enrichment. Preserve suppression and downstream lifecycle
+        // states, qualify high-scoring prospects, and keep non-qualified records in
+        // nurture unless they were genuinely enriched by a separate provider.
+        if (Status is ProspectStatus.Suppressed or ProspectStatus.Replied or ProspectStatus.DemoReady or ProspectStatus.Converted)
+            return;
+        if (PriorityScore >= 75)
+            Status = ProspectStatus.Qualified;
+        else if (Status != ProspectStatus.Enriched)
+            Status = ProspectStatus.Nurturing;
     }
 }
 
