@@ -200,10 +200,25 @@ public sealed class CampaignContainersController(
             container.VersionLabel = $"v{container.Version}";
             container.ChangeSummary = "Container workflow configuration updated";
             container.UpdatedAtUtc = DateTime.UtcNow;
-            container.ChangesJson = System.Text.Json.JsonSerializer.Serialize(new[]
+            var changes = new List<System.Text.Json.JsonElement>();
+            try
             {
-                new { atUtc = DateTime.UtcNow, change = "workflow-configuration-saved", version = container.Version }
-            });
+                using var previousChanges = System.Text.Json.JsonDocument.Parse(
+                    string.IsNullOrWhiteSpace(container.ChangesJson) ? "[]" : container.ChangesJson);
+                if (previousChanges.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    changes.AddRange(previousChanges.RootElement.EnumerateArray().Select(x => x.Clone()));
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Recover gracefully from a malformed legacy history without losing the new event.
+            }
+            changes.Add(System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                atUtc = DateTime.UtcNow,
+                change = "workflow-configuration-saved",
+                version = container.Version
+            }));
+            container.ChangesJson = System.Text.Json.JsonSerializer.Serialize(changes);
             await db.SaveChangesAsync(ct);
         }
 
