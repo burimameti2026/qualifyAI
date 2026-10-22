@@ -183,23 +183,43 @@ public sealed class ProspectsController(AppDbContext db, ITenantContext tenant) 
         Guid? targetListId = null;
         if (!string.IsNullOrWhiteSpace(input.TargetListName) && included.Count > 0)
         {
-            var list = new TargetList
+            var listName = input.TargetListName.Trim();
+            var list = await db.TargetLists.FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.CampaignId == Guid.Empty && x.Name == listName, ct);
+            if (list is null)
             {
-                TenantId = tenantId,
-                CampaignId = Guid.Empty,
-                Name = input.TargetListName.Trim(),
-                Description = $"Imported from {input.Source.Trim()} on {now:yyyy-MM-dd}. {included.Count} unique companies.",
-                IcpProfileId = input.IcpProfileId,
-                Dynamic = false
-            };
-            db.TargetLists.Add(list);
-            db.TargetListMembers.AddRange(included.Select(prospect => new TargetListMember
+                list = new TargetList
+                {
+                    TenantId = tenantId,
+                    CampaignId = Guid.Empty,
+                    Name = listName,
+                    Description = $"Imported from {input.Source.Trim()} on {now:yyyy-MM-dd}.",
+                    IcpProfileId = input.IcpProfileId,
+                    Dynamic = false
+                };
+                db.TargetLists.Add(list);
+            }
+            else
             {
-                TenantId = tenantId,
-                TargetListId = list.Id,
-                ProspectId = prospect.Id,
-                AddedAtUtc = now
-            }));
+                if (input.IcpProfileId.HasValue) list.IcpProfileId = input.IcpProfileId;
+                list.Description = $"Imported from {input.Source.Trim()}; last refreshed {now:yyyy-MM-dd}.";
+                list.UpdatedAtUtc = now;
+            }
+
+            var prospectIds = included.Select(prospect => prospect.Id).Distinct().ToArray();
+            var existingMembers = await db.TargetListMembers
+                .Where(member => member.TenantId == tenantId && member.TargetListId == list.Id && prospectIds.Contains(member.ProspectId))
+                .Select(member => member.ProspectId).ToListAsync(ct);
+            var existingIds = existingMembers.ToHashSet();
+            db.TargetListMembers.AddRange(included.Where(prospect => !existingIds.Contains(prospect.Id))
+                .DistinctBy(prospect => prospect.Id)
+                .Select(prospect => new TargetListMember
+                {
+                    TenantId = tenantId,
+                    TargetListId = list.Id,
+                    ProspectId = prospect.Id,
+                    AddedAtUtc = now
+                }));
             targetListId = list.Id;
         }
 
