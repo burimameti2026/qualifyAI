@@ -167,8 +167,8 @@ public sealed class CampaignContainersController(
             x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
         if (container is null) return NotFound();
 
-        if (container.Status is CampaignContainerStatus.Running or CampaignContainerStatus.Starting)
-            return Conflict(new { code = "container_running", detail = "Stop the container before changing its workflow configuration." });
+        if (container.Status is CampaignContainerStatus.Running or CampaignContainerStatus.Starting or CampaignContainerStatus.Queued or CampaignContainerStatus.Waiting)
+            return Conflict(new { code = "container_active", detail = "Stop or finish the queued/running container before changing its workflow configuration." });
 
         if (string.IsNullOrWhiteSpace(input.ConfigurationJson))
             return BadRequest(new { detail = "Container configuration is required." });
