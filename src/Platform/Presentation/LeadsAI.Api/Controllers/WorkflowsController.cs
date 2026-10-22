@@ -207,10 +207,34 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
                 .SingleOrDefaultAsync(ct)
             : null;
 
-        var automations = await db.AutomationRules.AsNoTracking()
+        var automationRows = await db.AutomationRules.AsNoTracking()
             .Where(x => x.TenantId == tenantId && automationIds.Contains(x.Id))
             .Select(x => new { x.Id, x.Name, x.Trigger, x.Active })
             .ToListAsync(ct);
+        var automationRunRows = automationIds.Length == 0
+            ? new List<AutomationRun>()
+            : await db.AutomationRuns.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && automationIds.Contains(x.RuleId))
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .ToListAsync(ct);
+        var automations = automationRows.Select(rule =>
+        {
+            var latestRun = automationRunRows.FirstOrDefault(run => run.RuleId == rule.Id);
+            return new
+            {
+                rule.Id,
+                rule.Name,
+                rule.Trigger,
+                rule.Active,
+                latestRun = latestRun is null ? null : new
+                {
+                    latestRun.Id,
+                    latestRun.Status,
+                    latestRun.CreatedAtUtc,
+                    latestRun.CompletedAtUtc
+                }
+            };
+        }).ToList();
 
         var containerRows = await db.CampaignContainers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && containerIds.Contains(x.Id))
