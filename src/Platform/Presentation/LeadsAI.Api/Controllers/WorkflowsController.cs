@@ -82,6 +82,10 @@ public sealed class WorkflowsController(ISender sender, ITenantContext tenant, A
             string.Equals(x.Type, "score", StringComparison.OrdinalIgnoreCase));
         var hasAction = graphNodes.Any(x =>
             string.Equals(x.Type, "action", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "send", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "approval", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "notify", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.Type, "stop", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(x.Type, "meeting", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(x.Type, "handoff", StringComparison.OrdinalIgnoreCase));
         if (graphNodes.Count == 0 || startNodes.Length == 0 || !hasRule || !hasAction)
