@@ -804,9 +804,9 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var prospects = await db.Prospects
             .Where(prospect => prospect.TenantId == agent.TenantId &&
                 ((prospect.CreatedAtUtc >= since && prospect.DatasetOrigin == campaignOrigin) ||
-                 (targetListId.HasValue && db.TargetListMembers.Any(member =>
+                 (targetListId != Guid.Empty && db.TargetListMembers.Any(member =>
                     member.TenantId == agent.TenantId &&
-                    member.TargetListId == targetListId.Value &&
+                    member.TargetListId == targetListId &&
                     member.ProspectId == prospect.Id))))
             .OrderByDescending(prospect => prospect.UpdatedAtUtc)
             .Take(Math.Clamp(agent.DailyDiscoveryLimit, 1, 100))
@@ -836,11 +836,11 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             x.TenantId == agent.TenantId &&
             x.Status == ProspectStatus.Qualified);
 
-        var prospects = targetListId.HasValue
+        var prospects = targetListId != Guid.Empty
             ? await (from member in db.TargetListMembers
                      join prospect in qualifiedProspects on member.ProspectId equals prospect.Id
                      where member.TenantId == agent.TenantId &&
-                           member.TargetListId == targetListId.Value
+                           member.TargetListId == targetListId
                      select prospect).Distinct().ToListAsync(ct)
             : await qualifiedProspects
                 .Where(x => x.CreatedAtUtc >= (job.StartedAtUtc ?? DateTime.UtcNow) &&
@@ -890,9 +890,9 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         // A container may run against its own target list. Fall back to the
         // campaign's configured list only when no valid container target is set.
         var targetListId = await GetJobTargetListIdAsync(job, campaign, ct) ?? campaign.TargetListId;
-        if (!targetListId.HasValue ||
+        if (targetListId == Guid.Empty ||
             !await db.TargetLists.AnyAsync(
-                x => x.TenantId == job.TenantId && x.Id == targetListId.Value,
+                x => x.TenantId == job.TenantId && x.Id == targetListId,
                 ct))
         {
             throw new InvalidOperationException(
@@ -908,7 +908,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             .ToListAsync(ct);
 
         var existing = await db.TargetListMembers
-            .Where(x => x.TenantId == job.TenantId && x.TargetListId == targetListId.Value)
+            .Where(x => x.TenantId == job.TenantId && x.TargetListId == targetListId)
             .Select(x => x.ProspectId)
             .ToListAsync(ct);
 
@@ -922,7 +922,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             db.TargetListMembers.Add(new TargetListMember
             {
                 TenantId = job.TenantId,
-                TargetListId = targetListId.Value,
+                TargetListId = targetListId,
                 ProspectId = prospect.Id,
                 AddedAtUtc = DateTime.UtcNow
             });
@@ -933,7 +933,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         CompleteTask(task, new
         {
             added,
-            targetListId = targetListId.Value,
+            targetListId,
             qualifiedCandidates = prospects.Count,
             alreadyPresent = prospects.Count - added
         });
