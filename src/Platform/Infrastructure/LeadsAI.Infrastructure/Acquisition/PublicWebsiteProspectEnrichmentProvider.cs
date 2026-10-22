@@ -33,14 +33,14 @@ public sealed class PublicWebsiteProspectEnrichmentProvider(
     IConfiguration configuration) : IProspectEnrichmentProvider
 {
     private static readonly Regex EmailPattern = new(
-        @"(?<![\\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}(?![\\w.-])",
+        @"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PhonePattern = new(
-        @"(?<!\\w)(?:\\+?\\d[\\d .()/-]{7,}\\d)(?!\\w)",
+        @"(?<!\w)(?:\+?\d[\d .()/-]{7,}\d)(?!\w)",
         RegexOptions.Compiled);
     private static readonly Regex HtmlTagPattern = new("<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex EmailNoisePattern = new(
-        @"(example\\.com|example\\.org|wixpress\\.com|sentry\\.io|cloudflare\\.com|schema\\.org)$",
+        @"(example\.com|example\.org|wixpress\.com|sentry\.io|cloudflare\.com|schema\.org)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public string Name => "public-website";
@@ -91,7 +91,7 @@ public sealed class PublicWebsiteProspectEnrichmentProvider(
                     html = html[..1_500_000];
 
                 var text = WebUtility.HtmlDecode(HtmlTagPattern.Replace(
-                    Regex.Replace(html, @"(?is)<(script|style|noscript)[^>]*>.*?</\\1>", " "),
+                    Regex.Replace(html, @"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " "),
                     " "));
                 var observed = DateTime.UtcNow;
 
@@ -108,7 +108,7 @@ public sealed class PublicWebsiteProspectEnrichmentProvider(
 
                 foreach (Match match in PhonePattern.Matches(text))
                 {
-                    var phone = Regex.Replace(match.Value.Trim(), @"\\s+", " ");
+                    var phone = Regex.Replace(match.Value.Trim(), @"\s+", " ");
                     var digits = phone.Count(char.IsDigit);
                     if (digits is < 8 or > 16)
                         continue;
