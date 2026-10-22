@@ -115,13 +115,28 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         job.StartedAtUtc ??= runtimeNow;
         job.Error = null;
 
+        var executionPlanJson = campaign.PlanJson;
         if (job.ContainerId.HasValue)
         {
             var container = await db.CampaignContainers
                 .SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == job.ContainerId.Value, ct);
 
             if (container is not null)
+            {
                 containers.Run(container, runtimeNow);
+                try
+                {
+                    using var configuration = JsonDocument.Parse(
+                        string.IsNullOrWhiteSpace(container.ConfigurationJson) ? "{}" : container.ConfigurationJson);
+                    if (configuration.RootElement.TryGetProperty("workflowPlan", out var workflowPlan) &&
+                        workflowPlan.ValueKind == JsonValueKind.Object)
+                        executionPlanJson = workflowPlan.GetRawText();
+                }
+                catch (JsonException)
+                {
+                    // Fall back to the campaign plan when an older container has invalid legacy config.
+                }
+            }
         }
         job.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -129,8 +144,8 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         {
             var template = templates.Apply(agent);
             template = ApplyCampaignPlan(campaign, agent, template);
-            await planner.EnsurePlanAsync(agent, template, ct, campaign.PlanJson);
-            var tasks = await taskFactory.EnsureAsync(job, agent, template, campaign.PlanJson, ct);
+            await planner.EnsurePlanAsync(agent, template, ct, executionPlanJson);
+            var tasks = await taskFactory.EnsureAsync(job, agent, template, executionPlanJson, ct);
             var now = DateTime.UtcNow;
 
             var awaitingApproval = false;
