@@ -39,10 +39,24 @@ public sealed class TargetListsController(AppDbContext db, ITenantContext tenant
             !await db.IcpProfiles.AnyAsync(x => x.TenantId == tenantId && x.Id == input.IcpProfileId.Value, ct))
             return BadRequest(new { detail = "The selected ICP does not belong to this tenant." });
 
-        var list = new TargetList
+        var name = input.Name.Trim();
+        var list = await db.TargetLists.FirstOrDefaultAsync(
+            x => x.TenantId == tenantId && x.CampaignId == Guid.Empty && x.Name == name, ct);
+        if (list is not null)
+        {
+            if (input.IcpProfileId.HasValue) list.IcpProfileId = input.IcpProfileId;
+            if (!string.IsNullOrWhiteSpace(input.Description)) list.Description = input.Description.Trim();
+            list.Dynamic = input.Dynamic;
+            list.UpdatedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Ok(list);
+        }
+
+        list = new TargetList
         {
             TenantId = tenantId,
-            Name = input.Name.Trim(),
+            CampaignId = Guid.Empty,
+            Name = name,
             Description = input.Description?.Trim() ?? string.Empty,
             IcpProfileId = input.IcpProfileId,
             Dynamic = input.Dynamic
