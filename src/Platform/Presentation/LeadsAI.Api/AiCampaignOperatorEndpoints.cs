@@ -280,7 +280,10 @@ public static class AiCampaignOperatorEndpoints
 
         g.MapPost("/tenants/{tenantId:guid}/campaigns/{campaignId:guid}/start",
             async (Guid tenantId, Guid campaignId, AppDbContext db,
-                IAgentJobFactory jobFactory, ICampaignContainerRuntime containers, CancellationToken ct) =>
+                IAgentJobFactory jobFactory,
+                ICampaignContainerRuntime containers,
+                IEnumerable<IProspectDiscoveryProvider> discoveryProviders,
+                CancellationToken ct) =>
             {
                 var campaign = await db.Campaigns.FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.Id == campaignId, ct);
@@ -313,6 +316,13 @@ public static class AiCampaignOperatorEndpoints
                             deduplicated = true
                         });
                 }
+
+                if (!discoveryProviders.Any(provider => provider.IsConfigured))
+                    return Results.Conflict(new
+                    {
+                        error = "discovery_provider_not_configured",
+                        detail = "Configure a prospect discovery provider before starting the acquisition job."
+                    });
 
                 if (!campaign.AgentId.HasValue)
                     return Results.Conflict(new { error = "campaign_agent_not_ready" });
