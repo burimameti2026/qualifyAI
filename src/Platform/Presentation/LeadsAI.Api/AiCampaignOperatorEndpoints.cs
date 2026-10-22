@@ -272,6 +272,28 @@ public static class AiCampaignOperatorEndpoints
                         detail = $"Campaign is {campaign.Status} and cannot start another autonomous run."
                     });
 
+                var activeJob = await db.AgentJobs.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId &&
+                                x.CampaignId == campaignId &&
+                                (x.Status == AgentJobStatus.Queued ||
+                                 x.Status == AgentJobStatus.Running ||
+                                 x.Status == AgentJobStatus.Waiting))
+                    .OrderByDescending(x => x.CreatedAtUtc)
+                    .FirstOrDefaultAsync(ct);
+                if (activeJob is not null)
+                {
+                    return Results.Accepted(
+                        $"/api/ai-campaign-operator/tenants/{tenantId}/campaigns/{campaignId}/status",
+                        new
+                        {
+                            campaignId,
+                            status = campaign.Status,
+                            jobId = activeJob.Id,
+                            jobStatus = activeJob.Status.ToString(),
+                            deduplicated = true
+                        });
+                }
+
                 if (!campaign.AgentId.HasValue)
                     return Results.Conflict(new { error = "campaign_agent_not_ready" });
 
