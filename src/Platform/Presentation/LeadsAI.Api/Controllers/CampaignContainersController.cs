@@ -155,6 +155,61 @@ public sealed class CampaignContainersController(
         return Ok(new { container.Id, container.CampaignId, targetList, targetListId = input.TargetListId });
     }
 
+    [HttpPut("{containerId:guid}/configuration")]
+    [RequirePermission(QualifyAiPermissions.CrmManage)]
+    public async Task<IActionResult> SaveContainerConfiguration(
+        Guid campaignId,
+        Guid containerId,
+        ContainerConfigurationRequest input,
+        CancellationToken ct)
+    {
+        var container = await db.CampaignContainers.FirstOrDefaultAsync(
+            x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
+        if (container is null) return NotFound();
+
+        if (container.Status is CampaignContainerStatus.Running or CampaignContainerStatus.Starting)
+            return Conflict(new { code = "container_running", detail = "Stop the container before changing its workflow configuration." });
+
+        if (string.IsNullOrWhiteSpace(input.ConfigurationJson))
+            return BadRequest(new { detail = "Container configuration is required." });
+
+        System.Text.Json.JsonDocument parsed;
+        try
+        {
+            parsed = System.Text.Json.JsonDocument.Parse(input.ConfigurationJson);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return BadRequest(new { detail = "Container configuration must be valid JSON." });
+        }
+
+        using (parsed)
+        {
+            if (parsed.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return BadRequest(new { detail = "Container configuration must be a JSON object." });
+
+            var targetListId = configurationService.ReadTargetListId(input.ConfigurationJson);
+            if (targetListId.HasValue &&
+                !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == targetListId.Value, ct))
+                return NotFound(new { code = "target_list_not_found", detail = "The selected prospect group does not exist in this workspace." });
+
+            // Keep the workflow graph and target-list binding in this container's own
+            // versioned configuration; do not overwrite the campaign's shared plan.
+            container.ConfigurationJson = input.ConfigurationJson;
+            container.Version++;
+            container.VersionLabel = $"v{container.Version}";
+            container.ChangeSummary = "Container workflow configuration updated";
+            container.UpdatedAtUtc = DateTime.UtcNow;
+            container.ChangesJson = System.Text.Json.JsonSerializer.Serialize(new[]
+            {
+                new { atUtc = DateTime.UtcNow, change = "workflow-configuration-saved", version = container.Version }
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Ok(new { container.Id, container.Version, container.VersionLabel, container.ConfigurationJson });
+    }
+
     [HttpPost("{containerId:guid}/start")]
     [RequirePermission(QualifyAiPermissions.CrmManage)]
     public async Task<IActionResult> StartContainer(Guid campaignId, Guid containerId, CancellationToken ct)
@@ -303,3 +358,5 @@ db.CampaignContainerActivities.Add(new CampaignContainerActivityRecord
         return Ok(items);
     }
 }
+
+public sealed record ContainerConfigurationRequest(string ConfigurationJson);
