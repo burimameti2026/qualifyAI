@@ -777,7 +777,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 Country = string.IsNullOrWhiteSpace(candidate.Country) ? country : candidate.Country,
                 Source = provider.Name,
                 SourceUrl = candidate.SourceUrl,
-                DatasetOrigin = $"autonomous-agent:{job.CampaignId:N}",
+                DatasetOrigin = GetJobDatasetOrigin(job),
                 VerificationStatus = "public-source",
                 ContactReadiness = "company-only",
                 SizeBand = "unknown",
@@ -818,7 +818,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var campaign = await db.Campaigns.SingleAsync(x => x.TenantId == job.TenantId && x.Id == job.CampaignId, ct);
         var targetListId = await GetJobTargetListIdAsync(job, campaign, ct) ?? campaign.TargetListId;
         var since = job.StartedAtUtc ?? DateTime.UtcNow;
-        var campaignOrigin = $"autonomous-agent:{job.CampaignId:N}";
+        var campaignOrigin = GetJobDatasetOrigin(job);
         var prospects = await db.Prospects
             .Where(prospect => prospect.TenantId == agent.TenantId &&
                 ((prospect.CreatedAtUtc >= since && prospect.DatasetOrigin == campaignOrigin) ||
@@ -862,7 +862,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                      select prospect).Distinct().ToListAsync(ct)
             : await qualifiedProspects
                 .Where(x => x.CreatedAtUtc >= (job.StartedAtUtc ?? DateTime.UtcNow) &&
-                            x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}")
+                            x.DatasetOrigin == GetJobDatasetOrigin(job))
                 .ToListAsync(ct);
 
         var enriched = 0;
@@ -1001,7 +1001,7 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
         var prospects = await db.Prospects
             .Where(x => x.TenantId == job.TenantId &&
                         x.CreatedAtUtc >= since &&
-                        x.DatasetOrigin == $"autonomous-agent:{job.CampaignId:N}" &&
+                        x.DatasetOrigin == GetJobDatasetOrigin(job) &&
                         x.Status == ProspectStatus.Qualified)
             .ToListAsync(ct);
 
@@ -1170,6 +1170,11 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
             x.TenantId == job.TenantId && x.CampaignId == campaign.Id && x.Status == OutreachStatus.Queued &&
             db.CrmTasks.Any(t => t.TenantId == job.TenantId && t.Title == $"APPROVAL: Send outreach {x.Id}" && !t.Completed), ct);
     }
+
+    private static string GetJobDatasetOrigin(AgentJob job) =>
+        job.ContainerId.HasValue
+            ? $"autonomous-agent:{job.CampaignId:N}:container:{job.ContainerId.Value:N}"
+            : $"autonomous-agent:{job.CampaignId:N}";
 
     private async Task<Guid?> GetJobTargetListIdAsync(
         AgentJob job,
