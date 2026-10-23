@@ -140,7 +140,7 @@ public sealed class CampaignContainersController(
         if (container.Status is CampaignContainerStatus.Running or CampaignContainerStatus.Starting or CampaignContainerStatus.Queued or CampaignContainerStatus.Waiting)
             return Conflict(new { code = "container_active", detail = "Stop or finish the queued/running container before changing its prospect group." });
 
-        var targetListId = input.TargetListId == Guid.Empty ? null : input.TargetListId;
+        Guid? targetListId = input.TargetListId.HasValue && input.TargetListId.Value != Guid.Empty ? input.TargetListId : null;
         if (targetListId.HasValue &&
             !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == targetListId.Value, ct))
             return NotFound(new { code = "target_list_not_found", detail = "The selected prospect group does not exist in this workspace." });
