@@ -137,22 +137,50 @@ public sealed class CampaignContainersController(
             x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
         if (container is null) return NotFound();
 
-        if (input.TargetListId.HasValue && input.TargetListId.Value != Guid.Empty &&
-            !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == input.TargetListId.Value, ct))
+        if (container.Status is CampaignContainerStatus.Running or CampaignContainerStatus.Starting or CampaignContainerStatus.Queued or CampaignContainerStatus.Waiting)
+            return Conflict(new { code = "container_active", detail = "Stop or finish the queued/running container before changing its prospect group." });
+
+        var targetListId = input.TargetListId == Guid.Empty ? null : input.TargetListId;
+        if (targetListId.HasValue &&
+            !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == targetListId.Value, ct))
             return NotFound(new { code = "target_list_not_found", detail = "The selected prospect group does not exist in this workspace." });
 
-        container.ConfigurationJson = configurationService.Build(container.ConfigurationJson, input.TargetListId);
+        container.ConfigurationJson = configurationService.Build(container.ConfigurationJson, targetListId);
+        container.Version++;
+        container.VersionLabel = $"v{container.Version}";
+        container.ChangeSummary = "Container prospect group updated";
         container.UpdatedAtUtc = DateTime.UtcNow;
+
+        var changes = new List<System.Text.Json.JsonElement>();
+        try
+        {
+            using var previousChanges = System.Text.Json.JsonDocument.Parse(
+                string.IsNullOrWhiteSpace(container.ChangesJson) ? "[]" : container.ChangesJson);
+            if (previousChanges.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                changes.AddRange(previousChanges.RootElement.EnumerateArray().Select(x => x.Clone()));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Keep the new audit entry even when recovering from malformed legacy history.
+        }
+        changes.Add(System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            atUtc = DateTime.UtcNow,
+            change = "prospect-group-updated",
+            version = container.Version,
+            targetListId
+        }));
+        container.ChangesJson = System.Text.Json.JsonSerializer.Serialize(changes);
         await db.SaveChangesAsync(ct);
 
-        var targetList = input.TargetListId.HasValue
+        var targetList = targetListId.HasValue
             ? await db.TargetLists.AsNoTracking()
-                .Where(x => x.TenantId == TenantId && x.Id == input.TargetListId.Value)
+                .Where(x => x.TenantId == TenantId && x.Id == targetListId.Value)
                 .Select(x => new { x.Id, x.Name, x.Description, x.IcpProfileId, x.Dynamic })
                 .SingleOrDefaultAsync(ct)
             : null;
 
-        return Ok(new { container.Id, container.CampaignId, targetList, targetListId = input.TargetListId });
+        return Ok(new { container.Id, container.CampaignId, targetList, targetListId });
     }
 
     [HttpPut("{containerId:guid}/configuration")]
