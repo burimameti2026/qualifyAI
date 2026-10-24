@@ -753,21 +753,57 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
 
         job.DiscoveredCount = candidates.Count;
 
-        var existing = await db.Prospects.Where(x => x.TenantId == agent.TenantId)
-            .Select(x => x.Domain)
+        var existingProspects = await db.Prospects
+            .Where(x => x.TenantId == agent.TenantId && x.Domain != null && x.Domain != "")
+            .Select(x => new { x.Id, x.Domain, x.Status })
             .ToListAsync(ct);
 
-        var known = new HashSet<string>(
-            existing.Where(x => !string.IsNullOrWhiteSpace(x)).Select(Normalize),
-            StringComparer.OrdinalIgnoreCase);
+        var prospectsByDomain = existingProspects
+            .GroupBy(x => Normalize(x.Domain), StringComparer.OrdinalIgnoreCase)
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
 
+        var known = prospectsByDomain.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingTargetMembers = discoveryTargetListId == Guid.Empty
+            ? new HashSet<Guid>()
+            : (await db.TargetListMembers
+                .Where(x => x.TenantId == job.TenantId && x.TargetListId == discoveryTargetListId)
+                .Select(x => x.ProspectId)
+                .ToListAsync(ct)).ToHashSet();
+
+        var newProspects = 0;
+        var reusedQualifiedProspects = 0;
         foreach (var candidate in candidates)
         {
             var domain = Normalize(candidate.Domain);
-            if (string.IsNullOrWhiteSpace(domain) || known.Contains(domain))
+            if (string.IsNullOrWhiteSpace(domain))
                 continue;
 
-            known.Add(domain);
+            // Reuse tenant-scoped company records instead of duplicating them.
+            // If the existing company is already qualified, attach it idempotently
+            // to this container's selected list so later stages can use it.
+            if (prospectsByDomain.TryGetValue(domain, out var existingProspect))
+            {
+                if (existingProspect.Status == ProspectStatus.Qualified &&
+                    discoveryTargetListId != Guid.Empty &&
+                    existingTargetMembers.Add(existingProspect.Id))
+                {
+                    db.TargetListMembers.Add(new TargetListMember
+                    {
+                        TenantId = job.TenantId,
+                        TargetListId = discoveryTargetListId,
+                        ProspectId = existingProspect.Id,
+                        AddedAtUtc = now
+                    });
+                    reusedQualifiedProspects++;
+                }
+
+                continue;
+            }
+
+            if (!known.Add(domain))
+                continue;
+
             var prospect = new Prospect
             {
                 TenantId = agent.TenantId,
@@ -802,10 +838,17 @@ public sealed class AutonomousAcquisitionJobOrchestrator(
                 SourceUrl = candidate.SourceUrl,
                 ObservedAtUtc = now
             });
+            newProspects++;
         }
 
         await db.SaveChangesAsync(ct);
-        CompleteTask(task, new { discovered = job.DiscoveredCount, next = AutonomousAgentTaskTypes.Qualify });
+        CompleteTask(task, new
+        {
+            discovered = job.DiscoveredCount,
+            newProspects,
+            reusedQualifiedProspects,
+            next = AutonomousAgentTaskTypes.Qualify
+        });
     }
 
     private async Task ExecuteQualificationAsync(
