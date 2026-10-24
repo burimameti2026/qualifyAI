@@ -67,6 +67,25 @@ public sealed class CampaignsController(
         return Ok(campaigns);
     }
 
+    private static string NormalizeActivityStatus(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        var normalized = value.Trim();
+        return normalized.ToLowerInvariant() switch
+        {
+            "queued" => "Queued",
+            "starting" => "Starting",
+            "running" => "Running",
+            "waiting" => "Waiting",
+            "paused" => "Paused",
+            "completed" => "Completed",
+            "stopped" => "Stopped",
+            "cancelled" or "canceled" => "Cancelled",
+            "failed" => "Failed",
+            _ => fallback
+        };
+    }
+
     [HttpGet("history")]
     [RequirePermission(QualifyAiPermissions.CrmRead)]
     public async Task<IActionResult> CampaignHistory(
@@ -166,6 +185,12 @@ public sealed class CampaignsController(
                 data = doc.RootElement.Clone();
             }
 
+            var recordedStatus = data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                                 data.TryGetProperty("status", out var statusValue) &&
+                                 statusValue.ValueKind == System.Text.Json.JsonValueKind.String
+                ? statusValue.GetString()
+                : null;
+
             var eventStatus = activity.Level.Equals("error", StringComparison.OrdinalIgnoreCase) ||
                               activity.Level.Equals("failed", StringComparison.OrdinalIgnoreCase) ||
                               activity.EventType.Contains("failed", StringComparison.OrdinalIgnoreCase)
@@ -174,15 +199,17 @@ public sealed class CampaignsController(
                     ? "Paused"
                     : activity.EventType.Contains("waiting", StringComparison.OrdinalIgnoreCase)
                         ? "Waiting"
-                        : activity.EventType.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
-                          activity.EventType.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
-                          activity.EventType.Contains("stopped", StringComparison.OrdinalIgnoreCase)
-                            ? "Completed"
-                            : activity.EventType.Contains("queued", StringComparison.OrdinalIgnoreCase)
-                                ? "Queued"
-                                : activity.EventType.Contains("started", StringComparison.OrdinalIgnoreCase)
-                                    ? "Running"
-                                    : activity.Level;
+                        : activity.EventType.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
+                            ? "Cancelled"
+                            : activity.EventType.Contains("stopped", StringComparison.OrdinalIgnoreCase)
+                                ? "Stopped"
+                                : activity.EventType.Contains("completed", StringComparison.OrdinalIgnoreCase)
+                                    ? "Completed"
+                                    : activity.EventType.Contains("queued", StringComparison.OrdinalIgnoreCase)
+                                        ? "Queued"
+                                        : activity.EventType.Contains("started", StringComparison.OrdinalIgnoreCase)
+                                            ? NormalizeActivityStatus(recordedStatus, "Running")
+                                            : NormalizeActivityStatus(recordedStatus, activity.Level);
 
             if (!string.IsNullOrWhiteSpace(status) &&
                 !string.Equals(eventStatus, status.Trim(), StringComparison.OrdinalIgnoreCase))
