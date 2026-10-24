@@ -261,16 +261,46 @@ public sealed class CampaignContainersController(
             x => x.TenantId == TenantId && x.CampaignId == campaignId && x.Id == containerId, ct);
         if (container is null) return NotFound();
 
+        if (container.Status is CampaignContainerStatus.Queued or CampaignContainerStatus.Starting or
+            CampaignContainerStatus.Running or CampaignContainerStatus.Waiting)
+            return Conflict(new
+            {
+                code = "container_already_active",
+                detail = $"Container is already {container.Status}; wait for the current run or stop it before starting again."
+            });
+
+        var activeJob = await db.AgentJobs.AnyAsync(x =>
+            x.TenantId == TenantId &&
+            x.ContainerId == container.Id &&
+            (x.Status == AgentJobStatus.Queued || x.Status == AgentJobStatus.Running ||
+             x.Status == AgentJobStatus.Waiting), ct);
+        if (activeJob)
+            return Conflict(new
+            {
+                code = "container_job_already_active",
+                detail = "An active or waiting job already exists for this container. It will not be queued a second time."
+            });
+
         var campaign = await db.Campaigns.FirstAsync(x => x.TenantId == TenantId && x.Id == campaignId, ct);
         if (campaign.Status is CampaignStatus.Completed or CampaignStatus.Stopped)
             return Conflict(new { code = "campaign_not_restartable", detail = $"Campaign is {campaign.Status} and cannot start a container." });
 
-        if (campaign.Status != CampaignStatus.Running)
-            campaign.Start();
+        var targetListId = configurationService.ReadTargetListId(container.ConfigurationJson)
+            ?? (campaign.TargetListId != Guid.Empty ? campaign.TargetListId : (Guid?)null);
+        if (!targetListId.HasValue ||
+            !await db.TargetLists.AnyAsync(x => x.TenantId == TenantId && x.Id == targetListId.Value, ct))
+            return Conflict(new
+            {
+                code = "container_target_list_required",
+                detail = "Select a target list for this container before starting its acquisition workflow."
+            });
 
         var agent = await db.AutonomousAcquisitionAgents.FirstOrDefaultAsync(
             x => x.TenantId == TenantId && x.Id == container.AgentId, ct);
         if (agent is null) return NotFound();
+
+        if (campaign.Status != CampaignStatus.Running)
+            campaign.Start();
 
         containers.Start(container, DateTime.UtcNow);
         agent.Status = AutonomousAgentStatus.Active;
