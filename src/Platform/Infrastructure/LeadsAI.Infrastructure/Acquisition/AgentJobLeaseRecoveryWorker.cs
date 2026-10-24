@@ -81,6 +81,11 @@ public sealed class AgentJobLeaseRecoveryWorker(
 
         foreach (var item in expired)
         {
+            // Keep the job transition, task reconciliation, container state and activity
+            // record in one transaction. Otherwise a process crash between writes can
+            // leave a requeued job paired with a permanently Running task/container.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+
             var terminal = item.AttemptCount >= item.MaxAttempts;
             var nextStatus = terminal ? AgentJobStatus.Failed : AgentJobStatus.Queued;
             var error = terminal
@@ -102,7 +107,10 @@ public sealed class AgentJobLeaseRecoveryWorker(
                     .SetProperty(x => x.UpdatedAtUtc, now), ct);
 
             if (changed == 0)
+            {
+                await tx.RollbackAsync(ct);
                 continue;
+            }
 
             // A crashed worker can leave its current task marked Running forever.
             // Reconcile that step with the job recovery decision before another worker
@@ -163,11 +171,12 @@ public sealed class AgentJobLeaseRecoveryWorker(
                 }
             }
 
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
             log.LogWarning(
                 "Recovered expired AgentJob {JobId} for tenant {TenantId}; status {Status}, attempt {Attempt}/{MaxAttempts}",
                 item.Id, tenantId, nextStatus, item.AttemptCount, item.MaxAttempts);
         }
-
-        await db.SaveChangesAsync(ct);
     }
 }
